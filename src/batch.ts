@@ -1,6 +1,7 @@
 import { readdirSync, existsSync, statSync, readFileSync, writeFileSync } from "fs";
 import { join, extname, basename } from "path";
 import { readConfig } from "./config.ts";
+import { applyThreshold } from "./thresholds.ts";
 import { SkillRegistry } from "./skills/registry.ts";
 import { PlagiarismSkill } from "./skills/plagiarism.ts";
 import { AiDetectionSkill } from "./skills/aidetection.ts";
@@ -72,7 +73,11 @@ export async function runBatch(dir: string): Promise<BatchResult[]> {
 
     console.log(`  Checking ${basename(file)}...`);
 
-    const skillResults = await registry.runAll(text, config);
+    const rawSkillResults = await registry.runAll(text, config);
+    const skillResults = rawSkillResults.map((r) => ({
+      ...r,
+      verdict: applyThreshold(r.score, r.verdict, config.thresholds?.[r.skillId]),
+    }));
     const totalCostUsd = skillResults.reduce((sum, r) => sum + r.costUsd, 0);
     const overallScore =
       skillResults.length > 0
