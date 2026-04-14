@@ -1,7 +1,7 @@
 import Exa from "exa-js";
 import type { Skill, SkillResult, Finding } from "./types.ts";
 import type { Config } from "../config.ts";
-import { getLlmClient } from "./llm.ts";
+import { getLlmClient, getTextBlock, parseJsonResponse } from "./llm.ts";
 
 export function extractClaimsPrompt(articleText: string): string {
   return `Extract the 4 most specific, verifiable factual claims from the article below.
@@ -46,15 +46,15 @@ export class FactCheckSkill implements Skill {
     // Step 1: extract claims
     const claimsResponse = await llm.client.messages.create({
       model: llm.model,
-      max_tokens: 256,
+      max_tokens: 1024,
       messages: [{ role: "user", content: extractClaimsPrompt(text) }],
     });
-    const claimsText = (claimsResponse.content[0] as { text: string }).text.trim();
+    const claimsText = getTextBlock(claimsResponse.content);
 
     let claims: string[] = [];
     try {
-      claims = JSON.parse(claimsText);
-      if (!Array.isArray(claims)) claims = [];
+      const parsed = parseJsonResponse<string[]>(claimsText);
+      claims = Array.isArray(parsed) ? parsed : [];
     } catch {
       claims = [];
     }
@@ -101,13 +101,13 @@ null means inconclusive.`;
 
       const res = await llm.client.messages.create({
         model: llm.model,
-        max_tokens: 128,
+        max_tokens: 512,
         messages: [{ role: "user", content: assessPrompt }],
       });
       costUsd += 0.001;
 
       try {
-        const json = JSON.parse((res.content[0] as { text: string }).text.trim());
+        const json = parseJsonResponse<{ supported: boolean | null; note: string }>(getTextBlock(res.content));
         assessments.push({ claim, supported: json.supported, note: json.note });
       } catch {
         assessments.push({ claim, supported: null, note: "Could not assess" });
