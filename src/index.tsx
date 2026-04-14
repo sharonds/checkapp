@@ -3,11 +3,14 @@ import { configExists, readConfig } from "./config.ts";
 import { runSetup } from "./setup.tsx";
 import { runCheck } from "./check.tsx";
 import { openDb, queryRecent } from "./db.ts";
+import { runBatch } from "./batch.ts";
 
 const args = process.argv.slice(2);
 const forceSetup = args.includes("--setup");
 const showHistory = args.includes("--history");
-const docUrl = args.find((a) => !a.startsWith("--"));
+const batchIndex = args.indexOf("--batch");
+const batchDir = batchIndex !== -1 ? args[batchIndex + 1] : undefined;
+const docUrl = args.find((a) => !a.startsWith("--") && a !== batchDir);
 
 async function main() {
   // --history: show recent checks from SQLite
@@ -34,6 +37,12 @@ async function main() {
     process.exit(0);
   }
 
+  // --batch <dir>: check all .md/.txt files in the directory
+  if (batchDir) {
+    await runBatch(batchDir);
+    process.exit(0);
+  }
+
   const hasEnvCredentials = !!(process.env.COPYSCAPE_USER && process.env.COPYSCAPE_KEY);
   const needsSetup = forceSetup || (!configExists() && !hasEnvCredentials);
 
@@ -53,8 +62,9 @@ async function main() {
     console.log('  article-checker ./my-article.md');
     console.log("");
     console.log("Options:");
-    console.log("  --setup    Re-run the credential setup wizard");
-    console.log("  --history  Show the last 20 checks from history");
+    console.log("  --batch <dir>  Check all .md/.txt files in a directory");
+    console.log("  --setup        Re-run the credential setup wizard");
+    console.log("  --history      Show the last 20 checks from history");
     console.log("");
     process.exit(0);
   }
