@@ -1,7 +1,7 @@
 import Exa from "exa-js";
-import Anthropic from "@anthropic-ai/sdk";
 import type { Skill, SkillResult, Finding } from "./types.ts";
 import type { Config } from "../config.ts";
+import { getLlmClient } from "./llm.ts";
 
 export function extractClaimsPrompt(articleText: string): string {
   return `Extract the 4 most specific, verifiable factual claims from the article below.
@@ -26,25 +26,26 @@ export class FactCheckSkill implements Skill {
       return {
         skillId: this.id, name: this.name, score: 50, verdict: "warn",
         summary: "Skipped — EXA_API_KEY not configured",
-        findings: [{ severity: "info", text: "Add EXA_API_KEY to .env or run --setup to enable fact-checking" }],
+        findings: [{ severity: "info", text: "Add EXA_API_KEY to .env to enable fact-checking" }],
         costUsd: 0,
       };
     }
-    if (!config.anthropicApiKey) {
+
+    const llm = getLlmClient(config);
+    if (!llm) {
       return {
         skillId: this.id, name: this.name, score: 50, verdict: "warn",
-        summary: "Skipped — ANTHROPIC_API_KEY not configured",
-        findings: [{ severity: "info", text: "Add ANTHROPIC_API_KEY to .env to enable fact-checking" }],
+        summary: "Skipped — no LLM key configured",
+        findings: [{ severity: "info", text: "Add MINIMAX_API_KEY or ANTHROPIC_API_KEY to .env to enable fact-checking" }],
         costUsd: 0,
       };
     }
 
-    const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
     const exa = new Exa(config.exaApiKey);
 
-    // Step 1: extract claims via Claude haiku
-    const claimsResponse = await anthropic.messages.create({
-      model: "claude-haiku-4-5-20251001",
+    // Step 1: extract claims
+    const claimsResponse = await llm.client.messages.create({
+      model: llm.model,
       max_tokens: 256,
       messages: [{ role: "user", content: extractClaimsPrompt(text) }],
     });
@@ -82,7 +83,7 @@ export class FactCheckSkill implements Skill {
       })
     );
 
-    // Step 3: assess each claim with Claude
+    // Step 3: assess each claim
     const assessments: Array<{ claim: string; supported: boolean | null; note: string }> = [];
     for (const { claim, results: searchResults } of claimResults) {
       const evidence = searchResults
@@ -98,8 +99,8 @@ ${evidence}
 Reply with JSON: { "supported": true/false/null, "note": "one sentence explanation" }
 null means inconclusive.`;
 
-      const res = await anthropic.messages.create({
-        model: "claude-haiku-4-5-20251001",
+      const res = await llm.client.messages.create({
+        model: llm.model,
         max_tokens: 128,
         messages: [{ role: "user", content: assessPrompt }],
       });
@@ -127,7 +128,7 @@ null means inconclusive.`;
     const warnCount = findings.filter((f) => f.severity === "warn").length;
     const score = Math.round(100 - failCount * 25 - warnCount * 10);
     const verdict = failCount > 0 ? "fail" : warnCount > 1 ? "warn" : "pass";
-    const summary = `${assessments.length} claims checked — ${failCount} unsupported, ${warnCount} unverified`;
+    const summary = `${assessments.length} claims checked — ${failCount} unsupported, ${warnCount} unverified (via ${llm.provider})`;
 
     return { skillId: this.id, name: this.name, score: Math.max(0, score), verdict, summary, findings, costUsd };
   }

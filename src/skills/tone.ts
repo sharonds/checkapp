@@ -1,7 +1,7 @@
 import { readFileSync, existsSync } from "fs";
-import Anthropic from "@anthropic-ai/sdk";
 import type { Skill, SkillResult, Finding } from "./types.ts";
 import type { Config } from "../config.ts";
+import { getLlmClient } from "./llm.ts";
 
 export function buildTonePrompt(articleText: string, toneGuide: string): string {
   return `You are a brand voice editor. Assess how well the article matches the tone guide below.
@@ -28,11 +28,12 @@ export class ToneSkill implements Skill {
   readonly name = "Tone of Voice";
 
   async run(text: string, config: Config): Promise<SkillResult> {
-    if (!config.anthropicApiKey) {
+    const llm = getLlmClient(config);
+    if (!llm) {
       return {
         skillId: this.id, name: this.name, score: 50, verdict: "warn",
-        summary: "Skipped — ANTHROPIC_API_KEY not configured",
-        findings: [{ severity: "info", text: "Add ANTHROPIC_API_KEY to .env to enable tone checking" }],
+        summary: "Skipped — no LLM key configured",
+        findings: [{ severity: "info", text: "Add MINIMAX_API_KEY or ANTHROPIC_API_KEY to .env to enable tone checking" }],
         costUsd: 0,
       };
     }
@@ -46,10 +47,9 @@ export class ToneSkill implements Skill {
     }
 
     const toneGuide = readFileSync(config.toneGuideFile, "utf-8");
-    const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
-    const response = await anthropic.messages.create({
-      model: "claude-haiku-4-5-20251001",
+    const response = await llm.client.messages.create({
+      model: llm.model,
       max_tokens: 512,
       messages: [{ role: "user", content: buildTonePrompt(text, toneGuide) }],
     });

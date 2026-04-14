@@ -17,6 +17,7 @@ export interface Config {
   parallelApiKey?: string;
   exaApiKey?: string;
   anthropicApiKey?: string;
+  minimaxApiKey?: string;
   toneGuideFile?: string;
   skills: SkillsConfig;
 }
@@ -48,6 +49,7 @@ export function readConfig(): Config {
     parallelApiKey: process.env.PARALLEL_API_KEY ?? file.parallelApiKey,
     exaApiKey: process.env.EXA_API_KEY ?? file.exaApiKey,
     anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? file.anthropicApiKey,
+    minimaxApiKey: process.env.MINIMAX_API_KEY ?? file.minimaxApiKey,
     toneGuideFile: process.env.TONE_GUIDE_FILE ?? file.toneGuideFile,
     skills: { ...DEFAULT_SKILLS, ...(file.skills ?? {}) },
   };
