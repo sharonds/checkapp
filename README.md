@@ -25,9 +25,9 @@ Each check is a **skill** you can enable or disable. Results appear in the termi
 | **Plagiarism** | Copyscape | ~$0.09 | ✅ |
 | **AI Detection** | Copyscape | ~$0.09 | ✅ |
 | **SEO** | Offline (no API) | free | ✅ |
-| **Fact Check** | Exa AI + Claude | ~$0.03 | ❌ requires `EXA_API_KEY` + `ANTHROPIC_API_KEY` |
-| **Tone of Voice** | Claude | ~$0.002 | ❌ requires `ANTHROPIC_API_KEY` + tone guide file |
-| **Legal Risk** | Claude | ~$0.002 | ❌ requires `ANTHROPIC_API_KEY` |
+| **Fact Check** | Exa AI + Claude/MiniMax | ~$0.03 | ❌ requires `EXA_API_KEY` + LLM key |
+| **Tone of Voice** | Claude/MiniMax | ~$0.002 | ❌ requires LLM key + tone guide file |
+| **Legal Risk** | Claude/MiniMax | ~$0.002 | ❌ requires LLM key |
 
 All enabled skills run in parallel. Adding more skills does not increase total time significantly.
 
@@ -183,9 +183,10 @@ COPYSCAPE_KEY=your-copyscape-api-key
 # Optional — passage-level evidence (free tier: 16k requests)
 PARALLEL_API_KEY=your-parallel-api-key
 
-# Optional — fact check + tone + legal skills
+# Optional — fact check + tone + legal skills (use one LLM provider)
 EXA_API_KEY=your-exa-api-key
-ANTHROPIC_API_KEY=your-anthropic-api-key
+MINIMAX_API_KEY=your-minimax-api-key  # preferred — cheaper, Anthropic-compatible
+ANTHROPIC_API_KEY=your-anthropic-api-key  # fallback if MINIMAX_API_KEY not set
 
 # Optional — tone of voice skill (path to your brand voice .md file)
 TONE_GUIDE_FILE=/path/to/brand-voice.md
@@ -245,9 +246,23 @@ Exa is a neural search engine built for AI agents. Used to search for evidence s
 
 Free trial credits available on signup.
 
-### Anthropic Claude (optional — fact check, tone, legal skills)
+### LLM provider (optional — fact check, tone, legal skills)
 
-Used for claim extraction, tone assessment, and legal risk scanning. All calls use Claude Haiku (cheapest model).
+Fact check, tone, and legal skills need an LLM. Set **one** of these — MiniMax is preferred (cheaper):
+
+#### MiniMax (recommended)
+
+MiniMax M2.7 is an extended-thinking model with an Anthropic-compatible API. Used via the Anthropic SDK with a custom base URL.
+
+1. Go to [platform.minimax.io](https://platform.minimax.io/) → **API Keys**
+2. Create an API key
+3. Add to `.env`: `MINIMAX_API_KEY=your-key`
+
+**Cost per check:** ~$0.001–0.002.
+
+#### Anthropic Claude (fallback)
+
+Used automatically if `MINIMAX_API_KEY` is not set.
 
 1. Go to [console.anthropic.com](https://console.anthropic.com/settings/keys)
 2. Create a new API key
@@ -406,6 +421,7 @@ Set the path: `TONE_GUIDE_FILE=/path/to/brand-voice.md`
 - **Team dashboard** — multi-user web interface with per-writer stats and trends
 - **Custom skill packages** — publish your own validator as an npm package, install with `article-checker skill add <package>`
 - **Ranking score** — overall article quality score combining all skill signals, calibrated for SEO impact
+- **Additional LLM providers** — OpenRouter (any model via one key), OpenAI (GPT-4o-mini), Google Gemini — configurable per user
 
 ---
 
@@ -417,8 +433,8 @@ Set the path: `TONE_GUIDE_FILE=/path/to/brand-voice.md`
 | Terminal UI | [Ink](https://github.com/vadimdemedes/ink) — React for CLIs |
 | Plagiarism + AI detection | [Copyscape Premium API](https://www.copyscape.com/api-guide.php) |
 | SEO analysis | Offline — custom metrics engine |
-| Fact checking | [Exa AI](https://exa.ai) search + [Claude Haiku](https://anthropic.com) assessment |
-| Tone + Legal | [Claude Haiku](https://anthropic.com) |
+| Fact checking | [Exa AI](https://exa.ai) search + MiniMax M2.7 or Claude Haiku assessment |
+| Tone + Legal | MiniMax M2.7 (preferred) or Claude Haiku (fallback) |
 | Passage evidence | [Parallel Extract API](https://docs.parallel.ai/) |
 | Article fetch | Google Docs public export URL or local file |
 | History database | [bun:sqlite](https://bun.sh/docs/api/sqlite) — zero deps, stored at `~/.article-checker/history.db` |
@@ -524,7 +540,8 @@ COPYSCAPE_USER=your-username
 COPYSCAPE_KEY=your-api-key
 PARALLEL_API_KEY=your-parallel-key     # optional
 EXA_API_KEY=your-exa-key               # optional — enables fact check
-ANTHROPIC_API_KEY=your-anthropic-key   # optional — enables fact check, tone, legal
+MINIMAX_API_KEY=your-minimax-key       # optional — preferred LLM for fact check, tone, legal
+ANTHROPIC_API_KEY=your-anthropic-key   # optional — fallback LLM if MINIMAX_API_KEY not set
 TONE_GUIDE_FILE=/path/to/voice.md      # optional — enables tone of voice skill
 ```
 
@@ -533,7 +550,7 @@ TONE_GUIDE_FILE=/path/to/voice.md      # optional — enables tone of voice skil
 ## Security
 
 - Credentials are stored **locally only** at `~/.article-checker/config.json`, or read from environment variables — never stored remotely
-- Article text is sent to Copyscape (plagiarism + AI detection), optionally to Parallel AI (source page fetching), Exa AI (fact checking), and Anthropic (fact check, tone, legal) — all over HTTPS
+- Article text is sent to Copyscape (plagiarism + AI detection), optionally to Parallel AI (source page fetching), Exa AI (fact checking), and MiniMax or Anthropic (fact check, tone, legal) — all over HTTPS
 - The HTML report and SQLite database are stored locally in the current directory and `~/.article-checker/`
 - No analytics, no telemetry, no logging
 
