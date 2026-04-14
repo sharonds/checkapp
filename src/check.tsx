@@ -3,6 +3,7 @@ import { render, Box, Text, useApp } from "ink";
 import Spinner from "ink-spinner";
 import { fetchGoogleDoc, countWords } from "./gdoc.ts";
 import { checkCopyscape, type CopyscapeResult } from "./copyscape.ts";
+import { checkAiDetector, type AiDetectorResult } from "./aidetector.ts";
 import { extractPages } from "./parallel.ts";
 import { findMatchingPassages } from "./passage.ts";
 import { readConfig } from "./config.ts";
@@ -19,6 +20,7 @@ type Phase =
   | {
       name: "done";
       result: CopyscapeResult;
+      aiResult: AiDetectorResult | null;
       words: number;
       matchedPassages: MatchedPassage[];
       /** Set when Parallel enrichment was attempted but failed */
@@ -41,9 +43,23 @@ function verdictLabel(result: CopyscapeResult): {
   return { label: "✅  PUBLISH — no issues found", color: "green" };
 }
 
+function aiVerdictLabel(ai: AiDetectorResult): { label: string; color: string } {
+  if (ai.verdict === "ai")
+    return { label: `🤖  AI-GENERATED — ${ai.aiPct}% probability`, color: "red" };
+  if (ai.verdict === "mixed")
+    return { label: `🔍  MIXED — ${ai.aiPct}% AI signals detected`, color: "yellow" };
+  return { label: `✍️   HUMAN — ${ai.aiPct}% AI probability (likely human)`, color: "green" };
+}
+
 function similarityColor(pct: number): string {
   if (pct >= 26) return "red";
   if (pct >= 16) return "yellow";
+  return "green";
+}
+
+function aiScoreColor(pct: number): string {
+  if (pct >= 70) return "red";
+  if (pct >= 30) return "yellow";
   return "green";
 }
 
@@ -77,12 +93,14 @@ function normaliseUrl(url: string): string {
 
 function Report({
   result,
+  aiResult,
   words,
   matchedPassages,
   enrichmentError,
   hasParallelKey,
 }: {
   result: CopyscapeResult;
+  aiResult: AiDetectorResult | null;
   words: number;
   matchedPassages: MatchedPassage[];
   enrichmentError?: string;
@@ -99,8 +117,9 @@ function Report({
         <Text>{words.toLocaleString()}</Text>
       </Box>
 
+      {/* ── Plagiarism section ── */}
       <Box gap={2}>
-        <Text bold>Similarity:    </Text>
+        <Text bold>Plagiarism:    </Text>
         <Text color={similarityColor(result.similarityPct)} bold>
           {result.similarityPct}%
         </Text>
@@ -116,7 +135,6 @@ function Report({
             {result.totalMatches !== 1 ? "s" : ""}):
           </Text>
           {result.matches.slice(0, 5).map((m, i) => {
-            // Use normalised URLs to match despite http/https or trailing slash differences
             const enrichment = matchedPassages.find(
               (mp) => normaliseUrl(mp.url) === normaliseUrl(m.url)
             );
@@ -148,11 +166,35 @@ function Report({
       )}
 
       {result.error && <Text color="yellow">⚠  {result.error}</Text>}
+      {enrichmentError && <Text dimColor>⚠  {enrichmentError}</Text>}
 
-      {/* Show enrichment failure as a dim warning — not a fatal error */}
-      {enrichmentError && (
-        <Text dimColor>⚠  {enrichmentError}</Text>
+      {/* ── AI Detection section ── */}
+      {aiResult && !aiResult.error && (
+        <Box flexDirection="column" marginTop={1}>
+          <Box gap={2}>
+            <Text bold>AI detection:  </Text>
+            <Text color={aiScoreColor(aiResult.aiPct)} bold>
+              {aiResult.aiPct}%
+            </Text>
+            <Text dimColor>probability AI-generated</Text>
+          </Box>
+          {aiResult.topSegments.length > 0 && (
+            <Box flexDirection="column" paddingLeft={2} marginTop={0}>
+              <Text dimColor>Most AI-like passages:</Text>
+              {aiResult.topSegments.map((seg, i) => (
+                <Box key={i} paddingLeft={2}>
+                  <Text dimColor>↳ </Text>
+                  <Text color="red" italic>
+                    "{truncatePassage(seg.text, 90)}"
+                  </Text>
+                  <Text dimColor> ({Math.round(seg.aiScore * 100)}%)</Text>
+                </Box>
+              ))}
+            </Box>
+          )}
+        </Box>
       )}
+      {aiResult?.error && <Text dimColor>⚠  {aiResult.error}</Text>}
 
       {/* Upsell: only when there are matches and no parallel key configured */}
       {result.totalMatches > 0 && !hasParallelKey && (
@@ -166,6 +208,12 @@ function Report({
       <Text color={color as any} bold>
         {label}
       </Text>
+
+      {aiResult && !aiResult.error && (
+        <Text color={aiVerdictLabel(aiResult).color as any}>
+          {aiVerdictLabel(aiResult).label}
+        </Text>
+      )}
 
       <Text dimColor>{DIVIDER}</Text>
     </Box>
@@ -184,7 +232,18 @@ function Check({ docUrl }: { docUrl: string }) {
         setPhase({ name: "checking", words });
 
         const config = readConfig();
-        const result = await checkCopyscape(text, config);
+
+        // Run plagiarism check and AI detection in parallel
+        const [result, aiResult] = await Promise.all([
+          checkCopyscape(text, config),
+          checkAiDetector(text, config).catch((err): AiDetectorResult => ({
+            aiScore: 0,
+            aiPct: 0,
+            verdict: "human",
+            topSegments: [],
+            error: err instanceof Error ? err.message : "AI detection unavailable",
+          })),
+        ]);
 
         let matchedPassages: MatchedPassage[] = [];
         let enrichmentError: string | undefined;
@@ -192,8 +251,6 @@ function Check({ docUrl }: { docUrl: string }) {
         if (config.parallelApiKey && result.matches.length > 0) {
           setPhase({ name: "enriching", result, words });
 
-          // Separate network errors (catch) from logic errors (let bubble up).
-          // Only extractPages can throw — findMatchingPassages is pure and safe.
           let pages: Awaited<ReturnType<typeof extractPages>> = [];
           try {
             pages = await extractPages(
@@ -216,8 +273,6 @@ function Check({ docUrl }: { docUrl: string }) {
               }))
               .filter((mp) => mp.passages.length > 0);
 
-            // Always warn about paywalled/unavailable sources — user needs to
-            // know the evidence is incomplete even if other sources succeeded.
             const failedCount = pages.filter((p) => p.error).length;
             if (failedCount > 0) {
               enrichmentError = `${failedCount} source${failedCount !== 1 ? "s" : ""} could not be fetched (may be paywalled)`;
@@ -228,6 +283,7 @@ function Check({ docUrl }: { docUrl: string }) {
         setPhase({
           name: "done",
           result,
+          aiResult,
           words,
           matchedPassages,
           enrichmentError,
@@ -249,7 +305,7 @@ function Check({ docUrl }: { docUrl: string }) {
     return (
       <Box gap={1} paddingY={1}>
         <Text color="cyan"><Spinner type="dots" /></Text>
-        <Text>Reading Google Doc…</Text>
+        <Text>Reading article…</Text>
       </Box>
     );
   }
@@ -258,7 +314,7 @@ function Check({ docUrl }: { docUrl: string }) {
     return (
       <Box gap={1} paddingY={1}>
         <Text color="cyan"><Spinner type="dots" /></Text>
-        <Text>Running plagiarism check ({phase.words.toLocaleString()} words)…</Text>
+        <Text>Running plagiarism + AI checks ({phase.words.toLocaleString()} words)…</Text>
       </Box>
     );
   }
@@ -287,6 +343,7 @@ function Check({ docUrl }: { docUrl: string }) {
   return (
     <Report
       result={phase.result}
+      aiResult={phase.aiResult}
       words={phase.words}
       matchedPassages={phase.matchedPassages}
       enrichmentError={phase.enrichmentError}
