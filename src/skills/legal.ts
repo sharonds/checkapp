@@ -19,7 +19,7 @@ Reply with ONLY this JSON, no other text:
   "verdict": <"pass" if score>=80, "warn" if 60-79, "fail" if <60>,
   "summary": "<one sentence>",
   "risks": [
-    { "category": "<category name>", "severity": <"warn" or "error">, "quote": "<the problematic text>", "reason": "<why it's a risk>" }
+    { "category": "<category name>", "severity": <"warn" or "error">, "quote": "<the problematic text>", "reason": "<why it's a risk>", "suggestion": "<one concrete fix — what to replace the problematic text with>" }
   ]
 }`;
 }
@@ -46,7 +46,7 @@ export class LegalSkill implements Skill {
     });
 
     const raw = getTextBlock(response.content);
-    let parsed: { score: number; verdict: string; summary: string; risks: Array<{ category: string; severity: string; quote: string; reason: string }> };
+    let parsed: { score: number; verdict: string; summary: string; risks: Array<{ category: string; severity: string; quote: string; reason: string; suggestion?: string }> };
     try {
       parsed = parseJsonResponse(raw);
     } catch {
@@ -59,7 +59,7 @@ export class LegalSkill implements Skill {
 
     const findings: Finding[] = (parsed.risks ?? []).map((r) => ({
       severity: r.severity as "warn" | "error",
-      text: `${r.category}: ${r.reason}`,
+      text: `${r.category}: ${r.reason}${r.suggestion ? ` — Fix: ${r.suggestion}` : ""}`,
       quote: r.quote,
     }));
 

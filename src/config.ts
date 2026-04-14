@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
+import type { Threshold } from "./thresholds.ts";
 
 export interface SkillsConfig {
   plagiarism: boolean;
@@ -9,6 +10,7 @@ export interface SkillsConfig {
   factCheck: boolean;
   tone: boolean;
   legal: boolean;
+  summary: boolean;
 }
 
 export interface Config {
@@ -20,6 +22,7 @@ export interface Config {
   minimaxApiKey?: string;
   toneGuideFile?: string;
   skills: SkillsConfig;
+  thresholds?: Record<string, Threshold>;
 }
 
 const CONFIG_DIR = join(homedir(), ".article-checker");
@@ -32,6 +35,7 @@ const DEFAULT_SKILLS: SkillsConfig = {
   factCheck: false,
   tone: false,
   legal: false,
+  summary: false,
 };
 
 export function configExists(): boolean {
@@ -52,6 +56,7 @@ export function readConfig(): Config {
     minimaxApiKey: process.env.MINIMAX_API_KEY ?? file.minimaxApiKey,
     toneGuideFile: process.env.TONE_GUIDE_FILE ?? file.toneGuideFile,
     skills: { ...DEFAULT_SKILLS, ...(file.skills ?? {}) },
+    thresholds: file.thresholds,
   };
 }
 

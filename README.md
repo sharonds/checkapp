@@ -1,6 +1,6 @@
 # Article Checker
 
-> AI content quality gate for marketing teams. One command returns plagiarism, AI-detection, SEO score, fact-check, tone-of-voice, and legal risk — before you publish. Results saved to a local database and rendered as a self-contained HTML report.
+> AI content quality gate for marketing teams. One command returns plagiarism, AI-detection, SEO score, fact-check, tone-of-voice, legal risk, and content summary — before you publish. Supports batch checking of entire directories. Results saved to a local database and rendered as a self-contained HTML report.
 
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Built with Bun](https://img.shields.io/badge/Built%20with-Bun-fbf0df?logo=bun)](https://bun.sh)
@@ -28,6 +28,7 @@ Each check is a **skill** you can enable or disable. Results appear in the termi
 | **Fact Check** | Exa AI + Claude/MiniMax | ~$0.03 | ❌ requires `EXA_API_KEY` + LLM key |
 | **Tone of Voice** | Claude/MiniMax | ~$0.002 | ❌ requires LLM key + tone guide file |
 | **Legal Risk** | Claude/MiniMax | ~$0.002 | ❌ requires LLM key |
+| **Content Summary** | Claude/MiniMax | ~$0.002 | ❌ requires LLM key |
 
 All enabled skills run in parallel. Adding more skills does not increase total time significantly.
 
@@ -43,7 +44,12 @@ All enabled skills run in parallel. Adding more skills does not increase total t
 | **SEO analysis** | Offline. Checks word count (800–2500 ideal), H1/H2 headings, average sentence length, Flesch-Kincaid readability. |
 | **Fact check** | Extracts 4 specific claims → searches each with Exa AI → Claude assesses evidence → per-claim supported/unsupported verdict. |
 | **Tone of voice** | Loads your brand voice guide (`.md` file), sends article + guide to Claude, returns violations with quotes. |
-| **Legal risk** | Scans for unsubstantiated health claims, defamation, false promises, GDPR risks, price misrepresentation. |
+| **Legal risk** | Scans for unsubstantiated health claims, defamation, false promises, GDPR risks, price misrepresentation. Findings include actionable "Fix:" suggestions. |
+| **Content summary** | Analyzes topic, main argument, target audience, and tone (informational/persuasive/conversational/technical/promotional). |
+| **SEO keyword detection** | Extracts the top keyword and checks whether it appears in the first paragraph. |
+| **Fact-check confidence** | Each claim now shows high/medium/low confidence based on the number of supporting sources found. |
+| **Batch checking** | Check all `.md`/`.txt` files in a directory with `article-checker --batch ./articles/`. |
+| **Configurable thresholds** | Custom pass/warn/fail score cutoffs per skill via `config.json`. |
 | **HTML report** | Self-contained, no-dependency HTML file. Score bars, verdict badges, per-finding citations. Opens in browser automatically. |
 | **SQLite history** | Every check is saved to `~/.article-checker/history.db`. Query with `--history`. |
 | **Google Doc support** | Paste a publicly-shared Google Doc URL. No Google auth required. |
@@ -207,6 +213,9 @@ article-checker "https://docs.google.com/document/d/XXXX/edit"
 # Check a local file
 article-checker ./my-article.md
 
+# Check all articles in a directory
+article-checker --batch ./articles/
+
 # View check history
 article-checker --history
 ```
@@ -291,6 +300,9 @@ article-checker "https://docs.google.com/document/d/XXXX/edit"
 # Check a local Markdown or text file
 article-checker ./my-article.md
 
+# Check all articles in a directory
+article-checker --batch ./articles/
+
 # Re-run setup wizard
 article-checker --setup
 
@@ -352,6 +364,7 @@ Approximate cost per 800-word article check with all skills enabled:
 | Fact Check | Exa + MiniMax/Claude | ~$0.03 |
 | Tone of Voice | MiniMax/Claude | ~$0.002 |
 | Legal Risk | MiniMax/Claude | ~$0.002 |
+| Content Summary | MiniMax/Claude | ~$0.002 |
 | Passage evidence (optional) | Parallel AI | ~$0.003 |
 | **Total — all skills** | | **~$0.22** |
 
@@ -371,12 +384,28 @@ Enable or disable skills via the `skills` section of `~/.article-checker/config.
     "seo": true,
     "factCheck": true,
     "tone": true,
-    "legal": true
+    "legal": true,
+    "summary": true
   }
 }
 ```
 
 Skills that require unconfigured API keys skip gracefully and show a `warn` verdict with a setup hint rather than failing the check.
+
+### Custom Thresholds
+
+Override the default pass/warn/fail cutoffs for any skill in `~/.article-checker/config.json`:
+
+```json
+{
+  "thresholds": {
+    "seo": { "pass": 80, "warn": 60 },
+    "plagiarism": { "pass": 90, "warn": 70 }
+  }
+}
+```
+
+Scores >= `pass` result in a PASS verdict, scores >= `warn` result in WARN, and anything below `warn` is FAIL. Only skills listed in `thresholds` are overridden; all others use their built-in defaults.
 
 ### Tone of Voice Guide
 
@@ -400,17 +429,13 @@ Set the path: `TONE_GUIDE_FILE=/path/to/brand-voice.md`
 
 ### Near-term
 
-- **Content summary** — brief summary of what the article is about, generated by Claude (topic detection, key claims)
-- **Keyword density** — top keywords detected, keyword repetition score, semantic gap analysis
 - **Readability score** — Flesch-Kincaid score displayed per article in history
 - **`--output report.md`** — save the terminal report as a Markdown file
-- **Batch checking** — `article-checker check-all ./articles/` to check a whole directory
 
 ### Medium-term
 
 - **Local web dashboard** (`article-checker ui`) — browse check history, filter by verdict, compare scores over time, manage API keys and skill toggles from a browser UI
 - **Tone improvement suggestions** — not just flag violations, but suggest a rewritten version of each flagged sentence in your brand voice
-- **Configurable thresholds** — custom REVIEW/REWRITE cutoffs via `.article-checker.json`
 - **Private index** — register your own published articles with Copyscape so future checks exclude them from results
 - **Citation recommendations** — when facts are verified by Exa, suggest adding inline citations with source links
 
@@ -459,6 +484,8 @@ article-checker/
 │   ├── aidetector.ts         # Copyscape AI detector API client + XML parser
 │   ├── parallel.ts           # Parallel Extract API client
 │   ├── passage.ts            # Passage matcher — finds copied sentences
+│   ├── batch.ts              # Batch checking — runs all .md/.txt files in a directory
+│   ├── thresholds.ts         # Configurable pass/warn/fail score cutoffs
 │   └── skills/
 │       ├── types.ts          # Skill interface, SkillResult, Finding types
 │       ├── registry.ts       # SkillRegistry — parallel execution, error isolation
@@ -467,7 +494,9 @@ article-checker/
 │       ├── seo.ts            # SeoSkill — offline word/heading/readability check
 │       ├── factcheck.ts      # FactCheckSkill — Exa search + Claude assessment
 │       ├── tone.ts           # ToneSkill — Claude brand voice validator
-│       └── legal.ts          # LegalSkill — Claude legal risk scanner
+│       ├── legal.ts          # LegalSkill — Claude legal risk scanner
+│       ├── summary.ts        # SummarySkill — topic, argument, audience, tone analysis
+│       └── llm.ts            # Shared LLM client factory for MiniMax/Claude
 ├── demo/
 │   ├── english-demo.md       # English article with Wikipedia passages (33% — REWRITE)
 │   ├── hebrew-demo.md        # Hebrew article with Hebrew Wikipedia passages (39% — REWRITE)
@@ -508,6 +537,8 @@ export class MySkill implements Skill {
 ```
 
 Then add it to the `allSkills` array in `src/check.tsx` and wire the toggle in `src/config.ts`.
+
+See [docs/custom-skills.md](docs/custom-skills.md) for the full guide with examples.
 
 ---
 

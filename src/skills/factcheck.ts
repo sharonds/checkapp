@@ -17,6 +17,14 @@ Example output:
 JSON array of claims:`;
 }
 
+export function claimConfidence(sourceCount: number, supported: boolean | null): "high" | "medium" | "low" {
+  if (supported === false) return "low";
+  if (supported === null) return "low";
+  if (sourceCount >= 3) return "high";
+  if (sourceCount >= 1) return "medium";
+  return "low";
+}
+
 export class FactCheckSkill implements Skill {
   readonly id = "fact-check";
   readonly name = "Fact Check";
@@ -118,13 +126,17 @@ null means inconclusive.`;
       }
     }
 
+    const sourceCountMap = new Map(claimResults.map(cr => [cr.claim, cr.results.length]));
+
     for (const { claim, supported, note } of assessments) {
+      const sourceCount = sourceCountMap.get(claim) ?? 0;
+      const confidence = claimConfidence(sourceCount, supported);
       if (supported === false) {
-        findings.push({ severity: "error", text: `Unsupported claim: "${claim}" — ${note}` });
+        findings.push({ severity: "error", text: `Unsupported (${confidence} confidence): "${claim}" — ${note}` });
       } else if (supported === null) {
-        findings.push({ severity: "warn", text: `Unverified claim: "${claim}" — ${note}` });
+        findings.push({ severity: "warn", text: `Unverified (${confidence} confidence): "${claim}" — ${note}` });
       } else {
-        findings.push({ severity: "info", text: `Verified: "${claim}" — ${note}` });
+        findings.push({ severity: "info", text: `Verified (${confidence} confidence): "${claim}" — ${note}` });
       }
     }
 

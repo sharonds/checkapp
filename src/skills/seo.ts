@@ -45,6 +45,21 @@ export function readabilityLabel(fk: number): string {
   return "Difficult";
 }
 
+export function extractTopKeyword(text: string): string {
+  const stopWords = new Set(["the","a","an","and","or","but","in","on","at","to","for","of",
+    "with","is","are","was","were","be","been","being","have","has","had","do","does","did",
+    "will","would","could","should","may","might","shall","can","this","that","these","those",
+    "it","its","not","no","from","by","as","if","then","than","so","up","out","about","also",
+    "just","more","most","very","much","many","some","other","into","over","such","only","your",
+    "their","which","when","what","where","who","how","each","every","both","after","before"]);
+  const words = text.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/)
+    .filter((w) => w.length > 3 && !stopWords.has(w));
+  const freq: Record<string, number> = {};
+  for (const w of words) freq[w] = (freq[w] ?? 0) + 1;
+  const sorted = Object.entries(freq).sort((a, b) => b[1] - a[1]);
+  return sorted[0]?.[0] ?? "";
+}
+
 export class SeoSkill implements Skill {
   readonly id = "seo";
   readonly name = "SEO";
@@ -74,6 +89,17 @@ export class SeoSkill implements Skill {
     // Links
     const hasLinks = /https?:\/\/|]\(http/i.test(text);
     if (!hasLinks) findings.push({ severity: "warn", text: "No outbound links found — link to authoritative sources (studies, official sites) to signal topical credibility" });
+
+    const topKeyword = extractTopKeyword(text);
+    if (topKeyword) {
+      const firstPara = text.split(/\n\s*\n/)[0] ?? "";
+      if (!firstPara.toLowerCase().includes(topKeyword)) {
+        findings.push({
+          severity: "warn",
+          text: `Top keyword "${topKeyword}" missing from the first paragraph — search engines weigh the opening heavily for topic relevance`,
+        });
+      }
+    }
 
     const score = Math.round(
       m.wordCountScore * 0.35 +

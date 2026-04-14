@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { SeoSkill, computeSeoMetrics } from "./seo.ts";
+import { SeoSkill, computeSeoMetrics, extractTopKeyword } from "./seo.ts";
 
 describe("computeSeoMetrics", () => {
   test("word count", () => {
@@ -30,6 +30,21 @@ describe("computeSeoMetrics", () => {
   test("word count too short scores less", () => {
     const m = computeSeoMetrics("short text");
     expect(m.wordCountScore).toBeLessThan(100);
+  });
+});
+
+describe("extractTopKeyword", () => {
+  test("extracts the most repeated meaningful word", () => {
+    expect(extractTopKeyword("vinegar vinegar vinegar apple cider helps blood sugar")).toBe("vinegar");
+  });
+  test("ignores stop words", () => {
+    expect(extractTopKeyword("the the the the apple apple")).toBe("apple");
+  });
+  test("returns empty for very short text", () => {
+    expect(extractTopKeyword("hi")).toBe("");
+  });
+  test("ignores words with 3 or fewer characters", () => {
+    expect(extractTopKeyword("the cat sat sat sat on mat")).toBe("");
   });
 });
 

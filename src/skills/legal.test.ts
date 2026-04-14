@@ -6,6 +6,11 @@ test("buildLegalPrompt includes the article text", () => {
   expect(prompt).toContain("We guarantee 100% results");
 });
 
+test("buildLegalPrompt includes suggestion field in schema", () => {
+  const prompt = buildLegalPrompt("text");
+  expect(prompt).toContain('"suggestion"');
+});
+
 test("buildLegalPrompt mentions key risk categories", () => {
   const prompt = buildLegalPrompt("text");
   expect(prompt).toContain("health claim");
