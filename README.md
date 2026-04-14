@@ -1,6 +1,6 @@
 # Article Checker
 
-> AI-content quality gate for marketing teams. One command returns a plagiarism score, an AI-detection score, and the exact copied sentences — before you publish.
+> AI content quality gate for marketing teams. One command returns plagiarism, AI-detection, SEO score, fact-check, tone-of-voice, and legal risk — before you publish. Results saved to a local database and rendered as a self-contained HTML report.
 
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Built with Bun](https://img.shields.io/badge/Built%20with-Bun-fbf0df?logo=bun)](https://bun.sh)
@@ -8,26 +8,28 @@
 [![Copyscape](https://img.shields.io/badge/Engine-Copyscape-0078D4)](https://www.copyscape.com/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
+---
+
 ## What Is Article Checker?
 
-Article Checker is a CLI tool that runs a two-layer quality check on any article — a Google Doc URL or a local `.md`/`.txt` file — before it goes live:
+Article Checker is a pluggable CLI tool that runs a configurable set of quality checks on any article — a Google Doc URL or a local `.md`/`.txt` file — before it goes live.
 
-1. **Plagiarism check** — finds which published pages share text with your article, scores overall similarity, and shows which exact sentences were copied.
-2. **AI detection** — estimates the probability that the content was AI-generated, sentence by sentence.
-
-You get both results in one run, in under 15 seconds, with no browser and no cloud dashboard.
-
-> **Privacy first.** The only network calls are to `docs.google.com` (to read the doc), `www.copyscape.com` (plagiarism + AI detection), and optionally `api.parallel.ai` (to fetch the source pages for passage-level evidence). No analytics, no telemetry, no logging.
+Each check is a **skill** you can enable or disable. Results appear in the terminal and are automatically saved as an HTML report and to a local SQLite history database.
 
 ---
 
-## The Problem This Solves
+## Skills
 
-AI writing tools (Gemini, ChatGPT, Claude) don't copy-paste — but they all draw from the same training data. When every AI writes about "benefits of Vitamin D," the outputs can end up structurally similar to articles already indexed on the web — not from copying, but from convergent generation.
+| Skill | Engine | Cost/check | Enabled by default |
+|-------|--------|-----------|-------------------|
+| **Plagiarism** | Copyscape | ~$0.09 | ✅ |
+| **AI Detection** | Copyscape | ~$0.09 | ✅ |
+| **SEO** | Offline (no API) | free | ✅ |
+| **Fact Check** | Exa AI + Claude | ~$0.03 | ❌ requires `EXA_API_KEY` + `ANTHROPIC_API_KEY` |
+| **Tone of Voice** | Claude | ~$0.002 | ❌ requires `ANTHROPIC_API_KEY` + tone guide file |
+| **Legal Risk** | Claude | ~$0.002 | ❌ requires `ANTHROPIC_API_KEY` |
 
-Beyond AI content, human writers sometimes copy a sentence or two from a source article, embed it in original content, and assume it won't be detected. It will be.
-
-Article Checker gives your team a one-command safety gate before every publish.
+All enabled skills run in parallel. Adding more skills does not increase total time significantly.
 
 ---
 
@@ -35,102 +37,87 @@ Article Checker gives your team a one-command safety gate before every publish.
 
 | Feature | Details |
 |---------|---------|
-| **Plagiarism check** | Checks against the full indexed web via Copyscape. Returns a 0–100% similarity score. |
-| **AI detection** | Uses Copyscape's AI detector. Returns a 0–100% probability that the content is AI-generated, broken down sentence by sentence. |
-| **Passage evidence** | Fetches the top 3 flagged pages and finds which exact sentences in your article appear there. Shows the copied text verbatim. Requires a Parallel AI key (free tier available). |
-| **Three-tier verdict** | PUBLISH / REVIEW / REWRITE for plagiarism. HUMAN / MIXED / AI-GENERATED for AI detection. |
+| **Pluggable skills** | Enable/disable any skill via config. Add custom skills by implementing one TypeScript interface. |
+| **Plagiarism check** | Checks against the full indexed web via Copyscape. Returns 0–100% similarity + matched sources. |
+| **AI detection** | Copyscape AI detector. Returns 0–100% probability per sentence and an overall verdict. |
+| **SEO analysis** | Offline. Checks word count (800–2500 ideal), H1/H2 headings, average sentence length, Flesch-Kincaid readability. |
+| **Fact check** | Extracts 4 specific claims → searches each with Exa AI → Claude assesses evidence → per-claim supported/unsupported verdict. |
+| **Tone of voice** | Loads your brand voice guide (`.md` file), sends article + guide to Claude, returns violations with quotes. |
+| **Legal risk** | Scans for unsubstantiated health claims, defamation, false promises, GDPR risks, price misrepresentation. |
+| **HTML report** | Self-contained, no-dependency HTML file. Score bars, verdict badges, per-finding citations. Opens in browser automatically. |
+| **SQLite history** | Every check is saved to `~/.article-checker/history.db`. Query with `--history`. |
 | **Google Doc support** | Paste a publicly-shared Google Doc URL. No Google auth required. |
-| **Local file support** | Pass a `.md` or `.txt` file path. Works completely offline for the article fetch step. |
-| **Env var config** | Set `COPYSCAPE_USER`, `COPYSCAPE_KEY`, and `PARALLEL_API_KEY` in `.env` — no setup wizard needed. |
-| **Single binary** | Download one file and run it. No Node.js, Bun, or runtime required. |
+| **Local file support** | Pass a `.md` or `.txt` file path. Works offline for the fetch step. |
+| **Single binary** | No Node.js, Bun, or runtime required. |
 | **Cross-platform** | Mac (Apple Silicon + Intel), Linux, Windows. |
 
 ---
 
 ## Real Results — What It Finds
 
-These are actual outputs from real checks run during development.
-
 ### Example 1 — English article with Wikipedia passages
 
-An article about Vitamin D was written with 3 verbatim sentences lifted from Wikipedia. The checker found them in seconds.
+An article about Vitamin D with 3 verbatim sentences from Wikipedia. Live output with all 3 skills:
 
 ```
 ────────────────────────────────────────────────
 Words checked:  310
-Plagiarism:      33%  (104 / 314 words matched)
+API cost:        $0.080
 
-Top matches (19 sources):
-  1.  en.wikipedia.org/wiki/Vitamin_D                  104 words
-      ↳ "Unlike the other twelve vitamins, vitamin D is only conditionally
-         essential in the diet, as with adequate skin exposure to the…"
-      ↳ "Vitamin D can also be obtained through diet, food fortification
-         and dietary supplements."
-      ↳ "For most people, skin synthesis contributes more than dietary sources."
-  2.  eprints.cihanuniversity.edu.iq/…                  26 words
-  3.  (3 more sources)
-
-AI detection:    10%  probability AI-generated
-
+❌  Plagiarism Check:  33% similarity — 18 sources matched  (34/100)
+✅  AI Detection:      10% AI probability — human           (90/100)
+❌  SEO:               Score 49/100 — 310 words, avg 17-word sentences  (49/100)
 ────────────────────────────────────────────────
-❌  REWRITE — similarity too high
-✍️   HUMAN — 10% AI probability (likely human)
+Overall: 58/100
+Report: article-checker-report.html
 ────────────────────────────────────────────────
 ```
 
-**What happened:** Three sentences were copied verbatim from `en.wikipedia.org/wiki/Vitamin_D`. The tool found the exact source, matched 104 words, and showed the copied sentences. The AI score was 10% — correctly identified as human-written Wikipedia content.
+**HTML report:** Each skill gets a card with a score bar, verdict badge, and a list of findings with quoted passages.
 
 ---
 
 ### Example 2 — Hebrew article with Wikipedia passages
 
-Same test in Hebrew. Three sentences from the Hebrew Wikipedia article on Vitamin D were embedded in an otherwise original article.
+Three sentences from the Hebrew Wikipedia article on Vitamin D:
 
 ```
 ────────────────────────────────────────────────
 Words checked:  119
 Plagiarism:      39%  (46 / 118 words matched)
 
-Top matches (3 sources):
-  1.  he.wikipedia.org/wiki/ויטמין_D                    46 words
-      ↳ "ויטמין D הוא קבוצה של חמש תרכובות מסיסות בשמן המסייעות
-         למאזן תקין של משק הסידן והזרחן בגוף האדם."
-      ↳ "המחלה הנפוצה והידועה ביותר הנגרמת כתוצאה ממחסור בוויטמין D
-         בילדים היא רככת"
-  2.  (2 more sources)
+Top match: he.wikipedia.org/wiki/ויטמין_D
+  ↳ "ויטמין D הוא קבוצה של חמש תרכובות מסיסות בשמן..."
+  ↳ "המחלה הנפוצה ביותר הנגרמת כתוצאה ממחסור בוויטמין D..."
 
 AI detection:    12%  probability AI-generated
-
 ────────────────────────────────────────────────
 ❌  REWRITE — similarity too high
-✍️   HUMAN — 12% AI probability (likely human)
+✍️  HUMAN — 12% AI probability
 ────────────────────────────────────────────────
 ```
 
-**What happened:** The checker works equally well on Hebrew content. It identified the exact Hebrew Wikipedia source and quoted the copied sentences in Hebrew. The tool handles right-to-left text without configuration.
+Hebrew content, RTL — no configuration needed.
 
 ---
 
 ### Example 3 — Hebrew article with 2 sentences from an Israeli news site (Ynet)
 
-An article about Vitamin C was written with 2 verbatim sentences from a Ynet health article. The rest was original. Only ~220 words total.
+Only 2 sentences copied out of ~220 words of original Hebrew content:
 
 ```
 ────────────────────────────────────────────────
 Words checked:  222
 Similarity:      33%  (76 / 224 words matched)
 
-Top matches (2 sources):
-  1.  ynet.co.il/articles/0,7340,L-4870486,00.html      76 words
-  2.  news08.net/…                                       54 words
-      (syndicated copy of the same Ynet article)
-
+Top match: ynet.co.il/articles/0,7340,L-4870486,00.html  76 words
+  (syndicated copy also found at news08.net)
 ────────────────────────────────────────────────
 ❌  REWRITE — similarity too high
 ────────────────────────────────────────────────
 ```
 
-**What happened:** 2 sentences out of ~220 words were copied from a Ynet article. The checker found both the original source and a syndicated site that republished the same article. Even 2 sentences in 220 words of original content was enough to flag a REWRITE.
+2 sentences in 220 words of original content was enough to trigger REWRITE. Both the original source and a syndicated copy were identified.
 
 ---
 
@@ -141,7 +128,7 @@ Top matches (2 sources):
 | Similarity | Verdict | What to do |
 |-----------|---------|-----------|
 | 0 – 15% | ✅ **PUBLISH** | No significant matches. Safe to publish. |
-| 16 – 25% | ⚠️ **REVIEW** | Some overlap. Check the listed sources and rewrite any matching passages. |
+| 16 – 25% | ⚠️ **REVIEW** | Some overlap. Check listed sources and rewrite matching passages. |
 | 26%+ | ❌ **REWRITE** | Too similar to existing content. Rewrite before publishing. |
 
 ### AI Detection
@@ -150,7 +137,17 @@ Top matches (2 sources):
 |---------------|---------|-----------|
 | 0 – 29% | ✍️ **HUMAN** | Content reads as human-written. |
 | 30 – 69% | 🔍 **MIXED** | Contains AI-like passages. Review highlighted sentences. |
-| 70%+ | 🤖 **AI-GENERATED** | High probability of AI authorship. Rewrite or clearly disclose. |
+| 70%+ | 🤖 **AI-GENERATED** | High probability of AI authorship. Rewrite or disclose. |
+
+### SEO (score out of 100)
+
+| Score | Verdict |
+|-------|---------|
+| 75+ | ✅ Pass |
+| 50–74 | ⚠️ Warn |
+| <50 | ❌ Fail |
+
+Checks: word count (800–2500 ideal), H1/H2 headings present, average sentence length ≤20 words, Flesch-Kincaid readability.
 
 ---
 
@@ -158,7 +155,7 @@ Top matches (2 sources):
 
 ### Step 1 — Download the binary
 
-Go to the **[Releases page](https://github.com/sharonds/article-checker/releases/latest)** and download the file for your platform:
+Go to the **[Releases page](https://github.com/sharonds/article-checker/releases/latest)** and download for your platform:
 
 | File | Platform |
 |------|----------|
@@ -167,37 +164,40 @@ Go to the **[Releases page](https://github.com/sharonds/article-checker/releases
 | `article-checker-linux-x64` | Linux x64 |
 | `article-checker-win-x64.exe` | Windows x64 |
 
-> **Not sure which Mac you have?** Apple menu → About This Mac. "Apple M…" = arm64 · "Intel" = x64
-
 ### Step 2 — Make it executable (Mac/Linux only)
 
 ```bash
 chmod +x ~/Downloads/article-checker-mac-arm64
-```
-
-### Step 3 — Move to your PATH (optional but recommended)
-
-```bash
 mv ~/Downloads/article-checker-mac-arm64 /usr/local/bin/article-checker
 ```
 
-### Step 4 — Add your API keys
+### Step 3 — Add your API keys
 
-Create a `.env` file in your working directory (or export the variables in your shell profile):
+Create a `.env` file in your working directory:
 
-```bash
+```env
+# Required — plagiarism + AI detection
 COPYSCAPE_USER=your-copyscape-username
 COPYSCAPE_KEY=your-copyscape-api-key
-PARALLEL_API_KEY=your-parallel-api-key   # optional — enables passage evidence
+
+# Optional — passage-level evidence (free tier: 16k requests)
+PARALLEL_API_KEY=your-parallel-api-key
+
+# Optional — fact check + tone + legal skills
+EXA_API_KEY=your-exa-api-key
+ANTHROPIC_API_KEY=your-anthropic-api-key
+
+# Optional — tone of voice skill (path to your brand voice .md file)
+TONE_GUIDE_FILE=/path/to/brand-voice.md
 ```
 
-Or run the setup wizard (skipped automatically if env vars are present):
+Or run the interactive setup wizard:
 
 ```bash
 article-checker --setup
 ```
 
-### Step 5 — Run it
+### Step 4 — Run it
 
 ```bash
 # Check a Google Doc (must be publicly shared)
@@ -205,57 +205,65 @@ article-checker "https://docs.google.com/document/d/XXXX/edit"
 
 # Check a local file
 article-checker ./my-article.md
+
+# View check history
+article-checker --history
 ```
 
 ---
 
 ## API Keys — Setup Guide
 
-### Copyscape (required)
+### Copyscape (required — plagiarism + AI detection)
 
-Copyscape handles both plagiarism checking and AI detection. One account, one key, both features.
+One account for both plagiarism and AI detection checks.
 
-**How to get your key:**
+1. Go to [copyscape.com](https://www.copyscape.com/) → **Sign up for Premium**
+2. Add credits (minimum $5 deposit — ~27 full checks)
+3. **My Account → API** — your key is listed there
+4. Your username is the email you signed up with
 
-1. Go to [copyscape.com](https://www.copyscape.com/) and click **Sign up for Premium**
-2. Create an account with your email address
-3. Add credits — minimum deposit is **$5** (roughly 50 full checks)
-4. Go to **My Account → API** — your API key is listed there
-5. Your username is the email address you signed up with
+**Cost per 800-word check:**
 
-**Cost per check (800-word article):**
+| Check | Cost |
+|-------|------|
+| Plagiarism (first 200 words) | $0.03 |
+| Plagiarism (each 100 words after) | $0.01 |
+| AI detection (first 200 words) | $0.03 |
+| AI detection (each 100 words after) | $0.01 |
+| **Total — 800 words, both checks** | **~$0.18** |
 
-| Operation | Words | Cost |
-|-----------|-------|------|
-| Plagiarism check | first 200 words | $0.03 |
-| Plagiarism check | each additional 100 words | $0.01 |
-| AI detection | first 200 words | $0.03 |
-| AI detection | each additional 100 words | $0.01 |
-| **800-word article (both checks)** | | **~$0.18** |
+### Exa AI (optional — fact check skill)
 
-Both checks run in parallel, so the total time is the same as running one check.
+Exa is a neural search engine built for AI agents. Used to search for evidence supporting or refuting each factual claim in the article.
 
-**Minimum deposit:** $5 → approximately 27 full checks (800 words, both plagiarism + AI detection).
+1. Go to [dashboard.exa.ai](https://dashboard.exa.ai/api-keys)
+2. Create an account and generate an API key
+3. Add to `.env`: `EXA_API_KEY=your-key`
+
+**Cost:** ~$0.007 per search. The fact-check skill searches 4 claims per article → ~$0.028 per check.
+
+Free trial credits available on signup.
+
+### Anthropic Claude (optional — fact check, tone, legal skills)
+
+Used for claim extraction, tone assessment, and legal risk scanning. All calls use Claude Haiku (cheapest model).
+
+1. Go to [console.anthropic.com](https://console.anthropic.com/settings/keys)
+2. Create a new API key
+3. Add to `.env`: `ANTHROPIC_API_KEY=your-key`
+
+**Cost per check:** ~$0.001–0.002 (Haiku pricing).
 
 ### Parallel AI (optional — passage evidence)
 
-Parallel AI fetches the full content of each flagged URL and finds which sentences in your article appear verbatim on that page. Without it, you see which sites matched and how many words — with it, you see the exact copied sentences.
-
-**How to get your key:**
+Fetches the full text of flagged URLs to find exactly which sentences in your article appear on those pages.
 
 1. Go to [platform.parallel.ai](https://platform.parallel.ai/)
-2. Create a free account
-3. Go to **API Keys** in your dashboard
-4. Click **Create new key** and copy it
+2. Create a free account → **API Keys** → **Create new key**
+3. Add to `.env`: `PARALLEL_API_KEY=your-key`
 
-**Cost:** $0.001 per URL fetched. Each check fetches up to 3 URLs → $0.003 per check. The free tier includes 16,000 requests.
-
-| | |
-|--|--|
-| **Free tier** | 16,000 requests |
-| **Cost after free tier** | $0.001 per URL |
-| **Per check (3 URLs)** | $0.003 |
-| **Setup** | Add `PARALLEL_API_KEY` to your `.env` |
+**Cost:** $0.001 per URL (free tier: 16,000 requests).
 
 ---
 
@@ -265,15 +273,17 @@ Parallel AI fetches the full content of each flagged URL and finds which sentenc
 # Check a Google Doc (publicly shared)
 article-checker "https://docs.google.com/document/d/XXXX/edit"
 
-# Check a local Markdown file
-article-checker ./article.md
-article-checker /absolute/path/to/article.txt
+# Check a local Markdown or text file
+article-checker ./my-article.md
 
-# Re-run setup wizard (update credentials)
+# Re-run setup wizard
 article-checker --setup
+
+# Show the last 20 checks from history
+article-checker --history
 ```
 
-**Google Docs must be publicly accessible.** In the doc: Share → Change to "Anyone with the link" → Viewer → Done.
+**Google Docs:** Share → Change to "Anyone with the link" → Viewer → Done.
 
 ---
 
@@ -284,81 +294,118 @@ Article input (Google Doc URL or local .md/.txt)
         │
         ▼
 ┌───────────────────────────────────────┐
-│  Article fetch                        │
-│  Google Docs export URL (no auth)     │
-│  or local file read                   │
-└──────────────┬────────────────────────┘
-               │
-    ┌──────────┴──────────┐
-    │                     │
-    ▼                     ▼
-┌─────────────┐   ┌───────────────────┐
-│  Copyscape  │   │  Copyscape        │
-│  Plagiarism │   │  AI Detector      │
-│  (csearch)  │   │  (aicheck)        │
-└──────┬──────┘   └────────┬──────────┘
-       │                   │
-       └──────────┬────────┘
-                  │  (parallel — same total time)
-                  ▼
-    ┌─────────────────────────┐
-    │  Parallel Extract API   │  optional
-    │  Fetch top 3 flagged    │
-    │  URLs + find copied     │
-    │  sentences              │
-    └────────────┬────────────┘
-                 │
-                 ▼
-         ┌───────────────┐
-         │  Report       │
-         │  Plagiarism % │
-         │  AI score %   │
-         │  Top sources  │
-         │  Copied text  │
-         │  Verdict      │
-         └───────────────┘
+│  Article fetch (gdoc.ts)              │
+│  Google Docs export URL / local file  │
+└───────────────────┬───────────────────┘
+                    │
+        ┌───────────┼───────────────────┐
+        ▼           ▼                   ▼  (all parallel)
+┌──────────────┐ ┌──────────────┐ ┌─────────────────┐
+│  Plagiarism  │ │  AI Detect   │ │  SEO (offline)  │ …
+│  (Copyscape) │ │  (Copyscape) │ │  word/heading/  │
+└──────┬───────┘ └──────┬───────┘ │  readability    │
+       │                │         └────────┬────────┘
+       └────────────────┴──────────────────┘
+                        │
+                        ▼
+            ┌────────────────────┐
+            │  SkillRegistry     │
+            │  aggregates all    │
+            │  results           │
+            └─────────┬──────────┘
+                      │
+          ┌───────────┼────────────┐
+          ▼           ▼            ▼
+  ┌──────────────┐ ┌──────────┐ ┌──────────────────┐
+  │  Terminal    │ │  SQLite  │ │  HTML Report     │
+  │  report      │ │  history │ │  (self-contained)│
+  │  (Ink UI)    │ │  .db     │ │  opens in browser│
+  └──────────────┘ └──────────┘ └──────────────────┘
 ```
 
 ---
 
 ## Pricing Summary
 
-All-in cost per article check (800 words, all features):
+Approximate cost per 800-word article check with all skills enabled:
 
-| Component | Cost |
-|-----------|------|
-| Plagiarism check (Copyscape) | ~$0.09 |
-| AI detection (Copyscape) | ~$0.09 |
-| Passage evidence — 3 URLs (Parallel AI) | ~$0.003 |
-| **Total per check** | **~$0.18** |
+| Skill | Engine | Cost |
+|-------|--------|------|
+| Plagiarism | Copyscape | ~$0.09 |
+| AI Detection | Copyscape | ~$0.09 |
+| SEO | Offline | free |
+| Fact Check | Exa + Claude Haiku | ~$0.03 |
+| Tone of Voice | Claude Haiku | ~$0.002 |
+| Legal Risk | Claude Haiku | ~$0.002 |
+| Passage evidence (optional) | Parallel AI | ~$0.003 |
+| **Total — all skills** | | **~$0.22** |
 
-For a team publishing 100 articles per month: ~$18/month in API costs.
+For a team publishing 100 articles per month: ~$22/month in API costs.
+
+---
+
+## Configuring Skills
+
+Enable or disable skills via the `skills` section of `~/.article-checker/config.json`, or set them directly in your `.env`:
+
+```json
+{
+  "skills": {
+    "plagiarism": true,
+    "aiDetection": true,
+    "seo": true,
+    "factCheck": true,
+    "tone": true,
+    "legal": true
+  }
+}
+```
+
+Skills that require unconfigured API keys skip gracefully and show a `warn` verdict with a setup hint rather than failing the check.
+
+### Tone of Voice Guide
+
+The tone skill compares your article against a brand voice document — a `.md` file that describes how your brand writes. Example:
+
+```markdown
+# Brand Voice Guide
+
+- Write in second person ("you", "your")
+- Conversational and warm, never clinical
+- Avoid jargon and acronyms without explanation
+- Short paragraphs — max 3 sentences
+- Use contractions (it's, we're) — formal language feels distant
+```
+
+Set the path: `TONE_GUIDE_FILE=/path/to/brand-voice.md`
 
 ---
 
 ## Roadmap
 
-Features planned for future releases:
-
 ### Near-term
 
-- **`--output report.md`** — save the full report as a Markdown file
-- **Check history database** — SQLite log of every check: article name, date, similarity score, AI score, verdict, cost. Query with `article-checker history`.
-- **Local web dashboard** — a lightweight local UI (`article-checker ui`) to browse past checks, filter by verdict, and see trends over time
-- **Cost tracking** — running total of Copyscape API spend, shown after each check and summarized in history
+- **Content summary** — brief summary of what the article is about, generated by Claude (topic detection, key claims)
+- **Keyword density** — top keywords detected, keyword repetition score, semantic gap analysis
+- **Readability score** — Flesch-Kincaid score displayed per article in history
+- **`--output report.md`** — save the terminal report as a Markdown file
+- **Batch checking** — `article-checker check-all ./articles/` to check a whole directory
 
 ### Medium-term
 
-- **Batch checking** — `article-checker check-all ./articles/` to check a directory of files
-- **Configurable thresholds** — set your own REVIEW/REWRITE cutoffs via a config flag or `.article-checker.json`
-- **`--rewrite` flag** — pass flagged passages to Claude API for a suggested rewrite
+- **Local web dashboard** (`article-checker ui`) — browse check history, filter by verdict, compare scores over time, manage API keys and skill toggles from a browser UI
+- **Tone improvement suggestions** — not just flag violations, but suggest a rewritten version of each flagged sentence in your brand voice
+- **Configurable thresholds** — custom REVIEW/REWRITE cutoffs via `.article-checker.json`
 - **Private index** — register your own published articles with Copyscape so future checks exclude them from results
+- **Citation recommendations** — when facts are verified by Exa, suggest adding inline citations with source links
 
 ### Long-term
 
-- **Originality.ai integration** — second AI detection engine for cross-validation
+- **Second AI detector** — Originality.ai integration for cross-validation of AI detection
 - **CMS integrations** — WordPress plugin, Ghost webhook, Webflow integration
-- **Team dashboard** — multi-user web interface with per-writer stats
+- **Team dashboard** — multi-user web interface with per-writer stats and trends
+- **Custom skill packages** — publish your own validator as an npm package, install with `article-checker skill add <package>`
+- **Ranking score** — overall article quality score combining all skill signals, calibrated for SEO impact
 
 ---
 
@@ -368,13 +415,15 @@ Features planned for future releases:
 |-------|-----------|
 | Runtime & compiler | [Bun](https://bun.sh) |
 | Terminal UI | [Ink](https://github.com/vadimdemedes/ink) — React for CLIs |
-| Plagiarism engine | [Copyscape Premium API](https://www.copyscape.com/api-guide.php) (`csearch`) |
-| AI detection engine | [Copyscape AI Detector API](https://www.copyscape.com/api-guide.php#airequest) (`aicheck`) |
+| Plagiarism + AI detection | [Copyscape Premium API](https://www.copyscape.com/api-guide.php) |
+| SEO analysis | Offline — custom metrics engine |
+| Fact checking | [Exa AI](https://exa.ai) search + [Claude Haiku](https://anthropic.com) assessment |
+| Tone + Legal | [Claude Haiku](https://anthropic.com) |
 | Passage evidence | [Parallel Extract API](https://docs.parallel.ai/) |
-| Article fetch | Google Docs public export URL (no auth) or local file read |
-| Language | TypeScript (strict) |
-
-No database. No server. No cloud dependency beyond the two APIs.
+| Article fetch | Google Docs public export URL or local file |
+| History database | [bun:sqlite](https://bun.sh/docs/api/sqlite) — zero deps, stored at `~/.article-checker/history.db` |
+| HTML reports | Self-contained inline HTML/CSS — no external dependencies |
+| Language | TypeScript strict |
 
 ---
 
@@ -383,23 +432,66 @@ No database. No server. No cloud dependency beyond the two APIs.
 ```
 article-checker/
 ├── src/
-│   ├── index.tsx         # Entry point — routes to setup or check
-│   ├── setup.tsx         # First-run credential wizard (Ink UI)
-│   ├── check.tsx         # Check flow UI + report (Ink UI)
-│   ├── gdoc.ts           # Input reader — Google Docs or local .md/.txt
-│   ├── copyscape.ts      # Copyscape plagiarism API client + XML parser
-│   ├── aidetector.ts     # Copyscape AI detector API client + XML parser
-│   ├── parallel.ts       # Parallel Extract API client
-│   ├── passage.ts        # Passage matcher — finds copied sentences
-│   └── config.ts         # Reads credentials from env vars or config file
+│   ├── index.tsx             # Entry point — routes to setup, history, or check
+│   ├── setup.tsx             # First-run credential wizard (Ink UI)
+│   ├── check.tsx             # Check flow UI — SkillRegistry + HTML report + SQLite
+│   ├── gdoc.ts               # Input reader — Google Docs or local .md/.txt
+│   ├── config.ts             # Config: credentials, skill toggles
+│   ├── db.ts                 # SQLite history — openDb, insertCheck, queryRecent
+│   ├── report.ts             # Self-contained HTML report generator
+│   ├── copyscape.ts          # Copyscape plagiarism API client + XML parser
+│   ├── aidetector.ts         # Copyscape AI detector API client + XML parser
+│   ├── parallel.ts           # Parallel Extract API client
+│   ├── passage.ts            # Passage matcher — finds copied sentences
+│   └── skills/
+│       ├── types.ts          # Skill interface, SkillResult, Finding types
+│       ├── registry.ts       # SkillRegistry — parallel execution, error isolation
+│       ├── plagiarism.ts     # PlagiarismSkill — wraps copyscape.ts
+│       ├── aidetection.ts    # AiDetectionSkill — wraps aidetector.ts
+│       ├── seo.ts            # SeoSkill — offline word/heading/readability check
+│       ├── factcheck.ts      # FactCheckSkill — Exa search + Claude assessment
+│       ├── tone.ts           # ToneSkill — Claude brand voice validator
+│       └── legal.ts          # LegalSkill — Claude legal risk scanner
 ├── demo/
-│   ├── english-demo.md   # English article with Wikipedia passages (33% — REWRITE)
-│   ├── hebrew-demo.md    # Hebrew article with Hebrew Wikipedia passages (39% — REWRITE)
-│   └── superpharm-demo.md  # Hebrew article with Ynet sentences (33% — REWRITE)
-├── build.sh              # Compiles four platform binaries to dist/
+│   ├── english-demo.md       # English article with Wikipedia passages (33% — REWRITE)
+│   ├── hebrew-demo.md        # Hebrew article with Hebrew Wikipedia passages (39% — REWRITE)
+│   └── superpharm-demo.md    # Hebrew article with Ynet sentences (33% — REWRITE)
+├── build.sh                  # Compiles four platform binaries to dist/
 ├── package.json
 └── README.md
 ```
+
+---
+
+## Writing a Custom Skill
+
+Add any validator by creating a class that implements the `Skill` interface:
+
+```typescript
+// src/skills/my-skill.ts
+import type { Skill, SkillResult } from "./types.ts";
+import type { Config } from "../config.ts";
+
+export class MySkill implements Skill {
+  readonly id = "my-skill";
+  readonly name = "My Custom Check";
+
+  async run(text: string, config: Config): Promise<SkillResult> {
+    // your logic here
+    return {
+      skillId: this.id,
+      name: this.name,
+      score: 85,           // 0–100
+      verdict: "pass",     // "pass" | "warn" | "fail"
+      summary: "All good",
+      findings: [],        // Array of { severity, text, quote? }
+      costUsd: 0,
+    };
+  }
+}
+```
+
+Then add it to the `allSkills` array in `src/check.tsx` and wire the toggle in `src/config.ts`.
 
 ---
 
@@ -415,23 +507,25 @@ bun install
 # Run with a local file
 bun src/index.tsx ./demo/english-demo.md
 
+# View check history
+bun src/index.tsx --history
+
 # Run tests
 bun test
 
 # Build all platform binaries
 bash build.sh
-# → dist/article-checker-mac-arm64
-# → dist/article-checker-mac-x64
-# → dist/article-checker-linux-x64
-# → dist/article-checker-win-x64.exe
 ```
 
 **Environment variables** (create a `.env` file in the project root):
 
-```bash
+```env
 COPYSCAPE_USER=your-username
 COPYSCAPE_KEY=your-api-key
-PARALLEL_API_KEY=your-parallel-key   # optional
+PARALLEL_API_KEY=your-parallel-key     # optional
+EXA_API_KEY=your-exa-key               # optional — enables fact check
+ANTHROPIC_API_KEY=your-anthropic-key   # optional — enables fact check, tone, legal
+TONE_GUIDE_FILE=/path/to/voice.md      # optional — enables tone of voice skill
 ```
 
 ---
@@ -439,9 +533,9 @@ PARALLEL_API_KEY=your-parallel-key   # optional
 ## Security
 
 - Credentials are stored **locally only** at `~/.article-checker/config.json`, or read from environment variables — never stored remotely
-- Article text is sent to Copyscape (for plagiarism and AI detection) and optionally to Parallel AI (to fetch source URLs) — both over HTTPS
-- Review [Copyscape's privacy policy](https://www.copyscape.com/privacy.php) and [Parallel's privacy policy](https://parallel.ai/privacy) for details on how submitted content is handled
-- No other network requests, no analytics, no telemetry
+- Article text is sent to Copyscape (plagiarism + AI detection), optionally to Parallel AI (source page fetching), Exa AI (fact checking), and Anthropic (fact check, tone, legal) — all over HTTPS
+- The HTML report and SQLite database are stored locally in the current directory and `~/.article-checker/`
+- No analytics, no telemetry, no logging
 
 ---
 
