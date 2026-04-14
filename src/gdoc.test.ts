@@ -23,6 +23,14 @@ describe("isLocalPath", () => {
     expect(isLocalPath("article.txt")).toBe(true);
   });
 
+  test(".MD uppercase extension is local", () => {
+    expect(isLocalPath("article.MD")).toBe(true);
+  });
+
+  test(".TXT uppercase extension is local", () => {
+    expect(isLocalPath("article.TXT")).toBe(true);
+  });
+
   test("Google Doc URL is not local", () => {
     expect(isLocalPath("https://docs.google.com/document/d/ABC123/edit")).toBe(
       false
