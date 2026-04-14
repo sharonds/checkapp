@@ -9,6 +9,7 @@ export interface SkillsConfig {
   factCheck: boolean;
   tone: boolean;
   legal: boolean;
+  summary: boolean;
 }
 
 export interface Config {
@@ -32,6 +33,7 @@ const DEFAULT_SKILLS: SkillsConfig = {
   factCheck: false,
   tone: false,
   legal: false,
+  summary: false,
 };
 
 export function configExists(): boolean {

@@ -9,6 +9,7 @@ import { SeoSkill } from "./skills/seo.ts";
 import { FactCheckSkill } from "./skills/factcheck.ts";
 import { ToneSkill } from "./skills/tone.ts";
 import { LegalSkill } from "./skills/legal.ts";
+import { SummarySkill } from "./skills/summary.ts";
 import { readConfig } from "./config.ts";
 import { openDb, insertCheck } from "./db.ts";
 import { generateReport } from "./report.ts";
@@ -83,7 +84,8 @@ function Check({ docUrl }: { docUrl: string }) {
           config.skills.factCheck && new FactCheckSkill(),
           config.skills.tone && new ToneSkill(),
           config.skills.legal && new LegalSkill(),
-        ].filter(Boolean) as (PlagiarismSkill | AiDetectionSkill | SeoSkill | FactCheckSkill | ToneSkill | LegalSkill)[];
+          config.skills.summary && new SummarySkill(),
+        ].filter(Boolean) as (PlagiarismSkill | AiDetectionSkill | SeoSkill | FactCheckSkill | ToneSkill | LegalSkill | SummarySkill)[];
 
         const registry = new SkillRegistry(allSkills);
         const results = await registry.runAll(text, config);

@@ -31,6 +31,7 @@ const ENGINE_LABEL: Record<string, { label: string; color: string }> = {
   "fact-check": { label: "Exa AI", color: "#7c3aed" },
   "tone": { label: "MiniMax", color: "#0891b2" },
   "legal": { label: "MiniMax", color: "#0891b2" },
+  "summary": { label: "MiniMax", color: "#0891b2" },
 };
 
 function scoreBar(score: number, verdict: string): string {
@@ -124,6 +125,28 @@ function overallBanner(score: number, verdict: string, wordCount: number, costUs
   </div>`;
 }
 
+function summaryBlock(result: SkillResult): string {
+  const infoFindings = result.findings.filter((f) => f.severity === "info");
+  if (infoFindings.length === 0) return "";
+
+  const rows = infoFindings.map((f) => {
+    const [label, ...rest] = f.text.split(": ");
+    const value = rest.join(": ");
+    return `<div style="display:flex;gap:8px;margin-bottom:6px">
+      <span style="font-weight:600;color:#0e7490;min-width:80px;font-size:13px">${escapeHtml(label)}</span>
+      <span style="color:#334155;font-size:13px">${escapeHtml(value)}</span>
+    </div>`;
+  }).join("");
+
+  return `<div style="background:#ecfeff;border:1px solid #a5f3fc;border-radius:10px;padding:20px;margin-bottom:14px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <span style="font-weight:700;font-size:15px;color:#0e7490">${escapeHtml(result.name)}</span>
+      ${engineBadge(result.skillId)}
+    </div>
+    ${rows}
+  </div>`;
+}
+
 export function generateReport(record: Omit<CheckRecord, "id" | "createdAt"> & { createdAt?: string }): string {
   const overallScore = record.results.length > 0
     ? Math.round(record.results.reduce((s, r) => s + r.score, 0) / record.results.length)
@@ -161,13 +184,14 @@ export function generateReport(record: Omit<CheckRecord, "id" | "createdAt"> & {
   <div class="container">
     ${overallBanner(overallScore, overallVerdict, record.wordCount, record.totalCostUsd, now)}
     <div class="source">${escapeHtml(record.source)}</div>
+    ${(() => { const sr = record.results.find((r) => r.skillId === "summary"); return sr ? summaryBlock(sr) : ""; })()}
     <div class="powered-by">
       <span>Powered by</span>
       <a class="engine-link" href="https://copyscape.com" style="color:#0078D4;border-color:#0078D444;background:#0078D408">Copyscape</a>
       <a class="engine-link" href="https://exa.ai" style="color:#7c3aed;border-color:#7c3aed44;background:#7c3aed08">Exa AI</a>
       <a class="engine-link" href="https://platform.minimax.io" style="color:#0891b2;border-color:#0891b244;background:#0891b208">MiniMax</a>
     </div>
-    ${record.results.map(skillCard).join("")}
+    ${record.results.filter((r) => r.skillId !== "summary").map(skillCard).join("")}
     <div class="footer">
       <div class="footer-top">
         <span class="footer-brand">Article Checker</span>
