@@ -31,6 +31,7 @@ Article Checker gives you a one-command safety gate before every publish.
 - **Clear verdicts** — three-tier scoring with configurable thresholds
 - **Top matches** — shows which sites matched and how many words overlapped
 - **Cross-platform** — Mac (Apple Silicon + Intel), Linux, Windows
+- **Passage evidence** — shows which exact sentences matched each flagged URL (optional, requires Parallel AI key)
 - **Fast** — under 10 seconds for a typical 800-word article
 
 ## How It Works
@@ -47,11 +48,16 @@ Google Doc URL (publicly shared)
 │  Copyscape API    │  Checks against the full indexed web
 └─────────┬─────────┘
           │
+┌─────────▼──────────────┐
+│  Parallel Extract API  │  Fetches top 3 flagged URLs (optional)
+│  + Passage Matcher     │  Finds which sentences were copied
+└─────────┬──────────────┘
+          │
   ┌───────┴────────┐
   ▼                ▼
-Verdict       Top matches
-(Publish /    (URL + word
- Review /      overlap count)
+Verdict       Top matches + copied passages
+(Publish /    (URL, word count, exact sentences)
+ Review /
  Rewrite)
 ```
 
@@ -162,6 +168,7 @@ article-checker --setup
 | Terminal UI | [Ink](https://github.com/vadimdemedes/ink) — React for CLIs |
 | Plagiarism engine | [Copyscape API](https://www.copyscape.com/api.php) |
 | Google Doc fetch | Google Docs public export URL (no auth required) |
+| Parallel AI Extract API | Optional second layer — fetches flagged pages for passage-level evidence |
 | Language | TypeScript (strict) |
 
 No database. No server. No cloud dependency beyond Copyscape.
@@ -184,20 +191,22 @@ The industry standard for web plagiarism detection. Simple pay-as-you-go API —
 | **Sign up** | [copyscape.com](https://www.copyscape.com/) |
 | **Get API key** | My Account → API |
 
-### Originality.ai *(planned)*
+### Originality.ai *(not available via API)*
 
-Detects both AI-generated content and web plagiarism in a single check — useful if you also want to verify the article doesn't read as machine-generated.
+Detects AI-generated content and web plagiarism in a single check. However, API access is Enterprise-only at $179/month — not viable for a per-use CLI. Use the web UI manually at [originality.ai](https://originality.ai/) if needed.
+
+### Parallel AI *(optional — passage evidence)*
+
+Fetches the full content of each URL flagged by Copyscape and finds which specific sentences in your article appear on that page. Turns "89 words matched at healthline.com" into the actual copied text.
+
+Requires a free API key from [platform.parallel.ai](https://platform.parallel.ai/) — 16,000 free requests, then pay-as-you-go.
 
 | | |
 |--|--|
-| **Pay as you go** | $30 one-time → 3,000 credits (1 credit = 100 words) |
-| **800-word article** | ~2 credits = ~$0.02 per check (AI + plagiarism) |
-| **Pro plan** | $14.95/month → 2,000 credits/month |
-| **API access** | Enterprise plan only ($179/month) |
-| **Sign up** | [originality.ai](https://originality.ai/) |
-
-> Originality.ai's API is Enterprise-only, so it's best used as a manual web tool alongside this CLI.
-> Contributions to add it as an optional engine are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+| **Cost** | $0.001 per URL extracted |
+| **3 URLs per check** | ~$0.003 added cost |
+| **Free tier** | 16,000 requests at [platform.parallel.ai](https://platform.parallel.ai/) |
+| **Setup** | Run `article-checker --setup` — enter key when prompted (press Enter to skip) |
 
 ## For Developers — Run from Source
 
@@ -242,6 +251,8 @@ article-checker/
 - Credentials are stored **locally only** at `~/.article-checker/config.json`
 - Credentials are only sent to the Copyscape API over HTTPS
 - Article text is sent to Copyscape for plagiarism checking — review their [privacy policy](https://www.copyscape.com/privacy.php) for sensitive content
+- The Parallel AI API key is stored locally at `~/.article-checker/config.json` alongside your Copyscape credentials
+- When a Parallel key is configured, article text is also sent to the Parallel Extract API — review their [privacy policy](https://parallel.ai/privacy) for sensitive content
 - No other network requests, no analytics, no telemetry
 
 To report a security vulnerability, open a [GitHub issue](https://github.com/sharonds/article-checker/issues) with the label `security`.
