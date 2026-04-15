@@ -2,10 +2,11 @@
 
 > AI content quality gate for marketing teams. CLI + web dashboard that returns plagiarism, AI-detection, SEO score, fact-check, tone-of-voice, legal risk, brief matching, and content summary — before you publish. Supports context management (tone guides, briefs, legal policies), MCP server for AI agent integration, batch checking, CI mode, JSON output, tags, search, report export, and a local web dashboard for browsing results and managing skills.
 
+[![CI](https://github.com/sharonds/checkapp/actions/workflows/ci.yml/badge.svg)](https://github.com/sharonds/checkapp/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/checkapp.svg)](https://www.npmjs.com/package/checkapp)
+[![GitHub stars](https://img.shields.io/github/stars/sharonds/checkapp?style=social)](https://github.com/sharonds/checkapp)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Built with Bun](https://img.shields.io/badge/Built%20with-Bun-fbf0df?logo=bun)](https://bun.sh)
-[![Ink](https://img.shields.io/badge/UI-Ink%20%2B%20React-61DAFB?logo=react&logoColor=white)](https://github.com/vadimdemedes/ink)
-[![Copyscape](https://img.shields.io/badge/Engine-Copyscape-0078D4)](https://www.copyscape.com/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 ---
@@ -477,7 +478,9 @@ Enable or disable skills via the `skills` section of `~/.checkapp/config.json`, 
     "factCheck": true,
     "tone": true,
     "legal": true,
-    "summary": true
+    "summary": true,
+    "brief": true,
+    "purpose": true
   }
 }
 ```
@@ -531,7 +534,7 @@ Set the path: `TONE_GUIDE_FILE=/path/to/brand-voice.md`
 - Tags, search, and JSON API
 - Dark mode
 - Context system — tone guides, briefs, legal policies stored in SQLite, managed via CLI or dashboard
-- MCP server — 7 tools for AI agent integration (Claude Code, Cursor, Windsurf)
+- MCP server — 8 tools for AI agent integration (Claude Code, Cursor, Windsurf)
 - Brief Matching skill — checks article against uploaded content brief
 - CI mode (`--ci`) — exit 1 on fail for CI/CD pipelines
 - JSON output (`--json`) — structured output for scripts and agents
@@ -572,7 +575,7 @@ Set the path: `TONE_GUIDE_FILE=/path/to/brand-voice.md`
 | Tone + Legal | MiniMax M2.7 (preferred) or Claude Haiku (fallback) |
 | Passage evidence | [Parallel Extract API](https://docs.parallel.ai/) |
 | Article fetch | Google Docs public export URL or local file |
-| History database | [bun:sqlite](https://bun.sh/docs/api/sqlite) — zero deps, stored at `~/.checkapp/history.db` |
+| History database | [bun:sqlite](https://bun.sh/docs/api/sqlite) (CLI) / [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) (dashboard) — stored at `~/.checkapp/history.db` |
 | HTML reports | Self-contained inline HTML/CSS — no external dependencies |
 | Language | TypeScript strict |
 

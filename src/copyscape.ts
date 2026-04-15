@@ -87,10 +87,15 @@ function parseResponse(xml: string): CopyscapeResult {
     const wordsMatched = parseInt(
       inner.match(/<wordsmatched>(\d+)<\/wordsmatched>/)?.[1] ?? "0"
     );
-    const snippet = inner
+    let snippet = inner
       .match(/<htmlsnippet>([\s\S]*?)<\/htmlsnippet>/)?.[1]
-      ?.replace(/<[^>]+>/g, "")   // strip HTML tags
-      .trim() ?? "";
+      ?.trim() ?? "";
+    // Strip HTML tags iteratively until no tags remain (handles partial/nested tags)
+    let prev = "";
+    while (prev !== snippet) {
+      prev = snippet;
+      snippet = snippet.replace(/<[^>]*>/g, "");
+    }
 
     matches.push({ url, title, wordsMatched, snippet });
   }

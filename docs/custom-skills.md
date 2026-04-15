@@ -192,7 +192,7 @@ Key points:
 
 - **`getLlmClient(config)`** returns `null` when no LLM key is configured. Always handle this case with a graceful skip result.
 - **`max_tokens: 1024`** -- MiniMax M2.7 needs this or the response is truncated mid-JSON. Always set `max_tokens >= 1024`.
-- **`getTextBlock()`** -- MiniMax M2.7 is an extended-thinking model that always emits a `thinking` block before the text. This function skips thinking blocks and returns the actual text.
+- **Thinking blocks handled automatically** -- MiniMax M2.7 emits thinking blocks, but `llm.call()` extracts and returns only the text content. You never need to handle thinking blocks directly.
 - **`parseJsonResponse()`** -- MiniMax sometimes wraps JSON in markdown code fences. This strips them before parsing.
 - **`buildReadabilityPrompt()`** is exported as a standalone function so tests can validate the prompt without calling the LLM.
 

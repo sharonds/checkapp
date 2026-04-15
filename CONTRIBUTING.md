@@ -43,8 +43,8 @@ Produces four platform binaries in `dist/`. Upload them to a GitHub Release.
 
 ## Ideas for contributions
 
-- [ ] `--output report.md` flag to save the report to a file
-- [ ] Originality.ai as an alternative/additional plagiarism engine
-- [ ] `--rewrite` flag: auto-rewrite flagged passages via Claude API
-- [ ] Config flag to adjust the review/rewrite thresholds
-- [ ] Support for Google Docs that require OAuth (via `gws` CLI)
+- [ ] Originality.ai as an alternative/additional AI detection engine
+- [ ] PDF/DOCX input parsing
+- [ ] CMS integrations — WordPress plugin, Ghost webhook
+- [ ] Support for Google Docs that require OAuth
+- [ ] Skill marketplace — community-built skills installable with one click

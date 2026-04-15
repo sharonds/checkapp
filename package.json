@@ -1,10 +1,42 @@
 {
   "name": "checkapp",
   "version": "1.0.0",
-  "description": "Plagiarism checker for AI-generated articles. Terminal UI powered by Ink + Copyscape.",
+  "description": "AI content quality gate — plagiarism, AI detection, SEO, fact-check, tone, legal risk, and more. CLI + web dashboard.",
+  "type": "module",
   "bin": {
     "checkapp": "./src/index.tsx"
   },
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "files": [
+    "src/",
+    "build.sh",
+    "README.md",
+    "LICENSE",
+    "AGENTS.md"
+  ],
+  "keywords": [
+    "plagiarism",
+    "ai-detection",
+    "seo",
+    "fact-check",
+    "content-quality",
+    "copyscape",
+    "article",
+    "cli",
+    "mcp"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sharonds/checkapp.git"
+  },
+  "homepage": "https://github.com/sharonds/checkapp",
+  "bugs": {
+    "url": "https://github.com/sharonds/checkapp/issues"
+  },
+  "author": "Sharon Sciammas",
+  "license": "MIT",
   "scripts": {
     "start": "bun src/index.tsx",
     "setup": "bun src/index.tsx --setup",

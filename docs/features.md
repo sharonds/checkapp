@@ -78,6 +78,7 @@ A local Next.js web interface started with `checkapp --ui` or `cd dashboard && b
 | **Report Detail** (/reports/:id) | Full skill results, findings, score breakdown, tags. |
 | **Run Check** (/check) | Paste text or URL, add tags, run a new check from the browser. |
 | **Skills** (/skills) | Toggle skills on/off, see engine labels, API key status. |
+| **Contexts** (/contexts) | Upload and manage context documents (tone guides, briefs, legal policies, style guides). |
 | **Settings** (/settings) | API key management with status indicators, threshold configuration. |
 | **Docs** (/docs) | In-app onboarding, skill reference, score guide, API setup, FAQ. |
 

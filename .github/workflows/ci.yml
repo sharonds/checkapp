@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install CLI dependencies
+        run: bun install
+
+      - name: Install dashboard dependencies
+        run: cd dashboard && bun install
+
+      - name: Run CLI tests
+        run: bun run test
+
+      - name: Run dashboard tests
+        run: cd dashboard && bunx vitest run
+
+      - name: Build dashboard
+        run: cd dashboard && bun run build
+
+      - name: Build CLI binaries
+        run: bash build.sh

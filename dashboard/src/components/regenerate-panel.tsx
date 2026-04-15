@@ -12,7 +12,7 @@ interface RegeneratePanelProps {
 export function RegeneratePanel({ source, hasIssues }: RegeneratePanelProps) {
   if (!hasIssues) return null;
 
-  const safeSource = source.replace(/"/g, '\\"');
+  const safeSource = source.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   const command = `checkapp --fix "${safeSource}"`;
 
   const copyCommand = () => {
