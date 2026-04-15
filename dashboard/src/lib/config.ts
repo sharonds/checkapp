@@ -25,7 +25,7 @@ export function getApiKeyStatus() {
   const env = process.env;
   const config = readAppConfig() as Record<string, string>;
   return {
-    copyscape: !!(env.COPYSCAPE_USER || config.copyscapeUser),
+    copyscape: !!(env.COPYSCAPE_USER || config.copyscapeUser) && !!(env.COPYSCAPE_KEY || config.copyscapeKey),
     exa: !!(env.EXA_API_KEY || config.exaApiKey),
     minimax: !!(env.MINIMAX_API_KEY || config.minimaxApiKey),
     anthropic: !!(env.ANTHROPIC_API_KEY || config.anthropicApiKey),
