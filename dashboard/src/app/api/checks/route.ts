@@ -1,5 +1,6 @@
 import { jsonWithCors } from "@/lib/cors";
-import { getRecentChecks, addTagsToCheck } from "@/lib/db";
+import { getRecentChecks, addTagsToCheck, getDb, checks, type Check } from "@/lib/db";
+import { desc, sql, and, gte } from "drizzle-orm";
 import { spawn } from "child_process";
 import { writeFileSync, unlinkSync, mkdtempSync } from "fs";
 import { join } from "path";
@@ -40,6 +41,7 @@ export async function POST(request: Request) {
 
     // Shell out to CLI
     const cliPath = join(process.cwd(), "..", "src", "index.tsx");
+    const startTime = new Date().toISOString();
     const result = await new Promise<{ id: number }>((resolve, reject) => {
       const child = spawn("bun", ["run", cliPath, tmpFile], {
         env: { ...process.env, ...(source ? { ARTICLE_CHECKER_SOURCE: source } : {}) },
@@ -50,9 +52,19 @@ export async function POST(request: Request) {
       child.on("close", (code) => {
         try { unlinkSync(tmpFile); } catch {}
         if (code !== 0) return reject(new Error(`CLI exited ${code}: ${stderr.slice(0, 200)}`));
-        const latest = getRecentChecks(1);
-        if (latest.length === 0) return reject(new Error("No DB record after check"));
-        resolve({ id: latest[0].id! });
+        // Look up the check created by this specific CLI run using source + timestamp
+        const db = getDb();
+        const sourceLabel = source || tmpFile;
+        const rows = db.select().from(checks)
+          .where(and(
+            sql`${checks.source} = ${sourceLabel}`,
+            gte(checks.createdAt, startTime),
+          ))
+          .orderBy(desc(checks.id))
+          .limit(1)
+          .all();
+        if (rows.length === 0) return reject(new Error("No DB record after check"));
+        resolve({ id: rows[0].id! });
       });
     });
 
