@@ -28,12 +28,14 @@ export function findMatchingPassages(
   });
 }
 
-function splitIntoSentences(text: string): string[] {
-  // Only split on sentence-ending punctuation followed by a capital letter.
-  // This avoids false splits on abbreviations like "U.S.", "Dr.", "Fig. 1"
-  // where a period is followed by a lowercase continuation.
-  return text
-    .split(/(?<=[.!?])\s+(?=[A-Z])/)
-    .map((s) => s.trim())
-    .filter(Boolean);
+export function splitIntoSentences(text: string): string[] {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+
+  // Try Latin-aware split first (handles abbreviations like "U.S." correctly)
+  const latinSplit = trimmed.split(/(?<=[.!?])\s+(?=[A-Z])/).map(s => s.trim()).filter(Boolean);
+  if (latinSplit.length > 1) return latinSplit;
+
+  // Fallback: split on sentence-ending punctuation followed by whitespace (works for Hebrew, Arabic, CJK)
+  return trimmed.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(Boolean);
 }

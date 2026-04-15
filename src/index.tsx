@@ -24,6 +24,12 @@ async function main() {
     const { join } = await import("path");
 
     const dashDir = join(import.meta.dir, "..", "dashboard");
+    const { existsSync } = await import("fs");
+    if (!existsSync(dashDir)) {
+      console.error("Dashboard not found at " + dashDir);
+      console.error("The --ui flag requires the dashboard/ directory. If you installed via binary, run from the source repo instead.");
+      process.exit(1);
+    }
     console.log("Starting Article Checker dashboard...");
     console.log("Opening http://localhost:3000\n");
 

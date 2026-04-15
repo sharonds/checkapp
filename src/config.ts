@@ -44,7 +44,7 @@ export function configExists(): boolean {
 
 export function readConfig(): Config {
   const file: Partial<Config> = existsSync(CONFIG_FILE)
-    ? (JSON.parse(readFileSync(CONFIG_FILE, "utf-8")) as Config)
+    ? (JSON.parse(readFileSync(CONFIG_FILE, "utf-8")) as Partial<Config>)
     : {};
 
   return {

@@ -2,7 +2,7 @@ import { jsonWithCors } from "@/lib/cors";
 import { getRecentChecks, addTagsToCheck, getDb, checks, type Check } from "@/lib/db";
 import { desc, sql, and, gte } from "drizzle-orm";
 import { spawn } from "child_process";
-import { writeFileSync, unlinkSync, mkdtempSync } from "fs";
+import { writeFileSync, unlinkSync, mkdtempSync, rmdirSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 
@@ -51,6 +51,7 @@ export async function POST(request: Request) {
       child.stderr.on("data", (d: Buffer) => stderr += d.toString());
       child.on("close", (code) => {
         try { unlinkSync(tmpFile); } catch {}
+        try { rmdirSync(tmpDir); } catch {}
         if (code !== 0) return reject(new Error(`CLI exited ${code}: ${stderr.slice(0, 200)}`));
         // Look up the check created by this specific CLI run using source + timestamp
         const db = getDb();
