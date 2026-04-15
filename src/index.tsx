@@ -24,6 +24,41 @@ if (outputIndex !== -1 && !outputPath) {
 const docUrl = args.find((a) => !a.startsWith("--") && a !== batchDir && a !== outputPath);
 
 async function main() {
+  // --ci / --json: headless check with structured output, no Ink UI
+  if (args.includes("--ci") || args.includes("--json")) {
+    const { runCheckHeadless } = await import("./checker.ts");
+    const source = args.find((a) => !a.startsWith("--") && a !== args[args.indexOf("--output") + 1]);
+    if (!source) {
+      console.error("Usage: article-checker --ci <file-or-url>");
+      process.exit(1);
+    }
+
+    try {
+      const result = await runCheckHeadless(source);
+
+      if (args.includes("--json")) {
+        console.log(JSON.stringify(result, null, 2));
+      } else {
+        // CI summary
+        console.log(`\nArticle Checker — ${result.source}`);
+        console.log(`Words: ${result.wordCount} | Cost: $${result.totalCostUsd.toFixed(3)}\n`);
+        for (const r of result.results) {
+          const icon = r.verdict === "pass" ? "PASS" : r.verdict === "warn" ? "WARN" : "FAIL";
+          console.log(`  ${icon}  ${r.name}: ${r.score}/100 — ${r.summary}`);
+        }
+        const overall = Math.round(result.results.reduce((s, r) => s + r.score, 0) / (result.results.length || 1));
+        const hasFail = result.results.some(r => r.verdict === "fail");
+        console.log(`\nOverall: ${overall}/100 ${hasFail ? "FAILED" : "PASSED"}`);
+      }
+
+      const hasFail = result.results.some(r => r.verdict === "fail");
+      process.exit(hasFail ? 1 : 0);
+    } catch (err) {
+      console.error("Check failed:", err instanceof Error ? err.message : err);
+      process.exit(2);
+    }
+  }
+
   // --mcp: start MCP server for Claude Code / Cursor integration
   if (args.includes("--mcp")) {
     const { startMcpServer } = await import("./mcp-server.ts");
@@ -124,6 +159,8 @@ async function main() {
     console.log("Options:");
     console.log("  --mcp             Start MCP server (for Claude Code, Cursor, etc.)");
     console.log("  --ui              Open the local web dashboard");
+    console.log("  --ci              Headless check — exits 1 if any skill fails");
+    console.log("  --json            Headless check — outputs structured JSON");
     console.log("  --batch <dir>     Check all .md/.txt files in a directory");
     console.log("  --output <path>   Export report to .md or .html file");
     console.log("  --setup           Re-run the credential setup wizard");
