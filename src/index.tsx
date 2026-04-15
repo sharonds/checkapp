@@ -24,6 +24,13 @@ if (outputIndex !== -1 && !outputPath) {
 const docUrl = args.find((a) => !a.startsWith("--") && a !== batchDir && a !== outputPath);
 
 async function main() {
+  // context subcommand: manage tone guides, briefs, policies
+  if (args[0] === "context") {
+    const { runContextCommand } = await import("./context.ts");
+    runContextCommand(args.slice(1));
+    process.exit(0);
+  }
+
   // --ui: start the dashboard dev server and open browser
   if (showUi) {
     const { spawn } = await import("child_process");
@@ -112,6 +119,12 @@ async function main() {
     console.log("  --output <path>   Export report to .md or .html file");
     console.log("  --setup           Re-run the credential setup wizard");
     console.log("  --history         Show the last 20 checks from history");
+    console.log("");
+    console.log("Context management:");
+    console.log("  context add <type> <file>   Add a context document (tone-guide, brief, etc.)");
+    console.log("  context list                List all saved contexts");
+    console.log("  context show <type>         Show context content");
+    console.log("  context remove <type>       Remove a context");
     console.log("");
     process.exit(0);
   }

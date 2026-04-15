@@ -11,6 +11,7 @@ export interface SkillsConfig {
   tone: boolean;
   legal: boolean;
   summary: boolean;
+  brief: boolean;
 }
 
 export interface Config {
@@ -23,6 +24,7 @@ export interface Config {
   toneGuideFile?: string;
   skills: SkillsConfig;
   thresholds?: Record<string, Threshold>;
+  contexts?: Record<string, string>;
 }
 
 const CONFIG_DIR = join(homedir(), ".article-checker");
@@ -36,6 +38,7 @@ const DEFAULT_SKILLS: SkillsConfig = {
   tone: false,
   legal: false,
   summary: false,
+  brief: false,
 };
 
 export function configExists(): boolean {
