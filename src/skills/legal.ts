@@ -2,8 +2,11 @@ import type { Skill, SkillResult, Finding } from "./types.ts";
 import type { Config } from "../config.ts";
 import { getLlmClient, getTextBlock, parseJsonResponse } from "./llm.ts";
 
-export function buildLegalPrompt(articleText: string): string {
-  return `You are a content legal risk reviewer. Scan the article below for these risk categories:
+export function buildLegalPrompt(articleText: string, legalPolicy?: string): string {
+  const policySection = legalPolicy
+    ? `\nCOMPANY LEGAL POLICY:\n${legalPolicy.slice(0, 2000)}\n\nCheck the article for violations of both standard legal risks AND the company-specific policy above.\n`
+    : "";
+  return `You are a content legal risk reviewer.${policySection} Scan the article below for these risk categories:
 1. Unsubstantiated health claim — promises a medical outcome without evidence ("cures", "prevents", "guaranteed to heal")
 2. Defamatory/defamation statement — false statements of fact about a named person or company presented as true
 3. False promise — unconditional guarantee of a business result ("you will earn", "100% success")
@@ -42,7 +45,7 @@ export class LegalSkill implements Skill {
     const response = await llm.client.messages.create({
       model: llm.model,
       max_tokens: 1024,
-      messages: [{ role: "user", content: buildLegalPrompt(text) }],
+      messages: [{ role: "user", content: buildLegalPrompt(text, config.contexts?.["legal-policy"]) }],
     });
 
     const raw = getTextBlock(response.content);

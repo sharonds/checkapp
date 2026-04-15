@@ -10,7 +10,7 @@ import { FactCheckSkill } from "./skills/factcheck.ts";
 import { ToneSkill } from "./skills/tone.ts";
 import { LegalSkill } from "./skills/legal.ts";
 import { SummarySkill } from "./skills/summary.ts";
-import { openDb, insertCheck } from "./db.ts";
+import { openDb, insertCheck, loadAllContexts } from "./db.ts";
 import { generateReport } from "./report.ts";
 
 /**
@@ -42,6 +42,8 @@ export async function runBatch(dir: string): Promise<BatchResult[]> {
 
   const config = readConfig();
   const db = openDb();
+  const contexts = loadAllContexts(db);
+  const configWithContexts = { ...config, contexts };
 
   // Build skills array exactly like check.tsx
   const allSkills = [
@@ -73,10 +75,10 @@ export async function runBatch(dir: string): Promise<BatchResult[]> {
 
     console.log(`  Checking ${basename(file)}...`);
 
-    const rawSkillResults = await registry.runAll(text, config);
+    const rawSkillResults = await registry.runAll(text, configWithContexts);
     const skillResults = rawSkillResults.map((r) => ({
       ...r,
-      verdict: applyThreshold(r.score, r.verdict, config.thresholds?.[r.skillId]),
+      verdict: applyThreshold(r.score, r.verdict, configWithContexts.thresholds?.[r.skillId]),
     }));
     const totalCostUsd = skillResults.reduce((sum, r) => sum + r.costUsd, 0);
     const overallScore =

@@ -37,16 +37,19 @@ export class ToneSkill implements Skill {
         costUsd: 0,
       };
     }
-    if (!config.toneGuideFile || !existsSync(config.toneGuideFile)) {
+    // Prefer context from DB, fall back to file path
+    let toneGuide: string | undefined = config.contexts?.["tone-guide"];
+    if (!toneGuide && config.toneGuideFile && existsSync(config.toneGuideFile)) {
+      toneGuide = readFileSync(config.toneGuideFile, "utf-8");
+    }
+    if (!toneGuide) {
       return {
         skillId: this.id, name: this.name, score: 50, verdict: "warn",
-        summary: "Skipped — no tone guide file configured",
-        findings: [{ severity: "info", text: "Set TONE_GUIDE_FILE=path/to/brand-voice.md in .env or run --setup" }],
+        summary: "Skipped — no tone guide configured",
+        findings: [{ severity: "info", text: "Add a 'tone-guide' context via --add-context, or set TONE_GUIDE_FILE=path/to/brand-voice.md in .env" }],
         costUsd: 0,
       };
     }
-
-    const toneGuide = readFileSync(config.toneGuideFile, "utf-8");
 
     const response = await llm.client.messages.create({
       model: llm.model,
