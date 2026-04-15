@@ -17,6 +17,16 @@ Example output:
 JSON array of claims:`;
 }
 
+export function formatCitation(url: string): string {
+  try {
+    const u = new URL(url);
+    const domain = u.hostname.replace("www.", "");
+    return `[${domain}](${url})`;
+  } catch {
+    return url;
+  }
+}
+
 export function claimConfidence(sourceCount: number, supported: boolean | null): "high" | "medium" | "low" {
   if (supported === false) return "low";
   if (supported === null) return "low";
@@ -127,7 +137,12 @@ null means inconclusive.`;
       } else if (supported === null) {
         findings.push({ severity: "warn", text: `Unverified (${confidence} confidence): "${claim}" — ${note}` });
       } else {
-        findings.push({ severity: "info", text: `Verified (${confidence} confidence): "${claim}" — ${note}` });
+        const sources = claimResults.find(cr => cr.claim === claim)?.results ?? [];
+        const citations = sources.slice(0, 2).map(r => formatCitation(r.url)).join(", ");
+        findings.push({
+          severity: "info",
+          text: `Verified (${confidence} confidence): "${claim}" — ${note}${citations ? `. Cite: ${citations}` : ""}`,
+        });
       }
     }
 
