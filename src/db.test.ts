@@ -1,6 +1,6 @@
 import { test, expect, describe, beforeEach, afterEach } from "bun:test";
 import { Database } from "bun:sqlite";
-import { createSchema, insertCheck, queryRecent, type CheckRecord } from "./db.ts";
+import { createSchema, insertCheck, queryRecent, openDb, insertContext, getContext, listContexts, updateContext, deleteContext, loadAllContexts, type CheckRecord } from "./db.ts";
 
 let db: Database;
 
@@ -39,5 +39,51 @@ describe("queryRecent", () => {
       insertCheck(db, { source: `${i}.md`, wordCount: 100, results: [], totalCostUsd: 0 });
     }
     expect(queryRecent(db, 3)).toHaveLength(3);
+  });
+});
+
+describe("contexts", () => {
+  test("inserts and retrieves a context", () => {
+    const db = openDb(":memory:");
+    insertContext(db, { type: "tone-guide", name: "Brand Voice", content: "Write in second person" });
+    const ctx = getContext(db, "tone-guide");
+    expect(ctx).not.toBeNull();
+    expect(ctx!.name).toBe("Brand Voice");
+    expect(ctx!.content).toContain("second person");
+  });
+
+  test("lists all contexts", () => {
+    const db = openDb(":memory:");
+    insertContext(db, { type: "tone-guide", name: "Brand Voice", content: "..." });
+    insertContext(db, { type: "brief", name: "Q2 Launch", content: "500 words" });
+    expect(listContexts(db)).toHaveLength(2);
+  });
+
+  test("updates a context", () => {
+    const db = openDb(":memory:");
+    insertContext(db, { type: "tone-guide", name: "Brand Voice", content: "v1" });
+    updateContext(db, "tone-guide", { content: "v2 updated" });
+    expect(getContext(db, "tone-guide")!.content).toBe("v2 updated");
+  });
+
+  test("deletes a context", () => {
+    const db = openDb(":memory:");
+    insertContext(db, { type: "brief", name: "Q2", content: "..." });
+    deleteContext(db, "brief");
+    expect(getContext(db, "brief")).toBeNull();
+  });
+
+  test("returns null for missing type", () => {
+    const db = openDb(":memory:");
+    expect(getContext(db, "nonexistent")).toBeNull();
+  });
+
+  test("loadAllContexts returns a map", () => {
+    const db = openDb(":memory:");
+    insertContext(db, { type: "tone-guide", name: "TG", content: "be warm" });
+    insertContext(db, { type: "brief", name: "BR", content: "500 words" });
+    const map = loadAllContexts(db);
+    expect(map["tone-guide"]).toBe("be warm");
+    expect(map["brief"]).toBe("500 words");
   });
 });

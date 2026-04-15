@@ -34,6 +34,16 @@ export function createSchema(db: Database): void {
       created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
     )
   `);
+  db.run(`
+    CREATE TABLE IF NOT EXISTS contexts (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      type       TEXT NOT NULL UNIQUE,
+      name       TEXT NOT NULL,
+      content    TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
 }
 
 export function insertCheck(db: Database, record: Omit<CheckRecord, "id" | "createdAt">): number {
@@ -48,6 +58,56 @@ export function insertCheck(db: Database, record: Omit<CheckRecord, "id" | "crea
     record.totalCostUsd
   );
   return result.lastInsertRowid as number;
+}
+
+export interface ContextRecord {
+  id?: number;
+  type: string;
+  name: string;
+  content: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export function insertContext(db: Database, ctx: Omit<ContextRecord, "id" | "createdAt" | "updatedAt">): number {
+  const stmt = db.prepare("INSERT INTO contexts (type, name, content) VALUES (?, ?, ?)");
+  return stmt.run(ctx.type, ctx.name, ctx.content).lastInsertRowid as number;
+}
+
+export function getContext(db: Database, type: string): ContextRecord | null {
+  const row = db.query<{id: number; type: string; name: string; content: string; created_at: string; updated_at: string}, [string]>(
+    "SELECT * FROM contexts WHERE type = ? LIMIT 1"
+  ).get(type);
+  if (!row) return null;
+  return { id: row.id, type: row.type, name: row.name, content: row.content, createdAt: row.created_at, updatedAt: row.updated_at };
+}
+
+export function listContexts(db: Database): ContextRecord[] {
+  const rows = db.query<{id: number; type: string; name: string; content: string; created_at: string; updated_at: string}, []>(
+    "SELECT * FROM contexts ORDER BY type"
+  ).all();
+  return rows.map(row => ({ id: row.id, type: row.type, name: row.name, content: row.content, createdAt: row.created_at, updatedAt: row.updated_at }));
+}
+
+export function updateContext(db: Database, type: string, updates: Partial<Pick<ContextRecord, "name" | "content">>): void {
+  const sets: string[] = [];
+  const vals: string[] = [];
+  if (updates.name) { sets.push("name = ?"); vals.push(updates.name); }
+  if (updates.content) { sets.push("content = ?"); vals.push(updates.content); }
+  sets.push("updated_at = datetime('now')");
+  vals.push(type);
+  db.run(`UPDATE contexts SET ${sets.join(", ")} WHERE type = ?`, vals);
+}
+
+export function deleteContext(db: Database, type: string): void {
+  db.run("DELETE FROM contexts WHERE type = ?", [type]);
+}
+
+export function loadAllContexts(db: Database): Record<string, string> {
+  const rows = listContexts(db);
+  const map: Record<string, string> = {};
+  for (const r of rows) map[r.type] = r.content;
+  return map;
 }
 
 export function queryRecent(db: Database, limit: number): CheckRecord[] {
