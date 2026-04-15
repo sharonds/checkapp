@@ -15,7 +15,7 @@ function Setup({ existingConfig, onComplete }: SetupProps) {
   const { exit } = useApp();
   const incremental = !!existingConfig;
 
-  const [step, setStep] = useState<Step>(incremental ? "parallel" : "username");
+  const [step, setStep] = useState<Step>("username");
   const [username, setUsername] = useState(existingConfig?.copyscapeUser ?? "");
   const [apiKey, setApiKey] = useState(existingConfig?.copyscapeKey ?? "");
   const [parallelApiKeyVal, setParallelApiKeyVal] = useState(
@@ -67,32 +67,36 @@ function Setup({ existingConfig, onComplete }: SetupProps) {
 
       <Text dimColor>
         {incremental
-          ? "Updating Parallel AI key only. Copyscape credentials unchanged."
-          : "You only need to do this once. Credentials are saved to:"}
+          ? "Press Enter to keep current values, or type new ones."
+          : "You only need to do this once."}{" "}
+        Credentials are saved to:
       </Text>
-      {!incremental && <Text dimColor>  {configPath()}</Text>}
+      <Text dimColor>  {configPath()}</Text>
 
-      {/* Step 1: Username (skipped in incremental mode) */}
-      {!incremental && (
-        <Box gap={1} marginTop={1}>
-          <Text bold>Copyscape username:</Text>
-          {step === "username" ? (
-            <TextInput
-              value={username}
-              onChange={setUsername}
-              placeholder="you@example.com"
-              onSubmit={(val) => {
-                if (val.trim()) setStep("apikey");
-              }}
-            />
-          ) : (
-            <Text color="green">{username}</Text>
-          )}
-        </Box>
-      )}
+      {/* Step 1: Username */}
+      <Box gap={1} marginTop={1}>
+        <Text bold>Copyscape username:</Text>
+        {step === "username" ? (
+          <TextInput
+            value={username}
+            onChange={setUsername}
+            placeholder={incremental && existingConfig?.copyscapeUser ? existingConfig.copyscapeUser : "you@example.com"}
+            onSubmit={(val) => {
+              if (val.trim() || (incremental && existingConfig?.copyscapeUser)) {
+                if (!val.trim() && incremental && existingConfig?.copyscapeUser) {
+                  setUsername(existingConfig.copyscapeUser);
+                }
+                setStep("apikey");
+              }
+            }}
+          />
+        ) : (
+          <Text color="green">{username}</Text>
+        )}
+      </Box>
 
-      {/* Step 2: Copyscape API key (skipped in incremental mode) */}
-      {!incremental && step !== "username" && (
+      {/* Step 2: Copyscape API key */}
+      {step !== "username" && (
         <Box gap={1}>
           <Text bold>Copyscape API key:  </Text>
           {step === "apikey" ? (
@@ -100,8 +104,15 @@ function Setup({ existingConfig, onComplete }: SetupProps) {
               value={apiKey}
               onChange={setApiKey}
               mask="*"
-              placeholder="your API key"
-              onSubmit={handleApiKeySubmit}
+              placeholder={incremental && existingConfig?.copyscapeKey ? "press Enter to keep current key" : "your API key"}
+              onSubmit={(val) => {
+                if (val.trim()) {
+                  handleApiKeySubmit(val);
+                } else if (incremental && existingConfig?.copyscapeKey) {
+                  setApiKey(existingConfig.copyscapeKey);
+                  setStep("parallel");
+                }
+              }}
             />
           ) : (
             <Text color="green">
