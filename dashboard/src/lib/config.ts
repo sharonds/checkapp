@@ -1,9 +1,21 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 
-const CONFIG_DIR = join(homedir(), ".article-checker");
+const CONFIG_DIR = join(homedir(), ".checkit");
+const LEGACY_CONFIG_DIR = join(homedir(), ".article-checker");
 const CONFIG_PATH = join(CONFIG_DIR, "config.json");
+
+// One-time migration: move ~/.article-checker → ~/.checkit if only the old exists.
+// Guarded so this is idempotent and silent in the common case.
+if (!existsSync(CONFIG_DIR) && existsSync(LEGACY_CONFIG_DIR)) {
+  try {
+    renameSync(LEGACY_CONFIG_DIR, CONFIG_DIR);
+    console.error("Migrated config from ~/.article-checker to ~/.checkit");
+  } catch (err) {
+    console.error(`Failed to migrate ~/.article-checker to ~/.checkit: ${(err as Error).message}`);
+  }
+}
 
 export function readAppConfig(): Record<string, unknown> {
   if (!existsSync(CONFIG_PATH)) return {};

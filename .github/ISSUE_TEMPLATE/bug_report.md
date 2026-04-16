@@ -8,7 +8,7 @@ labels: bug
 <!-- A clear description of the bug -->
 
 **Steps to reproduce**
-1. Run `article-checker "..."`
+1. Run `checkit "..."`
 2. ...
 
 **Expected behaviour**

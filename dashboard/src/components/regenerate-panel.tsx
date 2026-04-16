@@ -13,7 +13,7 @@ export function RegeneratePanel({ source, hasIssues }: RegeneratePanelProps) {
   if (!hasIssues) return null;
 
   const safeSource = source.replace(/"/g, '\\"');
-  const command = `article-checker --fix "${safeSource}"`;
+  const command = `checkit --fix "${safeSource}"`;
 
   const copyCommand = () => {
     navigator.clipboard.writeText(command);

@@ -5,8 +5,8 @@ Contributions are welcome — bug fixes, new features, and documentation improve
 ## Setup
 
 ```bash
-git clone https://github.com/sharonds/article-checker
-cd article-checker
+git clone https://github.com/sharonds/checkit
+cd checkit
 bun install
 ```
 
@@ -25,7 +25,7 @@ bun src/index.tsx "https://docs.google.com/document/d/XXXX/edit"
 | `src/check.tsx` | Plagiarism check UI + report (Ink UI) |
 | `src/gdoc.ts` | Input reader — fetches Google Docs via public export URL or reads local `.md`/`.txt` files |
 | `src/copyscape.ts` | Copyscape API client + XML response parser |
-| `src/config.ts` | Reads/writes credentials to `~/.article-checker/config.json` |
+| `src/config.ts` | Reads/writes credentials to `~/.checkit/config.json` |
 
 ## Building binaries
 

@@ -1,6 +1,6 @@
 # Demo Scenarios
 
-These scenarios demonstrate article-checker's passage evidence feature.
+These scenarios demonstrate checkit's passage evidence feature.
 Each demo contains an article with known copied sentences so you can see exactly
 what the tool outputs for a real plagiarism case.
 
@@ -21,10 +21,10 @@ what the tool outputs for a real plagiarism case.
 4. Click **Share** → **Anyone with the link** → **Viewer**
 5. Copy the document URL
 
-### Step 2 — Run article-checker
+### Step 2 — Run checkit
 
 ```bash
-article-checker <your-google-doc-url>
+checkit <your-google-doc-url>
 ```
 
 If you have a Parallel AI key configured, you'll see the passage evidence phase:
@@ -77,7 +77,7 @@ not just that there is "some similarity" to a source.
 
 ## Setup
 
-Run `article-checker --setup` to configure your API keys. The Parallel AI key
+Run `checkit --setup` to configure your API keys. The Parallel AI key
 is optional but enables the passage evidence feature shown above.
 
 Get a Parallel AI key at [platform.parallel.ai](https://platform.parallel.ai/).

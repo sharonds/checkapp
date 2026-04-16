@@ -1,4 +1,4 @@
-# Article Checker — Feature List
+# Checkit — Feature List
 
 ## Content Quality Skills
 
@@ -18,7 +18,7 @@ All enabled skills run in parallel. Skills with missing API keys skip gracefully
 
 ### LLM Providers
 
-Article Checker supports three LLM providers for AI-powered skills (fact check, tone, legal, summary, brief):
+Checkit supports three LLM providers for AI-powered skills (fact check, tone, legal, summary, brief):
 
 | Provider | Env var | Notes |
 |----------|---------|-------|
@@ -30,7 +30,7 @@ Set the provider via `LLM_PROVIDER` env var or the Settings page in the dashboar
 
 ### Multi-Language Support
 
-Article Checker auto-detects article language via Unicode script analysis (no external dependencies). Supported languages: English, Hebrew, Arabic, Chinese, Japanese, Korean. SEO keyword extraction uses language-specific stop words for Hebrew and English (more languages planned). The detected language appears in the SEO summary.
+Checkit auto-detects article language via Unicode script analysis (no external dependencies). Supported languages: English, Hebrew, Arabic, Chinese, Japanese, Korean. SEO keyword extraction uses language-specific stop words for Hebrew and English (more languages planned). The detected language appears in the SEO summary.
 
 ### Tone Rewrite Suggestions
 
@@ -46,7 +46,7 @@ Classifies the article's content purpose (tutorial, product announcement, case s
 
 ### Regenerate/Fix Engine
 
-`article-checker --fix <file>` runs all checks and then generates AI-suggested rewrites for every flagged sentence. Uses tone guide and legal policy contexts when available. Outputs before/after diffs for each issue. Also available via the `regenerate_article` MCP tool.
+`checkit --fix <file>` runs all checks and then generates AI-suggested rewrites for every flagged sentence. Uses tone guide and legal policy contexts when available. Outputs before/after diffs for each issue. Also available via the `regenerate_article` MCP tool.
 
 ---
 
@@ -54,7 +54,7 @@ Classifies the article's content purpose (tutorial, product announcement, case s
 
 - **HTML report** — Self-contained file with score bars, verdict badges, and per-finding citations. Opens in browser automatically after each check.
 - **Markdown export** — `--output report.md` saves the terminal report as a Markdown file.
-- **SQLite history** — Every check is persisted to `~/.article-checker/history.db`. Query with `--history`.
+- **SQLite history** — Every check is persisted to `~/.checkit/history.db`. Query with `--history`.
 
 ---
 
@@ -62,14 +62,14 @@ Classifies the article's content purpose (tutorial, product announcement, case s
 
 - **Tags** — Attach tags to any check via the dashboard or API (`POST /api/checks/:id/tags`). Filter and search by tag.
 - **Search** — Full-text search across check sources and results via the dashboard or API (`GET /api/search`).
-- **Batch checking** — `article-checker --batch ./articles/` checks all `.md`/`.txt` files in a directory.
+- **Batch checking** — `checkit --batch ./articles/` checks all `.md`/`.txt` files in a directory.
 - **Configurable thresholds** — Custom pass/warn/fail score cutoffs per skill in `config.json`.
 
 ---
 
 ## Web Dashboard
 
-A local Next.js web interface started with `article-checker --ui` or `cd dashboard && bun run dev`.
+A local Next.js web interface started with `checkit --ui` or `cd dashboard && bun run dev`.
 
 | Page | Description |
 |------|-------------|
@@ -115,20 +115,20 @@ Contexts are reusable documents that provide additional instructions to skills d
 | `custom` | Custom skills | Any additional context |
 
 Manage contexts via:
-- **CLI:** `article-checker context add/list/show/remove`
+- **CLI:** `checkit context add/list/show/remove`
 - **Dashboard:** Contexts page (upload, edit, preview)
 - **API:** `POST/GET/DELETE /api/contexts`
 - **MCP:** `upload_context` and `list_contexts` tools
 
-Contexts are stored in the SQLite database (`~/.article-checker/history.db`) and automatically loaded by relevant skills before each check.
+Contexts are stored in the SQLite database (`~/.checkit/history.db`) and automatically loaded by relevant skills before each check.
 
 ---
 
 ## MCP Server
 
-Article Checker includes an MCP (Model Context Protocol) server for AI agent integration with Claude Code, Cursor, and Windsurf.
+Checkit includes an MCP (Model Context Protocol) server for AI agent integration with Claude Code, Cursor, and Windsurf.
 
-Start the server: `article-checker --mcp`
+Start the server: `checkit --mcp`
 
 | Tool | Description |
 |------|-------------|

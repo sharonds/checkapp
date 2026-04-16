@@ -1,18 +1,18 @@
 # Agent Integration Guide
 
-Article Checker can be used by AI agents via MCP tools or CLI commands.
+Checkit can be used by AI agents via MCP tools or CLI commands.
 
 ## MCP Server (Claude Code, Cursor, Windsurf)
 
 Start the MCP server:
 
-    article-checker --mcp
+    checkit --mcp
 
 Or add to your MCP config (e.g., `.claude/settings.json`):
 
     {
       "mcpServers": {
-        "article-checker": {
+        "checkit": {
           "command": "bun",
           "args": ["run", "src/index.tsx", "--mcp"]
         }
@@ -48,30 +48,30 @@ Or add to your MCP config (e.g., `.claude/settings.json`):
 ## CLI Commands (scripts, CI/CD, OpenClaw)
 
     # Check an article (with Ink UI)
-    article-checker ./article.md
+    checkit ./article.md
 
     # Headless check with JSON output
-    article-checker --json ./article.md
+    checkit --json ./article.md
 
     # CI mode — exits 1 if any skill fails
-    article-checker --ci ./article.md
+    checkit --ci ./article.md
 
     # Batch check a directory
-    article-checker --batch ./articles/
+    checkit --batch ./articles/
 
     # Fix flagged sentences with AI-suggested rewrites
-    article-checker --fix ./article.md
+    checkit --fix ./article.md
 
     # Export report
-    article-checker --output report.md ./article.md
+    checkit --output report.md ./article.md
 
     # Manage contexts
-    article-checker context add tone-guide ./brand-voice.md
-    article-checker context add legal-policy ./legal-requirements.md
-    article-checker context add brief ./campaign-brief.md
-    article-checker context list
-    article-checker context show tone-guide
-    article-checker context remove brief
+    checkit context add tone-guide ./brand-voice.md
+    checkit context add legal-policy ./legal-requirements.md
+    checkit context add brief ./campaign-brief.md
+    checkit context list
+    checkit context show tone-guide
+    checkit context remove brief
 
 ## Context Types
 
@@ -100,8 +100,8 @@ Or add to your MCP config (e.g., `.claude/settings.json`):
 ## Data Storage
 
 All data is local:
-- Check history: `~/.article-checker/history.db` (SQLite)
-- Config: `~/.article-checker/config.json`
+- Check history: `~/.checkit/history.db` (SQLite)
+- Config: `~/.checkit/config.json`
 - Contexts: stored in the SQLite database
 
 No remote servers. No authentication needed for local use.

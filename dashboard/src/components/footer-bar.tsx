@@ -2,12 +2,12 @@ import { Bug, Lightbulb, Coffee } from "lucide-react";
 
 const footerLinks = [
   {
-    href: "https://github.com/sharonds/article-checker/issues/new",
+    href: "https://github.com/sharonds/checkit/issues/new",
     label: "Report Bug",
     icon: Bug,
   },
   {
-    href: "https://github.com/sharonds/article-checker/discussions/new",
+    href: "https://github.com/sharonds/checkit/discussions/new",
     label: "Feature Request",
     icon: Lightbulb,
   },

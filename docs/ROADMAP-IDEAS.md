@@ -1,4 +1,4 @@
-# Article Checker — Roadmap
+# Checkit — Roadmap
 
 ## Done (Phase 1-3) — CLI Foundation
 - ~~7 skills: plagiarism, AI detection, SEO, fact-check, tone, legal, content summary~~
@@ -9,7 +9,7 @@
 - ~~Custom skill authoring guide~~
 
 ## Done (Phase 4) — Web Dashboard
-- ~~Local dashboard (`article-checker --ui`) with 6 pages~~
+- ~~Local dashboard (`checkit --ui`) with 6 pages~~
 - ~~Tags + search, dark mode, export buttons~~
 - ~~JSON API for dashboard, LLM provider picker~~
 - ~~13 PR review fixes (security, correctness, docs)~~
@@ -17,20 +17,20 @@
 ## Done (Phase 5) — Context System + Agent Integration
 
 ### Context Library
-- **Context storage** — `~/.article-checker/contexts/` directory + `contexts` table in SQLite
+- **Context storage** — `~/.checkit/contexts/` directory + `contexts` table in SQLite
 - **Context types**: tone-guide, legal-policy, brief, style-guide, custom
-- **Upload flows**: dashboard Contexts page (upload/paste/link), CLI `article-checker context add <type> <file>`
-- **Update flows**: edit in dashboard, CLI `article-checker context update <type> <file>`, version history
+- **Upload flows**: dashboard Contexts page (upload/paste/link), CLI `checkit context add <type> <file>`
+- **Update flows**: edit in dashboard, CLI `checkit context update <type> <file>`, version history
 - **Auto-use in skills**: tone skill reads tone-guide, legal reads legal-policy, new brief skill reads brief
-- **Override per run**: `article-checker ./article.md --brief ./campaign-brief.md`
+- **Override per run**: `checkit ./article.md --brief ./campaign-brief.md`
 - **Dashboard page**: browse contexts, preview content, upload new, edit inline, delete
 
 ### Agent Integration
 - **MCP server** — expose as MCP tools: `check_article`, `list_reports`, `search_reports`, `upload_context`, `get_skills`. Local agents (Claude Code, Cursor) call tools directly, no HTTP
 - **AGENTS.md** — document how agents interact: MCP tools, CLI commands, context management
-- **OpenClaw skill** — `article-checker` as an OpenClaw skill with full CLI access
-- **CLI JSON output** — `article-checker --json ./article.md` returns structured JSON for piping
-- **CI/CD mode** — `article-checker --ci ./article.md` exits 1 on fail, for PR gates
+- **OpenClaw skill** — `checkit` as an OpenClaw skill with full CLI access
+- **CLI JSON output** — `checkit --json ./article.md` returns structured JSON for piping
+- **CI/CD mode** — `checkit --ci ./article.md` exits 1 on fail, for PR gates
 
 ### Brief Matching Skill
 - **New skill**: upload a content brief (target word count, required topics, key messages, audience)

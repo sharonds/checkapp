@@ -45,7 +45,7 @@ describe("isLocalPath", () => {
 });
 
 describe("fetchGoogleDoc with local file", () => {
-  const TMP = "/tmp/article-checker-test.md";
+  const TMP = "/tmp/checkit-test.md";
 
   test("reads local .md file and returns cleaned text", async () => {
     writeFileSync(TMP, "# Hello\r\nThis is a test article.\r\n\r\n\r\nEnd.");
@@ -67,7 +67,7 @@ describe("fetchGoogleDoc with local file", () => {
   });
 
   test("reads local .txt file and returns cleaned text", async () => {
-    const TMP_TXT = "/tmp/article-checker-test.txt";
+    const TMP_TXT = "/tmp/checkit-test.txt";
     writeFileSync(TMP_TXT, "Plain text article.\nSecond line.");
     try {
       const text = await fetchGoogleDoc(TMP_TXT);

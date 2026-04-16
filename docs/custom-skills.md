@@ -1,6 +1,6 @@
 # Writing a Custom Skill
 
-This guide walks you through creating your own Article Checker skill -- from a zero-dependency offline checker to a full LLM-based analyzer. By the end you will know how to implement, register, and test a custom skill.
+This guide walks you through creating your own Checkit skill -- from a zero-dependency offline checker to a full LLM-based analyzer. By the end you will know how to implement, register, and test a custom skill.
 
 ---
 
@@ -275,7 +275,7 @@ For offline skills, use `{ label: "Offline", color: "#6b7280" }`.
 
 ### Step 4: Enable it
 
-Add to your `~/.article-checker/config.json`:
+Add to your `~/.checkit/config.json`:
 
 ```json
 {
@@ -291,7 +291,7 @@ Or set it as `true` in `DEFAULT_SKILLS` if you want it enabled for everyone by d
 
 ## 5. Testing
 
-Article Checker uses `bun:test`. There are two testing patterns depending on whether your skill calls an LLM.
+Checkit uses `bun:test`. There are two testing patterns depending on whether your skill calls an LLM.
 
 ### Pattern A: Offline skill tests
 
@@ -380,7 +380,7 @@ bun test src/skills/jargon.test.ts
 
 ## 6. MiniMax / Anthropic Tips
 
-Article Checker supports multiple LLM providers through the Anthropic SDK. Here is what you need to know when writing LLM-based skills:
+Checkit supports multiple LLM providers through the Anthropic SDK. Here is what you need to know when writing LLM-based skills:
 
 | Topic | Details |
 |-------|---------|

@@ -5,7 +5,7 @@ import { desc, eq, sql } from "drizzle-orm";
 import { homedir } from "os";
 import { join } from "path";
 
-const DB_PATH = join(homedir(), ".article-checker", "history.db");
+const DB_PATH = join(homedir(), ".checkit", "history.db");
 
 // Schema matching CLI's bun:sqlite schema
 export const checks = sqliteTable("checks", {

@@ -89,7 +89,7 @@ function Check({ docUrl, outputPath }: { docUrl: string; outputPath?: string }) 
         db.close();
 
         // Write HTML report
-        const reportPath = "article-checker-report.html";
+        const reportPath = "checkit-report.html";
         writeFileSync(reportPath, generateReport({ source: sourceLabel, wordCount: words, results, totalCostUsd }));
 
         // Export to custom path if --output was specified

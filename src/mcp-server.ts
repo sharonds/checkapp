@@ -172,7 +172,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>) {
 
 export async function startMcpServer() {
   const server = new Server(
-    { name: "article-checker", version: "1.0.0" },
+    { name: "checkit", version: "1.0.0" },
     { capabilities: { tools: {} } }
   );
 

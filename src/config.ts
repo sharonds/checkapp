@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 import type { Threshold } from "./thresholds.ts";
@@ -30,8 +30,20 @@ export interface Config {
   contexts?: Record<string, string>;
 }
 
-const CONFIG_DIR = join(homedir(), ".article-checker");
+const CONFIG_DIR = join(homedir(), ".checkit");
+const LEGACY_CONFIG_DIR = join(homedir(), ".article-checker");
 const CONFIG_FILE = join(CONFIG_DIR, "config.json");
+
+// One-time migration: move ~/.article-checker → ~/.checkit if only the old exists.
+// Guarded so this is idempotent and silent in the common case.
+if (!existsSync(CONFIG_DIR) && existsSync(LEGACY_CONFIG_DIR)) {
+  try {
+    renameSync(LEGACY_CONFIG_DIR, CONFIG_DIR);
+    console.error("Migrated config from ~/.article-checker to ~/.checkit");
+  } catch (err) {
+    console.error(`Failed to migrate ~/.article-checker to ~/.checkit: ${(err as Error).message}`);
+  }
+}
 
 const DEFAULT_SKILLS: SkillsConfig = {
   plagiarism: true,

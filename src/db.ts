@@ -4,7 +4,7 @@ import { join } from "path";
 import { mkdirSync } from "fs";
 import type { SkillResult } from "./skills/types.ts";
 
-const DB_DIR = join(homedir(), ".article-checker");
+const DB_DIR = join(homedir(), ".checkit");
 const DB_PATH = join(DB_DIR, "history.db");
 
 export interface CheckRecord {
