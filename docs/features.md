@@ -45,9 +45,9 @@ CheckApp supports three LLM providers for AI-powered skills (fact check, tone, l
 
 Set the provider via `LLM_PROVIDER` env var or the Settings page in the dashboard.
 
-### Multi-Language Support
+### Language Support (v1.2.0)
 
-CheckApp auto-detects article language via Unicode script analysis (no external dependencies). Supported languages: English, Hebrew, Arabic, Chinese, Japanese, Korean. SEO keyword extraction uses language-specific stop words for Hebrew and English (more languages planned). The detected language appears in the SEO summary.
+CheckApp is tuned and tested for **English and Hebrew**. Other scripts (Arabic, Chinese, Japanese, Korean, Russian, etc.) are detected, but SEO tokenization, passage-matching (`MIN_WORDS` uses whitespace tokens), and sentence splitting are NOT tuned for them. Non-Latin / non-Hebrew content may produce approximate or misleading scores. Full CJK + Arabic support is planned for Phase 8.
 
 ### Tone Rewrite Suggestions
 
