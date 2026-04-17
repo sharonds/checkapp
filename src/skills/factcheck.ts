@@ -1,7 +1,8 @@
 import Exa from "exa-js";
-import type { Skill, SkillResult, Finding } from "./types.ts";
+import type { Skill, SkillResult, Finding, ClaimType } from "./types.ts";
 import type { Config } from "../config.ts";
 import { getLlmClient, parseJsonResponse } from "./llm.ts";
+import { resolveProvider } from "../providers/resolve.ts";
 
 export function extractClaimsPrompt(articleText: string): string {
   return `Extract the 4 most specific, verifiable factual claims from the article below.
@@ -39,14 +40,16 @@ export class FactCheckSkill implements Skill {
   readonly name = "Fact Check";
 
   async run(text: string, config: Config): Promise<SkillResult> {
-    if (!config.exaApiKey) {
+    const provider = resolveProvider(config, "fact-check");
+    if (!provider?.apiKey) {
       return {
         skillId: this.id, name: this.name, score: 50, verdict: "warn",
-        summary: "Skipped — EXA_API_KEY not configured",
-        findings: [{ severity: "info", text: "Add EXA_API_KEY to .env to enable fact-checking" }],
+        summary: "Skipped — no fact-check provider configured",
+        findings: [{ severity: "info", text: "Configure a fact-check provider in Settings → Providers (e.g. Exa)" }],
         costUsd: 0,
       };
     }
+    const deepMode = provider.provider === "exa-deep-reasoning" || provider.provider === "parallel-task";
 
     const llm = getLlmClient(config);
     if (!llm) {
@@ -58,7 +61,7 @@ export class FactCheckSkill implements Skill {
       };
     }
 
-    const exa = new Exa(config.exaApiKey);
+    const exa = new Exa(provider.apiKey);
 
     // Step 1: extract claims
     const claimsText = await llm.call(extractClaimsPrompt(text), 1024);
@@ -80,6 +83,7 @@ export class FactCheckSkill implements Skill {
           text: "No checkable statistics, dates, or research findings found — adding cited facts (studies, percentages, named data) increases credibility and SEO authority",
         }],
         costUsd: 0.001,
+        provider: provider.provider,
       };
     }
 
@@ -87,20 +91,28 @@ export class FactCheckSkill implements Skill {
     const findings: Finding[] = [];
     let costUsd = 0.001;
 
-    const claimResults = await Promise.all(
-      claims.slice(0, 4).map(async (claim) => {
-        const result = await exa.search(claim, {
+    const search = deepMode
+      ? (q: string) => exa.search(q, {
+          type: "deep-reasoning",
+          numResults: 5,
+          contents: { highlights: { maxCharacters: 1500, query: q } },
+        })
+      : (q: string) => exa.search(q, {
           type: "auto",
           numResults: 3,
-          contents: { highlights: { maxCharacters: 1500, query: claim } },
+          contents: { highlights: { maxCharacters: 1500, query: q } },
         });
-        costUsd += 0.007;
+
+    const claimResults = await Promise.all(
+      claims.slice(0, 4).map(async (claim) => {
+        const result = await search(claim);
+        costUsd += deepMode ? 0.025 : 0.007;
         return { claim, results: result.results };
       })
     );
 
     // Step 3: assess each claim
-    const assessments: Array<{ claim: string; supported: boolean | null; note: string }> = [];
+    const assessments: Array<{ claim: string; supported: boolean | null; note: string; claimType: ClaimType }> = [];
     for (const { claim, results: searchResults } of claimResults) {
       const evidence = searchResults
         .map((r, i) => `[${i + 1}] ${r.url}\n${(r.highlights ?? []).join(" ")}`)
@@ -112,35 +124,48 @@ Claim: "${claim}"
 Evidence:
 ${evidence}
 
-Reply with JSON: { "supported": true/false/null, "note": "one sentence explanation" }
-null means inconclusive.`;
+Reply with JSON:
+{ "supported": true|false|null, "note": "one sentence", "claimType": "scientific"|"medical"|"financial"|"general" }
+
+- supported: true if evidence supports the claim, false if contradicts, null if inconclusive.
+- claimType: classify the claim type. "scientific" for studies/research/statistics about physical world/human behavior. "medical" for health/disease/treatment claims. "financial" for monetary/market/business claims. "general" for everything else.`;
 
       const assessRaw = await llm.call(assessPrompt, 512);
       costUsd += 0.001;
 
       try {
-        const json = parseJsonResponse<{ supported: boolean | null; note: string }>(assessRaw);
-        assessments.push({ claim, supported: json.supported, note: json.note });
+        const json = parseJsonResponse<{ supported: boolean | null; note: string; claimType?: string }>(assessRaw);
+        const validTypes = ["scientific", "medical", "financial", "general"] as const;
+        const claimType = validTypes.includes(json.claimType as never) ? (json.claimType as ClaimType) : "general";
+        assessments.push({ claim, supported: json.supported, note: json.note, claimType });
       } catch {
-        assessments.push({ claim, supported: null, note: "Could not assess" });
+        assessments.push({ claim, supported: null, note: "Could not assess", claimType: "general" });
       }
     }
 
     const sourceCountMap = new Map(claimResults.map(cr => [cr.claim, cr.results.length]));
 
-    for (const { claim, supported, note } of assessments) {
+    for (const { claim, supported, note, claimType } of assessments) {
       const sourceCount = sourceCountMap.get(claim) ?? 0;
       const confidence = claimConfidence(sourceCount, supported);
+      const sources = claimResults.find(cr => cr.claim === claim)?.results ?? [];
+      const sourceList = sources.slice(0, 3).map((r) => ({
+        url: r.url,
+        title: r.title ?? undefined,
+        publishedDate: r.publishedDate ?? undefined,
+        quote: (r.highlights ?? [])[0],
+      }));
+      const base = { sources: sourceList, confidence, claimType };
       if (supported === false) {
-        findings.push({ severity: "error", text: `Unsupported (${confidence} confidence): "${claim}" — ${note}` });
+        findings.push({ severity: "error", text: `Unsupported (${confidence} confidence): "${claim}" — ${note}`, ...base });
       } else if (supported === null) {
-        findings.push({ severity: "warn", text: `Unverified (${confidence} confidence): "${claim}" — ${note}` });
+        findings.push({ severity: "warn", text: `Unverified (${confidence} confidence): "${claim}" — ${note}`, ...base });
       } else {
-        const sources = claimResults.find(cr => cr.claim === claim)?.results ?? [];
-        const citations = sources.slice(0, 2).map(r => `${formatCitation(r.url)}`).join(", ");
+        const citations = sources.slice(0, 2).map(r => formatCitation(r.url)).join(", ");
         findings.push({
           severity: "info",
           text: `Verified (${confidence} confidence): "${claim}" — ${note}${citations ? `. Cite: ${citations}` : ""}`,
+          ...base,
         });
       }
     }
@@ -151,6 +176,6 @@ null means inconclusive.`;
     const verdict = failCount > 0 ? "fail" : warnCount > 1 ? "warn" : "pass";
     const summary = `${assessments.length} claims checked — ${failCount} unsupported, ${warnCount} unverified (via ${llm.provider})`;
 
-    return { skillId: this.id, name: this.name, score: Math.max(0, score), verdict, summary, findings, costUsd };
+    return { skillId: this.id, name: this.name, score: Math.max(0, score), verdict, summary, findings, costUsd, provider: provider.provider };
   }
 }
