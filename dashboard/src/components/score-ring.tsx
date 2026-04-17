@@ -4,11 +4,12 @@ const VERDICT_CSS_VARS = {
   pass: "var(--color-score-pass)",
   warn: "var(--color-score-warn)",
   fail: "var(--color-score-fail)",
+  skipped: "var(--muted-foreground)",
 } as const;
 
 interface ScoreRingProps {
   score: number;
-  verdict: "pass" | "warn" | "fail";
+  verdict: "pass" | "warn" | "fail" | "skipped";
   size?: number;
 }
 

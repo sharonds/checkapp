@@ -153,6 +153,17 @@ describe("FactCheckSkill — Phase 7 evidence", () => {
     expect(result.summary.toLowerCase()).toContain("provider");
   });
 
+  test("skips with 'skipped' verdict when provider is tavily (not implemented)", async () => {
+    const skill = new FactCheckSkill();
+    const config: Config = {
+      ...cfgBase,
+      providers: { "fact-check": { provider: "tavily", apiKey: "tv-test" } },
+    };
+    const res = await skill.run("Some article to check.", config);
+    expect(res.verdict).toBe("skipped");
+    expect(res.summary).toMatch(/tavily.*not implemented/i);
+  });
+
   test("deep-reasoning mode passes type: 'deep-reasoning' + numResults: 5 to Exa", async () => {
     let capturedOpts: any = null;
     let llmCallCount = 0;

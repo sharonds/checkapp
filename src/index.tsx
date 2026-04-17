@@ -5,6 +5,7 @@ import { runCheck } from "./check.tsx";
 import { openDb, queryRecent } from "./db.ts";
 import { runBatch } from "./batch.ts";
 import { resolveProvider } from "./providers/resolve.ts";
+import type { Finding } from "./skills/types.ts";
 
 const args = process.argv.slice(2);
 const forceSetup = args.includes("--setup");
@@ -25,6 +26,29 @@ if (outputIndex !== -1 && !outputPath) {
   process.exit(1);
 }
 const docUrl = args.find((a) => !a.startsWith("--") && a !== batchDir && a !== outputPath);
+
+export function resolveDeepFactCheckEnv(deps: { configExists: () => boolean; env: NodeJS.ProcessEnv }): { allowed: boolean; apiKey?: string } {
+  const envKey = deps.env.EXA_API_KEY;
+  if (envKey) return { allowed: true, apiKey: envKey };
+  if (!deps.configExists()) return { allowed: false };
+  const cfg = readConfig();
+  const existing = resolveProvider(cfg, "fact-check");
+  if (existing?.apiKey) {
+    return { allowed: true, apiKey: existing.apiKey };
+  }
+  return { allowed: false };
+}
+
+export function summarizeFixRun(r: { fixable: Finding[]; remaining: Finding[] }): string {
+  if (r.fixable.length === 0 && r.remaining.length === 0) return "article is clean!";
+  const parts: string[] = [];
+  const warn = r.remaining.filter(f => f.severity === "warn").length;
+  const err = r.remaining.filter(f => f.severity === "error").length;
+  if (err) parts.push(`${err} error${err === 1 ? "" : "s"}`);
+  if (warn) parts.push(`${warn} warning${warn === 1 ? "" : "s"}`);
+  if (parts.length) return `Fixable findings applied; ${parts.join(", ")} remain.`;
+  return "Fixable findings applied; article is clean!";
+}
 
 // Unset the deep-fact-check env vars after the run so they can't leak into
 // child processes spawned later (e.g. --ui subprocess) or linger on exit.
@@ -75,30 +99,22 @@ async function main() {
     process.exit(0);
   }
 
-  // --deep-fact-check: resolve the existing fact-check provider/apiKey (via B1's
-  // resolveProvider — NOT blindly config.exaApiKey), then swap the provider to
-  // exa-deep-reasoning while keeping the key. Downstream readConfig() calls honor
-  // the env-var sidecar so this propagates to checker/runCheck without extra plumbing.
+  // --deep-fact-check: resolve the Exa API key from env or config, then activate
+  // deep-reasoning mode. Works env-only or with config. Downstream readConfig()
+  // calls honor the env-var sidecar so this propagates to checker/runCheck.
   //
-  // SECURITY: env vars are unset immediately after the run (try/finally below +
-  // process.on("exit") handler) so they don't leak into any child processes
-  // spawned later (e.g. --ui subprocess) or stick around on error/exit paths.
+  // SECURITY: env vars are unset immediately after the run (process.on("exit")
+  // handler below) so they don't leak into any child processes spawned later
+  // (e.g. --ui subprocess) or stick around on error/exit paths.
   if (deepFactCheck) {
-    const cfg = configExists() ? readConfig() : undefined;
-    if (cfg) {
-      const existing = resolveProvider(cfg, "fact-check");
-      const apiKey = existing?.apiKey ?? cfg.exaApiKey;
-      if (!apiKey) {
-        console.error("--deep-fact-check requires an Exa API key (set EXA_API_KEY or providers.fact-check.apiKey)");
-        process.exit(1);
-      }
-      process.env.CHECKAPP_DEEP_FACT_CHECK = "1";
-      process.env.CHECKAPP_DEEP_FACT_CHECK_KEY = apiKey;
-      process.once("exit", cleanupDeepEnv);
-    } else {
-      console.error("--deep-fact-check requires a CheckApp config (run --setup first)");
+    const dfc = resolveDeepFactCheckEnv({ configExists, env: process.env });
+    if (!dfc.allowed || !dfc.apiKey) {
+      console.error("--deep-fact-check requires an Exa API key (set EXA_API_KEY env var or configure via --setup)");
       process.exit(1);
     }
+    process.env.CHECKAPP_DEEP_FACT_CHECK = "1";
+    process.env.CHECKAPP_DEEP_FACT_CHECK_KEY = dfc.apiKey;
+    process.once("exit", cleanupDeepEnv);
   }
 
   // --fix: run checks then generate AI rewrites for flagged sentences
@@ -233,10 +249,11 @@ async function main() {
     console.log("Starting CheckApp dashboard...");
     console.log("Opening http://localhost:3000\n");
 
+    const { CHECKAPP_DEEP_FACT_CHECK, CHECKAPP_DEEP_FACT_CHECK_KEY, ...cleanEnv } = process.env;
     const child = spawn("bun", ["run", "dev"], {
       cwd: dashDir,
       stdio: "inherit",
-      env: { ...process.env },
+      env: cleanEnv,
     });
 
     // Wait a bit for the server to start, then open browser
@@ -326,11 +343,14 @@ async function main() {
   await runCheck(docUrl, outputPath);
 }
 
-main()
-  .catch((err) => {
-    console.error("Unexpected error:", err);
-    process.exit(1);
-  })
-  .finally(() => {
-    cleanupDeepEnv();
-  });
+// Only run main if this is the entry point (not imported for testing)
+if (import.meta.main) {
+  main()
+    .catch((err) => {
+      console.error("Unexpected error:", err);
+      process.exit(1);
+    })
+    .finally(() => {
+      cleanupDeepEnv();
+    });
+}

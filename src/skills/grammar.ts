@@ -13,9 +13,9 @@ export class GrammarSkill implements Skill {
     const resolved = resolveProvider(config, "grammar");
     if (!resolved) {
       return {
-        skillId: this.id, name: this.name, score: 80, verdict: "warn",
-        summary: "Grammar check skipped — no provider configured",
-        findings: [{ severity: "info", text: "Configure LanguageTool (free) or another grammar provider in Settings → Providers" }],
+        skillId: this.id, name: this.name, score: 0, verdict: "skipped",
+        summary: "Skipped: no provider configured.",
+        findings: [],
         costUsd: 0,
       };
     }
@@ -28,11 +28,11 @@ export class GrammarSkill implements Skill {
       return await this.runLlmFallback(text, config, resolved);
     }
 
-    // sapling and other providers — stub warn until implemented
+    // sapling and other providers — stub skip until implemented
     return {
-      skillId: this.id, name: this.name, score: 80, verdict: "warn",
-      summary: `Grammar provider ${resolved.provider} not yet implemented — lands in a follow-up`,
-      findings: [{ severity: "info", text: `Use LanguageTool or LLM fallback for now.` }],
+      skillId: this.id, name: this.name, score: 0, verdict: "skipped",
+      summary: `Skipped: ${resolved.provider} not implemented for grammar yet.`,
+      findings: [],
       costUsd: 0, provider: resolved.provider,
     };
   }

@@ -36,11 +36,11 @@ describe("AcademicSkill — standalone (run)", () => {
     expect(r.findings[0].citations?.[0].doi).toBe("10.1/abc");
   });
 
-  test("no-provider returns warn + info finding", async () => {
+  test("no-provider returns skipped verdict", async () => {
     const cfg: Config = { ...cfgBase, providers: {} };
     const r = await new AcademicSkill().run("anything", cfg);
-    expect(r.verdict).toBe("warn");
-    expect(r.findings[0].severity).toBe("info");
+    expect(r.verdict).toBe("skipped");
+    expect(r.findings.length).toBe(0);
   });
 
   test("pass verdict with no findings when text has no claim-like sentences", async () => {

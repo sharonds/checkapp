@@ -14,6 +14,13 @@ export interface RegenerateResult {
   summary: string;
 }
 
+export interface RegenerateSkippedResult {
+  status: "skipped";
+  reason: string;
+  text: string;
+  costUsd: number;
+}
+
 export function buildRegeneratePrompt(
   articleText: string,
   results: SkillResult[],
@@ -59,7 +66,7 @@ export async function regenerateArticle(
   articleText: string,
   results: SkillResult[],
   options?: { config?: Config; contexts?: Record<string, string> }
-): Promise<RegenerateResult> {
+): Promise<RegenerateResult | RegenerateSkippedResult> {
   const cfg = options?.config ?? readConfig();
   let contexts = options?.contexts;
   let db: ReturnType<typeof openDb> | null = null;
@@ -76,7 +83,14 @@ export async function regenerateArticle(
     if (!prompt) return { rewrites: [], summary: "No fixable issues found" };
 
     const llm = getLlmClient({ ...cfg, contexts });
-    if (!llm) throw new Error("No LLM key configured — add MINIMAX_API_KEY, ANTHROPIC_API_KEY, or OPENROUTER_API_KEY");
+    if (!llm) {
+      return {
+        status: "skipped",
+        reason: "No LLM provider configured (set MINIMAX_API_KEY, ANTHROPIC_API_KEY, or OPENROUTER_API_KEY)",
+        text: articleText,
+        costUsd: 0,
+      };
+    }
 
     const raw = await llm.call(prompt, 2048);
     return parseRegenerateResponse(raw);

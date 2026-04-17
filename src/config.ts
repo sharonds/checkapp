@@ -68,6 +68,9 @@ const DEFAULT_SKILLS: SkillsConfig = {
   summary: false,
   brief: false,
   purpose: false,
+  grammar: false,
+  academic: false,
+  selfPlagiarism: false,
 };
 
 export function configExists(): boolean {

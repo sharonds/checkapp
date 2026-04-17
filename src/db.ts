@@ -7,6 +7,8 @@ import type { SkillResult } from "./skills/types.ts";
 const DB_DIR = join(homedir(), ".checkapp");
 const DB_PATH = join(DB_DIR, "history.db");
 
+export type DB = Database;
+
 export interface CheckRecord {
   id?: number;
   source: string;
@@ -16,7 +18,7 @@ export interface CheckRecord {
   createdAt?: string;
 }
 
-export function openDb(path = DB_PATH): Database {
+export function openDb(path = DB_PATH): DB {
   if (path !== ":memory:") {
     mkdirSync(DB_DIR, { recursive: true });
   }

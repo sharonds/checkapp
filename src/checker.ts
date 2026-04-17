@@ -3,10 +3,9 @@
  * Used by: MCP server, --ci, --json, dashboard API
  */
 import { readConfig, type Config } from "./config.ts";
-import { SkillRegistry } from "./skills/registry.ts";
-import { openDb, insertCheck, loadAllContexts, type CheckRecord } from "./db.ts";
-import { applyThreshold } from "./thresholds.ts";
+import { insertCheck, type CheckRecord } from "./db.ts";
 import { fetchGoogleDoc, countWords } from "./gdoc.ts";
+import { runCheckCore, loadContextsIntoConfig } from "./checker-core.ts";
 import type { Skill, SkillResult } from "./skills/types.ts";
 import { PlagiarismSkill } from "./skills/plagiarism.ts";
 import { AiDetectionSkill } from "./skills/aidetection.ts";
@@ -57,33 +56,13 @@ export async function runCheckHeadless(
   source: string,
   options?: { text?: string; config?: Config; dbPath?: string },
 ): Promise<CheckResult> {
-  const config = options?.config ?? readConfig();
-
-  // Load contexts from DB and attach to config
-  const db = openDb(options?.dbPath);
+  const baseConfig = options?.config ?? readConfig();
+  const { config, db } = loadContextsIntoConfig(baseConfig, options?.dbPath);
   try {
-    const contexts = loadAllContexts(db);
-    const configWithContexts: Config = { ...config, contexts };
-
-    // Read article text
     const text = options?.text ?? await fetchGoogleDoc(source);
     const wordCount = countWords(text);
-
-    // Build and run skills
-    const skills = buildSkills(configWithContexts);
-    const registry = new SkillRegistry(skills);
-    let results = await registry.runAll(text, configWithContexts);
-
-    // Apply thresholds
-    results = results.map((r) => ({
-      ...r,
-      verdict: applyThreshold(r.score, r.verdict, config.thresholds?.[r.skillId]),
-    }));
-
-    // Save to DB
-    const totalCostUsd = results.reduce((sum, r) => sum + r.costUsd, 0);
+    const { results, totalCostUsd } = await runCheckCore(text, config);
     const id = insertCheck(db, { source, wordCount, results, totalCostUsd });
-
     return { id, source, wordCount, results, totalCostUsd };
   } finally {
     db.close();

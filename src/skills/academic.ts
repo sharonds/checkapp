@@ -19,9 +19,9 @@ export class AcademicSkill implements EnricherSkill {
     const resolved = resolveProvider(config, "academic");
     if (!resolved) {
       return {
-        skillId: this.id, name: this.name, score: 100, verdict: "warn",
-        summary: "Academic citations skipped — no provider configured",
-        findings: [{ severity: "info", text: "Semantic Scholar is free (no key required). Enable in Settings → Providers." }],
+        skillId: this.id, name: this.name, score: 0, verdict: "skipped",
+        summary: "Skipped: no provider configured.",
+        findings: [],
         costUsd: 0,
       };
     }

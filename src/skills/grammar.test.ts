@@ -22,6 +22,16 @@ const anthropicContent = (text: string) => jsonResponse({
   stop_reason: "end_turn", usage: { input_tokens: 10, output_tokens: 10 },
 });
 
+describe("GrammarSkill — unconfigured provider", () => {
+  test("returns 'skipped' verdict (not 'warn' or score:0) when provider unconfigured", async () => {
+    const skill = new GrammarSkill();
+    const res = await skill.run("Hello world.", { skills: { grammar: true } } as Config);
+    expect(res.verdict).toBe("skipped");
+    expect(res.score).toBe(0);
+    // score:0 with verdict "skipped" means the threshold engine must exclude it from averages
+  });
+});
+
 describe("GrammarSkill — LanguageTool path", () => {
   test("reports a spelling match with a rewrite suggestion", async () => {
     mockFetch(urlRouter({
@@ -56,11 +66,11 @@ describe("GrammarSkill — LanguageTool path", () => {
     expect(r.score).toBe(100);
   });
 
-  test("warn verdict with info finding when no provider configured", async () => {
+  test("skipped verdict when no provider configured", async () => {
     const cfg: Config = { ...cfgBase, providers: {} };
     const r = await new GrammarSkill().run("x", cfg);
-    expect(r.verdict).toBe("warn");
-    expect(r.findings[0].severity).toBe("info");
+    expect(r.verdict).toBe("skipped");
+    expect(r.findings.length).toBe(0);
   });
 
   test("caps at 50 findings for long texts", async () => {

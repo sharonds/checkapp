@@ -31,7 +31,7 @@ export interface SkillResult {
   skillId: string;
   name: string;
   score: number;
-  verdict: "pass" | "warn" | "fail";
+  verdict: "pass" | "warn" | "fail" | "skipped";
   summary: string;
   findings: Finding[];
   costUsd: number;

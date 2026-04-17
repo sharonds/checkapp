@@ -90,7 +90,7 @@ export function getToolDefinitions() {
   ];
 }
 
-async function handleToolCall(name: string, args: Record<string, unknown>) {
+export async function handleToolCall(name: string, args: Record<string, unknown>) {
   switch (name) {
     case "check_article": {
       const text = args.text as string;
@@ -161,8 +161,9 @@ async function handleToolCall(name: string, args: Record<string, unknown>) {
     case "regenerate_article": {
       const { regenerateArticle } = await import("./regenerate.ts");
       const text = args.text as string;
-      const checkResult = await runCheckHeadless("mcp-regenerate", { text });
-      const regen = await regenerateArticle(text, checkResult.results);
+      const config = args.config as any;
+      const checkResult = await runCheckHeadless("mcp-regenerate", { text, config });
+      const regen = await regenerateArticle(text, checkResult.results, { config });
       return { content: [{ type: "text", text: JSON.stringify(regen, null, 2) }] };
     }
     default:

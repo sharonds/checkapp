@@ -86,28 +86,28 @@ describe("SelfPlagiarismSkill", () => {
     expect(r.summary.toLowerCase()).toContain("checkapp index");
   });
 
-  test("no provider configured → warn with info finding", async () => {
+  test("no provider configured → skipped", async () => {
     const cfg: Config = { ...cfgBase, providers: {} };
     const r = await new SelfPlagiarismSkill().run("text", cfg);
-    expect(r.verdict).toBe("warn");
-    expect(r.findings[0].severity).toBe("info");
+    expect(r.verdict).toBe("skipped");
+    expect(r.findings.length).toBe(0);
   });
 
-  test("no OpenRouter key → warn (embeddings unavailable)", async () => {
+  test("no OpenRouter key → skipped", async () => {
     const { openrouterApiKey, ...cfgNoOr } = cfgBase;
     const r = await new SelfPlagiarismSkill().run("text", cfgNoOr as Config);
-    expect(r.verdict).toBe("warn");
-    expect(r.summary.toLowerCase()).toContain("openrouter");
+    expect(r.verdict).toBe("skipped");
+    expect(r.findings.length).toBe(0);
   });
 
-  test("missing accountId → warn with helpful message", async () => {
+  test("missing accountId → skipped", async () => {
     const cfg: Config = {
       ...cfgBase,
       providers: { "self-plagiarism": { provider: "cloudflare-vectorize", apiKey: "k", extra: { indexName: "articles" } } },
     };
     const r = await new SelfPlagiarismSkill().run("text", cfg);
-    expect(r.verdict).toBe("warn");
-    expect(r.summary.toLowerCase()).toContain("accountid");
+    expect(r.verdict).toBe("skipped");
+    expect(r.findings.length).toBe(0);
   });
 
   test("embed failure → warn with friendly error", async () => {

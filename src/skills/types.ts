@@ -1,6 +1,6 @@
 import type { Config } from "../config.ts";
 
-export type Verdict = "pass" | "warn" | "fail";
+export type Verdict = "pass" | "warn" | "fail" | "skipped";
 export type Severity = "info" | "warn" | "error";
 export type ClaimType = "scientific" | "medical" | "financial" | "general";
 

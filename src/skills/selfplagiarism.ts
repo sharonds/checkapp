@@ -14,27 +14,27 @@ export class SelfPlagiarismSkill implements Skill {
     const resolved = resolveProvider(config, "self-plagiarism");
     if (!resolved?.apiKey) {
       return {
-        skillId: this.id, name: this.name, score: 90, verdict: "warn",
-        summary: "Self-plagiarism skipped — no provider configured",
-        findings: [{ severity: "info", text: "Configure Cloudflare Vectorize (or Pinecone/Upstash) in Settings → Providers. Requires an OpenRouter key for embeddings." }],
+        skillId: this.id, name: this.name, score: 0, verdict: "skipped",
+        summary: "Skipped: no provider configured.",
+        findings: [],
         costUsd: 0,
       };
     }
 
     if (!config.openrouterApiKey) {
       return {
-        skillId: this.id, name: this.name, score: 90, verdict: "warn",
-        summary: "Self-plagiarism skipped — OPENROUTER_API_KEY required for embeddings",
-        findings: [{ severity: "info", text: "Add an OpenRouter key to enable embedding. text-embedding-3-small @ 768 dims (~$0.00002/1k tokens)." }],
+        skillId: this.id, name: this.name, score: 0, verdict: "skipped",
+        summary: "Skipped: OPENROUTER_API_KEY required for embeddings.",
+        findings: [],
         costUsd: 0,
       };
     }
 
     if (resolved.provider !== "cloudflare-vectorize") {
       return {
-        skillId: this.id, name: this.name, score: 90, verdict: "warn",
-        summary: `Self-plagiarism provider ${resolved.provider} not yet implemented — lands in a follow-up`,
-        findings: [{ severity: "info", text: "Use Cloudflare Vectorize for now." }],
+        skillId: this.id, name: this.name, score: 0, verdict: "skipped",
+        summary: `Skipped: ${resolved.provider} not implemented for self-plagiarism yet.`,
+        findings: [],
         costUsd: 0, provider: resolved.provider,
       };
     }
@@ -43,9 +43,9 @@ export class SelfPlagiarismSkill implements Skill {
     const indexName = config.providers?.["self-plagiarism"]?.extra?.indexName ?? "articles";
     if (!accountId) {
       return {
-        skillId: this.id, name: this.name, score: 90, verdict: "warn",
-        summary: "Self-plagiarism misconfigured — missing accountId",
-        findings: [{ severity: "info", text: "Add providers['self-plagiarism'].extra.accountId (your Cloudflare account id)." }],
+        skillId: this.id, name: this.name, score: 0, verdict: "skipped",
+        summary: "Skipped: missing accountId.",
+        findings: [],
         costUsd: 0, provider: resolved.provider,
       };
     }
