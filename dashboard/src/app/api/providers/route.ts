@@ -1,32 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { readAppConfig, writeAppConfig } from "@/lib/config";
-import { getCsrfToken } from "@/lib/csrf";
+import { guardLocalMutation } from "@/lib/guard-local";
 import type { SkillId, SkillProviderConfig } from "@/lib/providers";
-
-function guardLocal(req: Request): NextResponse | null {
-  // Only accept mutations from localhost. The dashboard is meant to be
-  // local-only (BYOK alpha) — binding to 0.0.0.0 without this would leak
-  // API keys over HTTP.
-  const host = (req.headers.get("host") ?? "").split(":")[0];
-  const allowedHosts = new Set(["localhost", "127.0.0.1", "[::1]"]);
-  if (!allowedHosts.has(host)) {
-    return NextResponse.json(
-      { error: "Provider config mutation is only allowed from localhost" },
-      { status: 403 }
-    );
-  }
-  // CSRF: the browser client reads the token from a meta tag embedded by
-  // the server-rendered layout and echoes it in X-CheckApp-CSRF.
-  const csrf = req.headers.get("x-checkapp-csrf");
-  const expected = getCsrfToken();
-  if (csrf !== expected) {
-    return NextResponse.json(
-      { error: "CSRF token missing or invalid" },
-      { status: 403 }
-    );
-  }
-  return null;
-}
 
 export async function GET() {
   const cfg = readAppConfig() as Record<string, unknown>;
@@ -46,8 +21,8 @@ export async function GET() {
   return NextResponse.json({ providers: maskedProviders, hasKey });
 }
 
-export async function PUT(req: Request) {
-  const blocked = guardLocal(req);
+export async function PUT(req: NextRequest) {
+  const blocked = guardLocalMutation(req);
   if (blocked) return blocked;
 
   const body = (await req.json()) as {
@@ -59,7 +34,15 @@ export async function PUT(req: Request) {
 
   const cfg = readAppConfig() as Record<string, unknown>;
   const providers = { ...((cfg.providers as Record<string, unknown>) ?? {}) };
-  providers[body.skillId] = { provider: body.provider, apiKey: body.apiKey, extra: body.extra };
+  const existing = (cfg.providers as Record<string, SkillProviderConfig> | undefined)?.[body.skillId];
+
+  // Preserve existing apiKey when body omits it
+  // Empty string ("") explicitly clears the key; undefined preserves it
+  const apiKey = body.apiKey === undefined
+    ? existing?.apiKey
+    : (body.apiKey === "" ? undefined : body.apiKey);
+
+  providers[body.skillId] = { provider: body.provider, apiKey, extra: body.extra ?? existing?.extra };
   writeAppConfig({ providers });
   return NextResponse.json({ ok: true });
 }

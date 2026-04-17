@@ -2,6 +2,8 @@ import { jsonWithCors } from "@/lib/cors";
 import { addTagsToCheck, getRecentChecks } from "@/lib/db";
 import { runCheckCore, loadContextsIntoConfig } from "@/lib/run-check";
 import { readAppConfig } from "@/lib/config";
+import { guardLocalMutation } from "@/lib/guard-local";
+import { NextRequest } from "next/server";
 import Database from "better-sqlite3";
 import { homedir } from "os";
 import { join } from "path";
@@ -30,10 +32,12 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(req: NextRequest) {
+  const blocked = guardLocalMutation(req);
+  if (blocked) return blocked;
   let sqlite: Database.Database | null = null;
   try {
-    const body = await request.json();
+    const body = await req.json();
     const { text, source, tags } = body as { text?: string; source?: string; tags?: string[] };
     if (!text) return jsonWithCors({ error: "text is required" }, { status: 400 });
     if (text.length > MAX_TEXT_LENGTH) return jsonWithCors({ error: `text exceeds ${MAX_TEXT_LENGTH} characters` }, { status: 400 });

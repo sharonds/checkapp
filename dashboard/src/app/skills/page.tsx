@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
+import { fetchWithCsrf } from "@/lib/fetch-with-csrf";
 import { FooterBar } from "@/components/footer-bar";
 import { LoadingSkeleton } from "@/components/loading-skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -84,7 +85,7 @@ export default function SkillsPage() {
       prev.map((s) => (s.id === skillId ? { ...s, enabled } : s))
     );
     try {
-      const res = await fetch("/api/skills", {
+      const res = await fetchWithCsrf("/api/skills", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ skillId, enabled }),

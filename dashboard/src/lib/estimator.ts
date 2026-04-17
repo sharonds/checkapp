@@ -10,6 +10,7 @@ const EMBED_COST_PER_1K_TOKENS = 0.00002;
 const WORDS_PER_TOKEN = 0.75;
 const LT_MAX_BYTES_PER_REQUEST = 20_000;
 const BYTES_PER_WORD = 6;
+const AI_DETECTION_COST = 0.03;
 
 export interface AppConfigForEstimate {
   providers?: Partial<Record<SkillId, SkillProviderConfig>>;
@@ -31,8 +32,17 @@ export interface EstimateResult {
 
 function providerBase(cfg: AppConfigForEstimate, skillId: SkillId): number {
   const p = cfg.providers?.[skillId];
-  if (!p?.provider) return 0;
-  return getProvider(skillId, p.provider)?.costPerCheckUsd ?? 0;
+  if (p?.provider) {
+    return getProvider(skillId, p.provider)?.costPerCheckUsd ?? 0;
+  }
+  // Legacy fallbacks for old key formats
+  if (skillId === "fact-check" && (cfg as any).exaApiKey) {
+    return getProvider("fact-check", "exa-search")?.costPerCheckUsd ?? 0;
+  }
+  if (skillId === "plagiarism" && (cfg as any).copyscapeKey) {
+    return getProvider("plagiarism", "copyscape")?.costPerCheckUsd ?? 0;
+  }
+  return 0;
 }
 
 export function estimateRunCost(cfg: AppConfigForEstimate, wordCount: number): EstimateResult {
@@ -41,6 +51,9 @@ export function estimateRunCost(cfg: AppConfigForEstimate, wordCount: number): E
   const s = cfg.skills ?? {};
 
   if (s.factCheck) perSkill["fact-check"] = providerBase(cfg, "fact-check") * FACT_CHECK_MAX_CLAIMS;
+  if ((s as any).aiDetection) {
+    perSkill.aiDetection = providerBase(cfg, "ai-detection" as any) || AI_DETECTION_COST;
+  }
   if (s.grammar === true) {
     perSkill.grammar = providerBase(cfg, "grammar");
     const bytes = wordCount * BYTES_PER_WORD;

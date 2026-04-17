@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Loader2, Save } from "lucide-react";
+import { fetchWithCsrf } from "@/lib/fetch-with-csrf";
 import { FooterBar } from "@/components/footer-bar";
 import { LoadingSkeleton } from "@/components/loading-skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -48,6 +49,8 @@ const THRESHOLD_SKILLS = [
   { id: "tone", name: "Tone of Voice" },
   { id: "legal", name: "Legal Risk" },
   { id: "summary", name: "Content Summary" },
+  { id: "brief", name: "Brief Alignment" },
+  { id: "purpose", name: "Purpose Detection" },
 ];
 
 export default function SettingsPage() {
@@ -104,7 +107,7 @@ export default function SettingsPage() {
   async function handleProviderChange(id: string) {
     setProvider(id);
     try {
-      const res = await fetch("/api/config", {
+      const res = await fetchWithCsrf("/api/config", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ llmProvider: id }),
@@ -127,7 +130,7 @@ export default function SettingsPage() {
         if (val.trim()) updates[key] = val.trim();
       }
       if (Object.keys(updates).length > 0) {
-        const res = await fetch("/api/config", {
+        const res = await fetchWithCsrf("/api/config", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(updates),
@@ -161,7 +164,7 @@ export default function SettingsPage() {
   async function handleSaveThresholds() {
     setSavingThresholds(true);
     try {
-      const res = await fetch("/api/config", {
+      const res = await fetchWithCsrf("/api/config", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ thresholds }),
@@ -216,8 +219,8 @@ export default function SettingsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Link href="/settings/providers">
-                <Button variant="outline">Configure →</Button>
+              <Link href="/settings/providers" className="inline-flex items-center justify-center rounded-lg border border-border bg-background hover:bg-muted hover:text-foreground text-sm font-medium px-2.5 h-8 gap-1.5 transition-all">
+                Configure →
               </Link>
             </CardContent>
           </Card>

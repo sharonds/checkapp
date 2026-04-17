@@ -1,6 +1,11 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { POST } from "@/app/api/checks/route";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { NextRequest } from "next/server";
+
+vi.mock("@/lib/csrf", () => ({
+  getCsrfToken: () => "test-csrf-token",
+}));
+
+import { POST } from "@/app/api/checks/route";
 import { getDb, closeDb } from "@/lib/db";
 import { sql } from "drizzle-orm";
 import { writeFileSync, mkdirSync } from "fs";
@@ -54,7 +59,10 @@ describe("POST /api/checks", () => {
       "Machine learning models solve previously intractable problems.";
     const req = new NextRequest("http://localhost/api/checks", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        "x-checkapp-csrf": "test-csrf-token",
+      },
       body: JSON.stringify({ text: article, source: "test-fixture" }),
     });
     const res = await POST(req);
@@ -80,7 +88,10 @@ describe("POST /api/checks", () => {
     const makeReq = (text: string) =>
       new NextRequest("http://localhost/api/checks", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          "x-checkapp-csrf": "test-csrf-token",
+        },
         body: JSON.stringify({ text, source: `test-${text}` }),
       });
 

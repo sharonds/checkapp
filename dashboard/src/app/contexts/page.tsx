@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { fetchWithCsrf } from "@/lib/fetch-with-csrf";
 import { FooterBar } from "@/components/footer-bar";
 import { LoadingSkeleton } from "@/components/loading-skeleton";
 import { Card, CardContent } from "@/components/ui/card";
@@ -106,7 +107,7 @@ export default function ContextsPage() {
     if (!meta) return;
     setSaving(true);
     try {
-      const res = await fetch("/api/contexts", {
+      const res = await fetchWithCsrf("/api/contexts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

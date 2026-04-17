@@ -1,5 +1,7 @@
 import { jsonWithCors } from "@/lib/cors";
 import { getContextByType, deleteContextByType } from "@/lib/db";
+import { guardLocalMutation } from "@/lib/guard-local";
+import { NextRequest } from "next/server";
 
 export async function GET(
   _request: Request,
@@ -18,9 +20,11 @@ export async function GET(
 }
 
 export async function DELETE(
-  _request: Request,
+  req: NextRequest,
   { params }: { params: Promise<{ type: string }> }
 ) {
+  const blocked = guardLocalMutation(req);
+  if (blocked) return blocked;
   try {
     const { type } = await params;
     deleteContextByType(type);

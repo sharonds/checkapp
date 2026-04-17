@@ -9,8 +9,17 @@ interface RegeneratePanelProps {
   hasIssues: boolean;
 }
 
+export function isRerunnableSource(source: string): boolean {
+  if (source === "mcp-check") return false;
+  if (source.startsWith("http://") || source.startsWith("https://")) {
+    return /docs\.google\.com\/document/.test(source);
+  }
+  return source.startsWith("/") || /\.(md|txt|markdown)$/i.test(source);
+}
+
 export function RegeneratePanel({ source, hasIssues }: RegeneratePanelProps) {
   if (!hasIssues) return null;
+  if (!isRerunnableSource(source)) return null;
 
   const safeSource = source.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   const command = `checkapp --fix "${safeSource}"`;

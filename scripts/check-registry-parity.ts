@@ -3,11 +3,70 @@
  *
  * Phase 7 intentionally duplicates PROVIDER_REGISTRY and the cost estimator
  * between src/ (CLI) and dashboard/ (Next.js). This script extracts the
- * provider IDs from both and fails if they diverge.
+ * provider IDs per skill from both and fails if they diverge.
  *
  * Run in CI via: bun run scripts/check-registry-parity.ts
  */
 import { readFileSync } from "fs";
+
+interface SkillProviderMap {
+  [skillId: string]: string[];
+}
+
+// Extract providers from PROVIDER_REGISTRY by skill
+function extractProvidersPerSkill(text: string): SkillProviderMap {
+  const result: SkillProviderMap = {};
+
+  // Match each skill entry: "fact-check": [ {...}, {...} ]
+  const skillRegex = /["']([a-z-]+)["']\s*:\s*\[([\s\S]*?)\]/g;
+  let skillMatch: RegExpExecArray | null;
+
+  while ((skillMatch = skillRegex.exec(text)) !== null) {
+    const skillId = skillMatch[1];
+    const providersBlock = skillMatch[2];
+
+    // Extract id: "..." from each provider in this skill's array
+    const providerIds: string[] = [];
+    const idRegex = /id:\s*["']([^"']+)["']/g;
+    let idMatch: RegExpExecArray | null;
+
+    while ((idMatch = idRegex.exec(providersBlock)) !== null) {
+      providerIds.push(idMatch[1]);
+    }
+
+    if (providerIds.length > 0) {
+      result[skillId] = providerIds;
+    }
+  }
+
+  return result;
+}
+
+export function assertRegistryParity(cli: SkillProviderMap, dash: SkillProviderMap): void {
+  // Check that all skills exist in both and have matching providers in same order
+  const allSkills = new Set([...Object.keys(cli), ...Object.keys(dash)]);
+
+  for (const skill of allSkills) {
+    const cliProviders = cli[skill];
+    const dashProviders = dash[skill];
+
+    if (!cliProviders) {
+      throw new Error(`Skill '${skill}' missing in CLI registry`);
+    }
+    if (!dashProviders) {
+      throw new Error(`Skill '${skill}' missing in dashboard registry`);
+    }
+
+    const cliKey = JSON.stringify(cliProviders);
+    const dashKey = JSON.stringify(dashProviders);
+
+    if (cliKey !== dashKey) {
+      throw new Error(
+        `Provider mismatch for skill '${skill}': CLI has [${cliProviders.join(", ")}], dashboard has [${dashProviders.join(", ")}]`
+      );
+    }
+  }
+}
 
 const files = [
   { path: "src/providers/registry.ts", label: "CLI registry" },
@@ -15,30 +74,14 @@ const files = [
 ];
 
 const contents = files.map(f => ({ ...f, text: readFileSync(f.path, "utf-8") }));
+const [cli, dash] = contents.map(c => extractProvidersPerSkill(c.text));
 
-// Extract all 'id: "<id>"' occurrences inside PROVIDER_REGISTRY entries.
-const extractIds = (text: string): string[] => {
-  const regex = /id:\s*"([^"]+)"/g;
-  const out: string[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = regex.exec(text)) !== null) out.push(m[1]);
-  return out.sort();
-};
-
-const [cli, dash] = contents.map(c => extractIds(c.text));
-
-const cliKey = JSON.stringify(cli);
-const dashKey = JSON.stringify(dash);
-
-if (cliKey !== dashKey) {
+try {
+  assertRegistryParity(cli, dash);
+  const totalSkills = Object.keys(cli).length;
+  console.log(`Registry parity OK: ${totalSkills} skills match between CLI and dashboard.`);
+} catch (err) {
   console.error(`Registry drift detected between ${files[0].path} and ${files[1].path}`);
-  console.error(`  CLI (${cli.length}):       ${cliKey}`);
-  console.error(`  Dashboard (${dash.length}): ${dashKey}`);
-  const missingInDash = cli.filter(x => !dash.includes(x));
-  const missingInCli = dash.filter(x => !cli.includes(x));
-  if (missingInDash.length) console.error(`  Missing in dashboard: ${missingInDash.join(", ")}`);
-  if (missingInCli.length) console.error(`  Missing in CLI:       ${missingInCli.join(", ")}`);
+  console.error(`  Error: ${(err as Error).message}`);
   process.exit(1);
 }
-
-console.log(`Registry parity OK: ${cli.length} providers match between CLI and dashboard.`);

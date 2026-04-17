@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Loader2, Upload, FileText, Link2, AlertCircle } from "lucide-react";
+import { fetchWithCsrf } from "@/lib/fetch-with-csrf";
 import { FooterBar } from "@/components/footer-bar";
 import { SkillCard, type SkillResult } from "@/components/skill-card";
 import { TagInput } from "@/components/tag-input";
@@ -18,6 +19,12 @@ interface CheckResult {
   results: SkillResult[];
 }
 
+interface EstimateState {
+  total: number;
+  perSkill: Record<string, number>;
+  warnings: string[];
+}
+
 export default function CheckPage() {
   const [pastedText, setPastedText] = useState("");
   const [urlValue, setUrlValue] = useState("");
@@ -27,11 +34,8 @@ export default function CheckPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CheckResult | null>(null);
-  const [estimate, setEstimate] = useState<{
-    total: number;
-    perSkill: Record<string, number>;
-    warnings: string[];
-  } | null>(null);
+  const [estimate, setEstimate] = useState<EstimateState | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Debounced cost estimate: re-fetch whenever the pasted text stabilises.
   useEffect(() => {
@@ -41,15 +45,25 @@ export default function CheckPage() {
       return;
     }
     const t = setTimeout(async () => {
+      // Abort any in-flight request
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+
+      abortControllerRef.current = new AbortController();
       try {
         const res = await fetch("/api/estimate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ wordCount: wc }),
+          signal: abortControllerRef.current.signal,
         });
         if (res.ok) setEstimate(await res.json());
-      } catch {
-        /* ignore — estimate is best-effort */
+      } catch (err) {
+        // Ignore abort errors (expected when inputs change)
+        if (err instanceof Error && err.name !== "AbortError") {
+          /* ignore — estimate is best-effort */
+        }
       }
     }, 500);
     return () => clearTimeout(t);
@@ -95,7 +109,7 @@ export default function CheckPage() {
 
     setLoading(true);
     try {
-      const res = await fetch("/api/checks", {
+      const res = await fetchWithCsrf("/api/checks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text, source, tags }),
@@ -185,12 +199,14 @@ export default function CheckPage() {
                   {pastedText.length.toLocaleString()} characters
                 </p>
               )}
-              {estimate && estimate.total > 0 && (
+              {estimate && (estimate.total > 0 || estimate.warnings.length > 0) && (
                 <div className="mt-2 text-sm">
-                  <p>
-                    Estimated cost:{" "}
-                    <strong>${estimate.total.toFixed(4)}</strong>
-                  </p>
+                  {estimate.total > 0 && (
+                    <p>
+                      Estimated cost:{" "}
+                      <strong>${estimate.total.toFixed(4)}</strong>
+                    </p>
+                  )}
                   {estimate.warnings.map((w, i) => (
                     <p key={i} className="mt-1 text-xs text-amber-700">
                       ⚠ {w}

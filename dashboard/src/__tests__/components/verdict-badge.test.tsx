@@ -16,4 +16,8 @@ describe("VerdictBadge", () => {
     render(<VerdictBadge verdict="warn" />);
     expect(screen.getByText("WARN")).toBeDefined();
   });
+  it("renders a 'skipped' badge with a neutral/muted style", () => {
+    render(<VerdictBadge verdict="skipped" />);
+    expect(document.body.textContent).toContain("SKIPPED");
+  });
 });

@@ -13,6 +13,7 @@ const EMBED_COST_PER_1K_TOKENS = 0.00002;
 const WORDS_PER_TOKEN = 0.75;
 const LT_MAX_BYTES_PER_REQUEST = 20_000;
 const BYTES_PER_WORD = 6;
+const AI_DETECTION_COST = 0.03;
 
 export interface EstimateResult {
   perSkill: Record<string, number>;
@@ -35,11 +36,24 @@ export function estimateRunCost(config: Config, wordCount: number): EstimateResu
 
   const providerBase = (id: SkillId): number => {
     const r = resolveProvider(config, id);
-    return r?.metadata?.costPerCheckUsd ?? 0;
+    if (r?.metadata?.costPerCheckUsd) {
+      return r.metadata.costPerCheckUsd;
+    }
+    // Legacy fallbacks for old key formats
+    if (id === "fact-check" && (config as any).exaApiKey) {
+      return resolveProvider({ ...config, providers: { "fact-check": { provider: "exa-search", apiKey: "k" } } }, "fact-check")?.metadata?.costPerCheckUsd ?? 0;
+    }
+    if (id === "plagiarism" && (config as any).copyscapeKey) {
+      return resolveProvider({ ...config, providers: { plagiarism: { provider: "copyscape", apiKey: "k" } } }, "plagiarism")?.metadata?.costPerCheckUsd ?? 0;
+    }
+    return 0;
   };
 
   if (config.skills.factCheck) {
     perSkill["fact-check"] = providerBase("fact-check") * FACT_CHECK_MAX_CLAIMS;
+  }
+  if ((config.skills as any).aiDetection) {
+    perSkill.aiDetection = providerBase("ai-detection" as any) || AI_DETECTION_COST;
   }
   if (config.skills.grammar === true) {
     perSkill.grammar = providerBase("grammar");

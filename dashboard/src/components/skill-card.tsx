@@ -40,7 +40,7 @@ export interface SkillResult {
 export function SkillCard({ result }: { result: SkillResult }) {
   const engine = ENGINE_MAP[result.skillId] ?? "Unknown";
   const visibleFindings = result.findings.filter(
-    (f) => f.severity === "warn" || f.severity === "error"
+    (f) => f.severity === "info" || f.severity === "warn" || f.severity === "error"
   );
 
   return (
@@ -69,9 +69,9 @@ export function SkillCard({ result }: { result: SkillResult }) {
         <CardContent>
           <ul className="space-y-2">
             {visibleFindings.map((f, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm">
+              <li key={i} className="flex items-start gap-2 text-sm" data-testid={`finding-${f.severity}`} data-severity={f.severity}>
                 <span className="shrink-0 mt-0.5">
-                  {f.severity === "error" ? "\u274c" : "\u26a0\ufe0f"}
+                  {f.severity === "error" ? "\u274c" : f.severity === "info" ? "\u2139\ufe0f" : "\u26a0\ufe0f"}
                 </span>
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-start gap-2">

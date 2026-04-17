@@ -91,4 +91,12 @@ describe("estimateRunCost", () => {
     expect(r.total).toBe(0);
     expect(r.warnings.length).toBe(0);
   });
+
+  test("includes AI detection cost when skill enabled", () => {
+    const r = estimateRunCost({
+      ...base({ aiDetection: true }),
+      providers: { "ai-detection": { provider: "copyscape", apiKey: "k" } } as any,
+    }, 800);
+    expect(r.perSkill.aiDetection).toBeCloseTo(0.03);
+  });
 });

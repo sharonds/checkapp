@@ -1,15 +1,28 @@
 import { jsonWithCors } from "@/lib/cors";
 import { readAppConfig, writeAppConfig, getApiKeyStatus } from "@/lib/config";
+import { guardLocalMutation } from "@/lib/guard-local";
+import { NextRequest } from "next/server";
 
 const SKILL_META = [
-  { id: "plagiarism", name: "Plagiarism Check", engine: "Copyscape", requiresKeys: ["copyscape"] },
-  { id: "aiDetection", name: "AI Detection", engine: "Copyscape", requiresKeys: ["copyscape"] },
-  { id: "seo", name: "SEO Analysis", engine: "Offline", requiresKeys: [] },
-  { id: "factCheck", name: "Fact Check", engine: "Exa AI + MiniMax", requiresKeys: ["exa", "minimax"] },
-  { id: "tone", name: "Tone of Voice", engine: "MiniMax", requiresKeys: ["minimax"] },
-  { id: "legal", name: "Legal Risk", engine: "MiniMax", requiresKeys: ["minimax"] },
-  { id: "summary", name: "Content Summary", engine: "MiniMax", requiresKeys: ["minimax"] },
+  { id: "plagiarism", name: "Plagiarism Check", engine: "Copyscape", supportedProviders: ["copyscape"] },
+  { id: "aiDetection", name: "AI Detection", engine: "Copyscape", supportedProviders: ["copyscape"] },
+  { id: "seo", name: "SEO Analysis", engine: "Offline", supportedProviders: [] },
+  { id: "factCheck", name: "Fact Check", engine: "Exa AI + MiniMax", supportedProviders: ["exa"] },
+  { id: "tone", name: "Tone of Voice", engine: "LLM", supportedProviders: ["minimax", "anthropic", "openrouter"] },
+  { id: "legal", name: "Legal Risk", engine: "LLM", supportedProviders: ["minimax", "anthropic", "openrouter"] },
+  { id: "summary", name: "Content Summary", engine: "LLM", supportedProviders: ["minimax", "anthropic", "openrouter"] },
 ];
+
+function isSkillReady(skill: typeof SKILL_META[0], apiKeys: ReturnType<typeof getApiKeyStatus>): boolean {
+  // Skills with no provider requirements are always ready
+  if (skill.supportedProviders.length === 0) return true;
+
+  // Skills requiring providers: check if any supported provider is configured
+  return skill.supportedProviders.some((provider) => {
+    const key = provider as keyof typeof apiKeys;
+    return apiKeys[key] === true;
+  });
+}
 
 export async function GET() {
   try {
@@ -19,7 +32,7 @@ export async function GET() {
     const result = SKILL_META.map((s) => ({
       ...s,
       enabled: skills[s.id] ?? false,
-      keysConfigured: s.requiresKeys.length === 0 || s.requiresKeys.every((k) => apiKeys[k as keyof typeof apiKeys]),
+      ready: isSkillReady(s, apiKeys),
     }));
     return jsonWithCors(result);
   } catch (err) {
@@ -27,9 +40,11 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(req: NextRequest) {
+  const blocked = guardLocalMutation(req);
+  if (blocked) return blocked;
   try {
-    const { skillId, enabled } = await request.json() as { skillId: string; enabled: boolean };
+    const { skillId, enabled } = await req.json() as { skillId: string; enabled: boolean };
     const config = readAppConfig() as Record<string, unknown>;
     const skills = { ...(config.skills as Record<string, boolean> ?? {}) };
     skills[skillId] = enabled;

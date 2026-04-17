@@ -1,14 +1,15 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
+import { NextRequest } from "next/server";
+
+const { mockReadAppConfig, mockWriteAppConfig } = vi.hoisted(() => ({
+  mockReadAppConfig: vi.fn(),
+  mockWriteAppConfig: vi.fn(),
+}));
 
 // Mock config + csrf reads
 vi.mock("@/lib/config", () => ({
-  readAppConfig: vi.fn(() => ({
-    providers: {
-      "fact-check": { provider: "exa-search", apiKey: "SECRET_KEY_SHOULD_NOT_LEAK", extra: { region: "us" } },
-      "grammar": { provider: "languagetool" },
-    },
-  })),
-  writeAppConfig: vi.fn(() => {}),
+  readAppConfig: mockReadAppConfig,
+  writeAppConfig: mockWriteAppConfig,
 }));
 
 vi.mock("@/lib/csrf", () => ({
@@ -20,6 +21,14 @@ import { GET, PUT } from "@/app/api/providers/route";
 describe("/api/providers", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default mock setup
+    mockReadAppConfig.mockReturnValue({
+      providers: {
+        "fact-check": { provider: "exa-search", apiKey: "SECRET_KEY_SHOULD_NOT_LEAK", extra: { region: "us" } },
+        "grammar": { provider: "languagetool" },
+      },
+    });
+    mockWriteAppConfig.mockImplementation(() => {});
   });
 
   test("GET returns providers map", async () => {
@@ -47,12 +56,11 @@ describe("/api/providers", () => {
   });
 
   test("PUT accepts valid body with correct CSRF + localhost host", async () => {
-    const req = new Request("http://localhost:3000/api/providers", {
+    const req = new NextRequest(new URL("http://localhost:3000/api/providers"), {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
         "x-checkapp-csrf": "test-csrf-token",
-        host: "localhost:3000",
       },
       body: JSON.stringify({ skillId: "fact-check", provider: "exa-search", apiKey: "k" }),
     });
@@ -63,9 +71,9 @@ describe("/api/providers", () => {
   });
 
   test("PUT rejects missing CSRF token", async () => {
-    const req = new Request("http://localhost:3000/api/providers", {
+    const req = new NextRequest(new URL("http://localhost:3000/api/providers"), {
       method: "PUT",
-      headers: { "Content-Type": "application/json", host: "localhost:3000" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ skillId: "fact-check", provider: "exa-search", apiKey: "k" }),
     });
     const res = await PUT(req);
@@ -73,12 +81,11 @@ describe("/api/providers", () => {
   });
 
   test("PUT rejects wrong CSRF token", async () => {
-    const req = new Request("http://localhost:3000/api/providers", {
+    const req = new NextRequest(new URL("http://localhost:3000/api/providers"), {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
         "x-checkapp-csrf": "wrong",
-        host: "localhost:3000",
       },
       body: JSON.stringify({ skillId: "fact-check", provider: "exa-search", apiKey: "k" }),
     });
@@ -87,16 +94,102 @@ describe("/api/providers", () => {
   });
 
   test("PUT rejects non-localhost host", async () => {
-    const req = new Request("http://evil.com/api/providers", {
+    const req = new NextRequest(new URL("http://evil.com/api/providers"), {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
         "x-checkapp-csrf": "test-csrf-token",
-        host: "evil.com",
       },
       body: JSON.stringify({ skillId: "fact-check", provider: "exa-search", apiKey: "k" }),
     });
     const res = await PUT(req);
     expect(res.status).toBe(403);
+  });
+
+  test("PUT preserves existing apiKey when body omits it", async () => {
+    mockReadAppConfig.mockReturnValue({
+      providers: {
+        "fact-check": { provider: "exa-search", apiKey: "keep-me" },
+      },
+    });
+
+    const req = new NextRequest(new URL("http://localhost/api/providers"), {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        "x-checkapp-csrf": "test-csrf-token",
+      },
+      body: JSON.stringify({ skillId: "fact-check", provider: "exa-search" }),
+    });
+
+    await PUT(req);
+
+    expect(mockWriteAppConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providers: expect.objectContaining({
+          "fact-check": expect.objectContaining({
+            apiKey: "keep-me",
+          }),
+        }),
+      })
+    );
+  });
+
+  test("PUT with empty apiKey string clears the key", async () => {
+    mockReadAppConfig.mockReturnValue({
+      providers: {
+        "fact-check": { provider: "exa-search", apiKey: "old-key" },
+      },
+    });
+
+    const req = new NextRequest(new URL("http://localhost/api/providers"), {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        "x-checkapp-csrf": "test-csrf-token",
+      },
+      body: JSON.stringify({ skillId: "fact-check", provider: "exa-search", apiKey: "" }),
+    });
+
+    await PUT(req);
+
+    expect(mockWriteAppConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providers: expect.objectContaining({
+          "fact-check": expect.objectContaining({
+            apiKey: undefined,
+          }),
+        }),
+      })
+    );
+  });
+
+  test("PUT with new apiKey overwrites existing", async () => {
+    mockReadAppConfig.mockReturnValue({
+      providers: {
+        "fact-check": { provider: "exa-search", apiKey: "old-key" },
+      },
+    });
+
+    const req = new NextRequest(new URL("http://localhost/api/providers"), {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        "x-checkapp-csrf": "test-csrf-token",
+      },
+      body: JSON.stringify({ skillId: "fact-check", provider: "exa-search", apiKey: "new-key" }),
+    });
+
+    await PUT(req);
+
+    expect(mockWriteAppConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providers: expect.objectContaining({
+          "fact-check": expect.objectContaining({
+            apiKey: "new-key",
+          }),
+        }),
+      })
+    );
   });
 });

@@ -1,4 +1,5 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
+import { NextRequest } from "next/server";
 
 vi.mock("@/lib/config", () => ({
   readAppConfig: vi.fn(() => ({
@@ -18,7 +19,7 @@ describe("/api/estimate", () => {
   });
 
   test("returns cost for given wordCount", async () => {
-    const req = new Request("http://localhost/api/estimate", {
+    const req = new NextRequest(new URL("http://localhost/api/estimate"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ wordCount: 1000 }),
@@ -31,7 +32,7 @@ describe("/api/estimate", () => {
   });
 
   test("emits warning for 20KB-exceeding article", async () => {
-    const req = new Request("http://localhost/api/estimate", {
+    const req = new NextRequest(new URL("http://localhost/api/estimate"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ wordCount: 5000 }),
@@ -42,7 +43,7 @@ describe("/api/estimate", () => {
   });
 
   test("returns 400 on malformed body", async () => {
-    const req = new Request("http://localhost/api/estimate", {
+    const req = new NextRequest(new URL("http://localhost/api/estimate"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: "not json",
