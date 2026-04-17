@@ -16,8 +16,14 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
+interface SafeProviderConfig {
+  provider?: string;
+  extra?: Record<string, string>;
+  hasKey?: boolean;
+}
+
 interface Props {
-  initialProviders: Partial<Record<SkillId, SkillProviderConfig>>;
+  initialProviders: Partial<Record<SkillId, SafeProviderConfig>>;
   skillIds: SkillId[];
 }
 
@@ -39,8 +45,9 @@ function ProviderChips({ p }: { p: ProviderMetadata }) {
 
 export function ProvidersForm({ initialProviders, skillIds }: Props) {
   const [providers, setProviders] =
-    useState<Partial<Record<SkillId, SkillProviderConfig>>>(initialProviders);
+    useState<Partial<Record<SkillId, SafeProviderConfig | SkillProviderConfig>>>(initialProviders);
   const [saving, setSaving] = useState<SkillId | null>(null);
+  const [apiKeyInput, setApiKeyInput] = useState<Partial<Record<SkillId, string>>>({});
 
   async function save(skillId: SkillId) {
     const current = providers[skillId];
@@ -50,23 +57,29 @@ export function ProvidersForm({ initialProviders, skillIds }: Props) {
     }
     setSaving(skillId);
     try {
+      const userInput = apiKeyInput[skillId] ?? "";
+      const payload: any = {
+        skillId,
+        provider: current.provider,
+        extra: current.extra,
+      };
+      // Only include apiKey in request if user typed something
+      if (userInput) {
+        payload.apiKey = userInput;
+      }
       const res = await fetchWithCsrf("/api/providers", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          skillId,
-          provider: current.provider,
-          apiKey: current.apiKey,
-          extra: current.extra,
-        }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error ?? `HTTP ${res.status}`);
       }
       toast.success(`${SKILL_LABELS[skillId]} saved`);
+      setApiKeyInput((prev) => ({ ...prev, [skillId]: "" })); // Clear input after save
     } catch (err) {
       toast.error(`Save failed: ${(err as Error).message}`);
     } finally {
@@ -95,7 +108,7 @@ export function ProvidersForm({ initialProviders, skillIds }: Props) {
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
                 <span>{SKILL_LABELS[skillId]}</span>
-                {current?.apiKey && (
+                {(current as any)?.hasKey && (
                   <Badge className="bg-green-100 text-green-900">configured</Badge>
                 )}
               </CardTitle>
@@ -131,13 +144,13 @@ export function ProvidersForm({ initialProviders, skillIds }: Props) {
                     id={`key-${skillId}`}
                     type="password"
                     placeholder={
-                      current?.apiKey
-                        ? "saved — leave blank to keep"
+                      (current as any)?.hasKey
+                        ? "••••••• (configured — leave blank to keep)"
                         : "Paste your API key"
                     }
-                    value={current?.apiKey ?? ""}
+                    value={apiKeyInput[skillId] ?? ""}
                     onChange={(e) =>
-                      update(skillId, { apiKey: e.target.value || undefined })
+                      setApiKeyInput((prev) => ({ ...prev, [skillId]: e.target.value }))
                     }
                   />
                 </div>

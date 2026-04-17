@@ -4,11 +4,29 @@ import { ProvidersForm } from "./ProvidersForm";
 
 export const dynamic = "force-dynamic"; // Reads config file at render
 
+interface SafeProviderConfig {
+  provider?: string;
+  extra?: Record<string, string>;
+  hasKey?: boolean;
+}
+
 export default function ProvidersPage() {
   const cfg = readAppConfig() as Record<string, unknown>;
-  const initialProviders =
+  const rawProviders =
     (cfg.providers as Partial<Record<SkillId, SkillProviderConfig>>) ?? {};
   const skillIds = Object.keys(PROVIDER_REGISTRY) as SkillId[];
+
+  // Strip apiKey from config before passing to client component
+  const safeProviders: Partial<Record<SkillId, SafeProviderConfig>> = Object.fromEntries(
+    Object.entries(rawProviders).map(([id, p]) => [
+      id,
+      {
+        provider: p?.provider,
+        extra: p?.extra,
+        hasKey: Boolean(p?.apiKey),
+      },
+    ])
+  );
 
   return (
     <div className="flex flex-1 flex-col">
@@ -24,7 +42,7 @@ export default function ProvidersPage() {
             </p>
           </header>
           <ProvidersForm
-            initialProviders={initialProviders}
+            initialProviders={safeProviders}
             skillIds={skillIds}
           />
         </div>
