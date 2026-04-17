@@ -4,7 +4,7 @@ import { sqliteTable, integer, text, real } from "drizzle-orm/sqlite-core";
 import { desc, eq, sql } from "drizzle-orm";
 import { homedir } from "os";
 import { join } from "path";
-import { existsSync, renameSync } from "fs";
+import { existsSync, renameSync, mkdirSync } from "fs";
 
 const CONFIG_DIR = join(homedir(), ".checkapp");
 const LEGACY_DIRS = [
@@ -66,7 +66,12 @@ let _sqlite: InstanceType<typeof Database> | null = null;
 
 export function getDb() {
   if (!_db) {
-    const dbPath = process.env.CHECKAPP_DB ?? DB_PATH;
+    // Accept both new and legacy env var names. New wins if both set.
+    const dbPath = process.env.CHECKAPP_DB ?? process.env.ARTICLE_CHECKER_DB ?? DB_PATH;
+    // Ensure the parent directory exists for the default on-disk path only
+    if (dbPath === DB_PATH) {
+      mkdirSync(CONFIG_DIR, { recursive: true });
+    }
     _sqlite = new Database(dbPath);
     // Create tags tables if they don't exist (the CLI may not have created them)
     _sqlite.pragma("journal_mode = WAL");

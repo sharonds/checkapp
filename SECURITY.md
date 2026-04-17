@@ -4,7 +4,7 @@
 
 If you discover a security vulnerability, please **do not** open a public GitHub issue.
 
-Instead, open a [GitHub issue](https://github.com/sharonds/checkapp/issues) with the title prefix `[security]` — this flags it for private review.
+Instead, please report it privately via [GitHub Security Advisories](https://github.com/sharonds/checkapp/security/advisories/new).
 
 I'll respond within 48 hours and aim to release a fix within 7 days for confirmed vulnerabilities.
 

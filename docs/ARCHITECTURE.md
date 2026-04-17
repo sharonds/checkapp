@@ -6,7 +6,7 @@ Technical reference for contributors and integrators.
 
 CheckApp is a single-binary CLI that checks AI-generated articles for plagiarism before they go live. It accepts a Google Doc URL, exports the plain text, submits it to Copyscape's content-search API, and renders a scored verdict in the terminal. An optional second layer using Parallel AI's Extract API enriches each match with the specific sentences that overlap between the article and the flagged source pages.
 
-The tool is intentionally minimal: no database, no server, no cloud dependency beyond the APIs it calls. All state lives in one JSON file on disk.
+The tool is still intentionally lightweight, but the current codebase is not "no database, no server." In addition to the CLI, it includes a web dashboard, and it persists history/context data locally in SQLite at `~/.checkapp/history.db`. External cloud dependencies remain limited to the APIs it calls.
 
 ---
 
@@ -76,8 +76,8 @@ Google Doc URL
 | `src/copyscape.ts` | Posts article text to the Copyscape content-search API, parses the XML response into a typed `CopyscapeResult`, applies verdict thresholds, handles the "insufficient credits" error as a non-fatal warning. |
 | `src/setup.tsx` | Ink/React interactive wizard that collects Copyscape username, Copyscape API key, and (optionally) a Parallel AI API key. Saves all credentials to disk via `config.ts`. |
 | `src/check.tsx` | Ink/React component that orchestrates the full check flow: reading → checking → enriching (optional) → done/error. Renders the `Report` component with the final result and any matched passages. |
-| `src/parallel.ts` | *(planned)* Parallel Extract API client. Accepts a list of URLs and an API key, POSTs to `https://api.parallel.ai/v1beta/extract`, returns `ExtractPage[]` with `{ url, content }`. |
-| `src/passage.ts` | *(planned)* Passage matcher. Splits article text into sentences, filters those with fewer than 8 words, and returns those that appear verbatim (case-insensitive) in a given page content string. |
+| `src/parallel.ts` | Parallel Extract API client. Accepts a list of URLs and an API key, POSTs to `https://api.parallel.ai/v1beta/extract`, returns `ExtractPage[]` with `{ url, content }`. |
+| `src/passage.ts` | Passage matcher. Splits article text into sentences, filters those with fewer than 8 words, and returns those that appear verbatim (case-insensitive) in a given page content string. |
 
 ---
 
