@@ -1,4 +1,4 @@
-# Checkit — Dashboard API Reference
+# CheckApp — Dashboard API Reference
 
 The web dashboard exposes a JSON API at `http://localhost:3000/api` when running locally. All endpoints return JSON with CORS headers enabled.
 

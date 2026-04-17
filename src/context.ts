@@ -19,10 +19,10 @@ export function parseContextArgs(args: string[]): ContextArgs {
 export function runContextCommand(args: string[]): void {
   if (args.length === 0 || args[0] === "help") {
     console.log("Usage:");
-    console.log("  checkit context add <type> <file>    Add/update a context document");
-    console.log("  checkit context list                 List all saved contexts");
-    console.log("  checkit context show <type>          Show context content");
-    console.log("  checkit context remove <type>        Remove a context");
+    console.log("  checkapp context add <type> <file>    Add/update a context document");
+    console.log("  checkapp context list                 List all saved contexts");
+    console.log("  checkapp context show <type>          Show context content");
+    console.log("  checkapp context remove <type>        Remove a context");
     console.log("");
     console.log("Types: tone-guide, legal-policy, brief, style-guide, custom");
     return;
@@ -35,7 +35,7 @@ export function runContextCommand(args: string[]): void {
     case "add":
     case "update": {
       if (!parsed.type || !parsed.path) {
-        console.error("Usage: checkit context add <type> <file>");
+        console.error("Usage: checkapp context add <type> <file>");
         process.exit(1);
       }
       if (!existsSync(parsed.path)) {
@@ -57,7 +57,7 @@ export function runContextCommand(args: string[]): void {
       const contexts = listContexts(db);
       if (contexts.length === 0) {
         console.log("No contexts saved.");
-        console.log("Add one: checkit context add tone-guide ./brand-voice.md");
+        console.log("Add one: checkapp context add tone-guide ./brand-voice.md");
         return;
       }
       console.log("\nSaved contexts:\n");
@@ -68,7 +68,7 @@ export function runContextCommand(args: string[]): void {
       break;
     }
     case "show": {
-      if (!parsed.type) { console.error("Usage: checkit context show <type>"); process.exit(1); }
+      if (!parsed.type) { console.error("Usage: checkapp context show <type>"); process.exit(1); }
       const ctx = getContext(db, parsed.type);
       if (!ctx) { console.log(`No context found for: ${parsed.type}`); return; }
       console.log(`\n--- ${ctx.type} (${ctx.content.length} chars) ---\n`);
@@ -76,7 +76,7 @@ export function runContextCommand(args: string[]): void {
       break;
     }
     case "remove": {
-      if (!parsed.type) { console.error("Usage: checkit context remove <type>"); process.exit(1); }
+      if (!parsed.type) { console.error("Usage: checkapp context remove <type>"); process.exit(1); }
       deleteContext(db, parsed.type);
       console.log(`Removed context: ${parsed.type}`);
       break;

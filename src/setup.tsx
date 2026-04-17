@@ -61,7 +61,7 @@ function Setup({ existingConfig, onComplete }: SetupProps) {
       {/* Header */}
       <Box borderStyle="round" borderColor="cyan" paddingX={2} paddingY={0}>
         <Text bold color="cyan">
-          Checkit — {incremental ? "Update Credentials" : "First-time Setup"}
+          CheckApp — {incremental ? "Update Credentials" : "First-time Setup"}
         </Text>
       </Box>
 
@@ -161,7 +161,7 @@ function Setup({ existingConfig, onComplete }: SetupProps) {
           <Text color="green" bold>
             ✓ All set! Run the checker:
           </Text>
-          <Text dimColor>  checkit {"<google-doc-url>"}</Text>
+          <Text dimColor>  checkapp {"<google-doc-url>"}</Text>
         </Box>
       )}
       {step === "error" && (

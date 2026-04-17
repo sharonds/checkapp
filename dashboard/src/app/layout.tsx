@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Checkit Dashboard",
+  title: "CheckApp Dashboard",
   description: "Browse check history, run checks, and manage skills",
 };
 

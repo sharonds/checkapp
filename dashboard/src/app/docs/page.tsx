@@ -41,10 +41,10 @@ function CodeBlock({ children }: { children: string }) {
 function GettingStarted() {
   return (
     <div>
-      <SectionHeading>What is Checkit?</SectionHeading>
+      <SectionHeading>What is CheckApp?</SectionHeading>
       <Prose>
         <p>
-          Checkit is a CLI tool and dashboard that runs multiple quality
+          CheckApp is a CLI tool and dashboard that runs multiple quality
           checks on your articles: plagiarism detection, AI content detection,
           SEO analysis, fact checking, tone-of-voice compliance, legal risk
           scanning, brief matching, and content summarization. It supports
@@ -63,15 +63,15 @@ function GettingStarted() {
           After installing, run the setup wizard to configure your API keys:
         </p>
       </Prose>
-      <CodeBlock>{`bun run checkit --setup`}</CodeBlock>
+      <CodeBlock>{`bun run checkapp --setup`}</CodeBlock>
       <Prose>
         <p>Then check an article:</p>
       </Prose>
-      <CodeBlock>{`bun run checkit path/to/article.md`}</CodeBlock>
+      <CodeBlock>{`bun run checkapp path/to/article.md`}</CodeBlock>
       <Prose>
         <p>Or launch the dashboard for a visual experience:</p>
       </Prose>
-      <CodeBlock>{`bun run checkit --ui`}</CodeBlock>
+      <CodeBlock>{`bun run checkapp --ui`}</CodeBlock>
 
       <SectionHeading>Understanding scores</SectionHeading>
       <Prose>
@@ -312,7 +312,7 @@ function CliReference() {
       <SectionHeading>CLI Reference</SectionHeading>
 
       <SubHeading>Basic usage</SubHeading>
-      <CodeBlock>{`bun run checkit <file>`}</CodeBlock>
+      <CodeBlock>{`bun run checkapp <file>`}</CodeBlock>
       <Prose>
         <p>
           Run all enabled checks on a single article file (.md or .txt).
@@ -320,7 +320,7 @@ function CliReference() {
       </Prose>
 
       <SubHeading>Batch mode</SubHeading>
-      <CodeBlock>{`bun run checkit --batch <directory>`}</CodeBlock>
+      <CodeBlock>{`bun run checkapp --batch <directory>`}</CodeBlock>
       <Prose>
         <p>
           Check all article files in a directory. Results are saved per-file.
@@ -328,19 +328,19 @@ function CliReference() {
       </Prose>
 
       <SubHeading>Custom output</SubHeading>
-      <CodeBlock>{`bun run checkit <file> --output report.md`}</CodeBlock>
+      <CodeBlock>{`bun run checkapp <file> --output report.md`}</CodeBlock>
       <Prose>
         <p>Write results to a JSON file instead of the default location.</p>
       </Prose>
 
       <SubHeading>View history</SubHeading>
-      <CodeBlock>{`bun run checkit --history`}</CodeBlock>
+      <CodeBlock>{`bun run checkapp --history`}</CodeBlock>
       <Prose>
         <p>List all previous check results stored locally.</p>
       </Prose>
 
       <SubHeading>Interactive setup</SubHeading>
-      <CodeBlock>{`bun run checkit --setup`}</CodeBlock>
+      <CodeBlock>{`bun run checkapp --setup`}</CodeBlock>
       <Prose>
         <p>
           Launch the setup wizard to configure API keys and skill preferences
@@ -349,13 +349,13 @@ function CliReference() {
       </Prose>
 
       <SubHeading>Launch dashboard</SubHeading>
-      <CodeBlock>{`bun run checkit --ui`}</CodeBlock>
+      <CodeBlock>{`bun run checkapp --ui`}</CodeBlock>
       <Prose>
         <p>Start the web dashboard on localhost:3000.</p>
       </Prose>
 
       <SubHeading>CI mode</SubHeading>
-      <CodeBlock>{`bun run checkit --ci ./article.md`}</CodeBlock>
+      <CodeBlock>{`bun run checkapp --ci ./article.md`}</CodeBlock>
       <Prose>
         <p>
           Run checks and exit with code 1 if any skill returns a fail verdict.
@@ -364,7 +364,7 @@ function CliReference() {
       </Prose>
 
       <SubHeading>JSON output</SubHeading>
-      <CodeBlock>{`bun run checkit --json ./article.md`}</CodeBlock>
+      <CodeBlock>{`bun run checkapp --json ./article.md`}</CodeBlock>
       <Prose>
         <p>
           Output structured JSON instead of the terminal UI. Useful for scripts,
@@ -373,7 +373,7 @@ function CliReference() {
       </Prose>
 
       <SubHeading>Fix issues with AI</SubHeading>
-      <CodeBlock>{`bun run checkit --fix ./article.md`}</CodeBlock>
+      <CodeBlock>{`bun run checkapp --fix ./article.md`}</CodeBlock>
       <Prose>
         <p>
           Run all checks then generate AI-suggested rewrites for every flagged
@@ -383,7 +383,7 @@ function CliReference() {
       </Prose>
 
       <SubHeading>MCP server</SubHeading>
-      <CodeBlock>{`bun run checkit --mcp`}</CodeBlock>
+      <CodeBlock>{`bun run checkapp --mcp`}</CodeBlock>
       <Prose>
         <p>
           Start the MCP server for AI agent integration with Claude Code, Cursor,
@@ -394,19 +394,19 @@ function CliReference() {
 
       <SubHeading>Context management</SubHeading>
       <CodeBlock>{`# Upload a tone guide
-bun run checkit context add tone-guide ./brand-voice.md
+bun run checkapp context add tone-guide ./brand-voice.md
 
 # Upload a content brief
-bun run checkit context add brief ./campaign-brief.md
+bun run checkapp context add brief ./campaign-brief.md
 
 # List all contexts
-bun run checkit context list
+bun run checkapp context list
 
 # View a context
-bun run checkit context show tone-guide
+bun run checkapp context show tone-guide
 
 # Remove a context
-bun run checkit context remove brief`}</CodeBlock>
+bun run checkapp context remove brief`}</CodeBlock>
       <Prose>
         <p>
           Manage context documents (tone guides, briefs, legal policies) that
@@ -422,7 +422,7 @@ function Faq() {
   const faqs = [
     {
       q: "Where is my data stored?",
-      a: "All data is stored locally at ~/.checkit/. This includes your config file (config.json), check history database (history.db), and any cached results. Nothing is stored on remote servers by Checkit itself.",
+      a: "All data is stored locally at ~/.checkapp/. This includes your config file (config.json), check history database (history.db), and any cached results. Nothing is stored on remote servers by CheckApp itself.",
     },
     {
       q: "What's the cost per check?",
@@ -441,7 +441,7 @@ function Faq() {
       a: "Only the SEO Analysis skill works offline. All other skills require internet access and valid API keys for their respective services.",
     },
     {
-      q: "How do I update Checkit?",
+      q: "How do I update CheckApp?",
       a: "Pull the latest version from the repository and run bun install. Your config and history data will be preserved across updates.",
     },
   ];
@@ -473,7 +473,7 @@ export default function DocsPage() {
           Documentation
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Learn how to use Checkit -- from first check to advanced
+          Learn how to use CheckApp -- from first check to advanced
           configuration.
         </p>
 

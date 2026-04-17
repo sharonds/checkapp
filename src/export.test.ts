@@ -14,7 +14,7 @@ describe("generateMarkdownReport", () => {
 
   it("includes report header with source and score", () => {
     const md = generateMarkdownReport(mockRecord);
-    expect(md).toContain("# Checkit Report");
+    expect(md).toContain("# CheckApp Report");
     expect(md).toContain("test.md");
     expect(md).toContain("75");
     expect(md).toContain("PASS");
@@ -64,6 +64,6 @@ describe("generateMarkdownReport", () => {
   it("includes footer with MIT license", () => {
     const md = generateMarkdownReport(mockRecord);
     expect(md).toContain("MIT License");
-    expect(md).toContain("github.com/sharonds/checkit");
+    expect(md).toContain("github.com/sharonds/checkapp");
   });
 });

@@ -1,9 +1,9 @@
 {
-  "name": "checkit",
+  "name": "checkapp",
   "version": "1.0.0",
   "description": "Plagiarism checker for AI-generated articles. Terminal UI powered by Ink + Copyscape.",
   "bin": {
-    "checkit": "./src/index.tsx"
+    "checkapp": "./src/index.tsx"
   },
   "scripts": {
     "start": "bun src/index.tsx",

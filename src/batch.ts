@@ -79,7 +79,7 @@ export async function runBatch(dir: string): Promise<BatchResult[]> {
       });
 
       // Write individual HTML report
-      const reportPath = `checkit-report-${basename(file, extname(file))}.html`;
+      const reportPath = `checkapp-report-${basename(file, extname(file))}.html`;
       writeFileSync(
         reportPath,
         generateReport({

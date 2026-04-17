@@ -1,10 +1,10 @@
-# Checkit — Roadmap
+# CheckApp — Roadmap
 
 ## Phase 7 — Research-Backed Editor (planning)
 
-Full strategy doc (in checkit-landing repo): `docs/superpowers/roadmap/2026-04-17-phase7-research-backed-editor.md`
+Full strategy doc (in checkapp-landing repo): `docs/superpowers/roadmap/2026-04-17-phase7-research-backed-editor.md`
 
-**Thesis:** Turn Checkit from a quality gate (runs after you write) into a research-backed editor (runs with you, gives evidence + fixes, not just flags). Every flagged issue ends with: evidence, rewrite suggestion, cited source, and a grammar pass.
+**Thesis:** Turn CheckApp from a quality gate (runs after you write) into a research-backed editor (runs with you, gives evidence + fixes, not just flags). Every flagged issue ends with: evidence, rewrite suggestion, cited source, and a grammar pass.
 
 ### New skills
 - **Grammar & Style** — LanguageTool / Sapling / LLM fallback. Deterministic grammar, punctuation, style. Fills the gap the LLM tone skill cannot catch.
@@ -14,16 +14,16 @@ Full strategy doc (in checkit-landing repo): `docs/superpowers/roadmap/2026-04-1
 - **Claim Drill-Down UI** — Click any claim in the dashboard, see 3 sources with quoted passages.
 
 ### Options-per-category model
-Each skill gets a provider dropdown in Settings. User picks engine (with speed/cost/depth/free-tier info), supplies their own API key. Checkit does not bundle tokens.
+Each skill gets a provider dropdown in Settings. User picks engine (with speed/cost/depth/free-tier info), supplies their own API key. CheckApp does not bundle tokens.
 
 ### Upgrades to existing skills
 - Fact Check → `type: deep-reasoning` option; Exa Contents API `highlights` mode (10× token savings)
 - Plagiarism → Copysentry monitoring option (ongoing post-publish watch)
 - Dashboard → provider picker per skill + cost estimator before run
 
-## Phase 8 — Checkit Studio (vision)
+## Phase 8 — CheckApp Studio (vision)
 
-A web editor (tiptap/monaco) where writers compose WITH Checkit active. Checks run live in the margin. Rewrite co-pilot always available. Research panel on-demand. Built on Vercel AI SDK v6 + `useChat` + `ToolLoopAgent`. Vercel-deployed, authenticated, cloud config. This is a separate product from the CLI — CLI stays for power users + CI. Studio becomes the primary user-facing app for Phase 8+.
+A web editor (tiptap/monaco) where writers compose WITH CheckApp active. Checks run live in the margin. Rewrite co-pilot always available. Research panel on-demand. Built on Vercel AI SDK v6 + `useChat` + `ToolLoopAgent`. Vercel-deployed, authenticated, cloud config. This is a separate product from the CLI — CLI stays for power users + CI. Studio becomes the primary user-facing app for Phase 8+.
 
 ## Done (Phase 1-3) — CLI Foundation
 - ~~7 skills: plagiarism, AI detection, SEO, fact-check, tone, legal, content summary~~
@@ -34,7 +34,7 @@ A web editor (tiptap/monaco) where writers compose WITH Checkit active. Checks r
 - ~~Custom skill authoring guide~~
 
 ## Done (Phase 4) — Web Dashboard
-- ~~Local dashboard (`checkit --ui`) with 6 pages~~
+- ~~Local dashboard (`checkapp --ui`) with 6 pages~~
 - ~~Tags + search, dark mode, export buttons~~
 - ~~JSON API for dashboard, LLM provider picker~~
 - ~~13 PR review fixes (security, correctness, docs)~~
@@ -42,20 +42,20 @@ A web editor (tiptap/monaco) where writers compose WITH Checkit active. Checks r
 ## Done (Phase 5) — Context System + Agent Integration
 
 ### Context Library
-- **Context storage** — `~/.checkit/contexts/` directory + `contexts` table in SQLite
+- **Context storage** — `~/.checkapp/contexts/` directory + `contexts` table in SQLite
 - **Context types**: tone-guide, legal-policy, brief, style-guide, custom
-- **Upload flows**: dashboard Contexts page (upload/paste/link), CLI `checkit context add <type> <file>`
-- **Update flows**: edit in dashboard, CLI `checkit context update <type> <file>`, version history
+- **Upload flows**: dashboard Contexts page (upload/paste/link), CLI `checkapp context add <type> <file>`
+- **Update flows**: edit in dashboard, CLI `checkapp context update <type> <file>`, version history
 - **Auto-use in skills**: tone skill reads tone-guide, legal reads legal-policy, new brief skill reads brief
-- **Override per run**: `checkit ./article.md --brief ./campaign-brief.md`
+- **Override per run**: `checkapp ./article.md --brief ./campaign-brief.md`
 - **Dashboard page**: browse contexts, preview content, upload new, edit inline, delete
 
 ### Agent Integration
 - **MCP server** — expose as MCP tools: `check_article`, `list_reports`, `search_reports`, `upload_context`, `get_skills`. Local agents (Claude Code, Cursor) call tools directly, no HTTP
 - **AGENTS.md** — document how agents interact: MCP tools, CLI commands, context management
-- **OpenClaw skill** — `checkit` as an OpenClaw skill with full CLI access
-- **CLI JSON output** — `checkit --json ./article.md` returns structured JSON for piping
-- **CI/CD mode** — `checkit --ci ./article.md` exits 1 on fail, for PR gates
+- **OpenClaw skill** — `checkapp` as an OpenClaw skill with full CLI access
+- **CLI JSON output** — `checkapp --json ./article.md` returns structured JSON for piping
+- **CI/CD mode** — `checkapp --ci ./article.md` exits 1 on fail, for PR gates
 
 ### Brief Matching Skill
 - **New skill**: upload a content brief (target word count, required topics, key messages, audience)

@@ -1,4 +1,4 @@
-# Checkit
+# CheckApp
 
 > AI content quality gate for marketing teams. CLI + web dashboard that returns plagiarism, AI-detection, SEO score, fact-check, tone-of-voice, legal risk, brief matching, and content summary — before you publish. Supports context management (tone guides, briefs, legal policies), MCP server for AI agent integration, batch checking, CI mode, JSON output, tags, search, report export, and a local web dashboard for browsing results and managing skills.
 
@@ -10,9 +10,9 @@
 
 ---
 
-## What Is Checkit?
+## What Is CheckApp?
 
-Checkit is a pluggable CLI tool that runs a configurable set of quality checks on any article — a Google Doc URL or a local `.md`/`.txt` file — before it goes live.
+CheckApp is a pluggable CLI tool that runs a configurable set of quality checks on any article — a Google Doc URL or a local `.md`/`.txt` file — before it goes live.
 
 Each check is a **skill** you can enable or disable. Results appear in the terminal and are automatically saved as an HTML report and to a local SQLite history database.
 
@@ -50,25 +50,25 @@ All enabled skills run in parallel. Adding more skills does not increase total t
 | **Content summary** | Analyzes topic, main argument, target audience, and tone (informational/persuasive/conversational/technical/promotional). |
 | **SEO keyword detection** | Extracts the top keyword and checks whether it appears in the first paragraph. |
 | **Fact-check confidence** | Each claim now shows high/medium/low confidence based on the number of supporting sources found. |
-| **Batch checking** | Check all `.md`/`.txt` files in a directory with `checkit --batch ./articles/`. |
+| **Batch checking** | Check all `.md`/`.txt` files in a directory with `checkapp --batch ./articles/`. |
 | **Configurable thresholds** | Custom pass/warn/fail score cutoffs per skill via `config.json`. |
 | **HTML report** | Self-contained, no-dependency HTML file. Score bars, verdict badges, per-finding citations. Opens in browser automatically. |
-| **SQLite history** | Every check is saved to `~/.checkit/history.db`. Query with `--history`. |
+| **SQLite history** | Every check is saved to `~/.checkapp/history.db`. Query with `--history`. |
 | **Google Doc support** | Paste a publicly-shared Google Doc URL. No Google auth required. |
 | **Local file support** | Pass a `.md` or `.txt` file path. Works offline for the fetch step. |
 | **Single binary** | No Node.js, Bun, or runtime required. |
-| **Web dashboard** | Local Next.js UI — overview stats, report browser, run checks, manage skills and settings, in-app docs. Start with `checkit --ui`. |
+| **Web dashboard** | Local Next.js UI — overview stats, report browser, run checks, manage skills and settings, in-app docs. Start with `checkapp --ui`. |
 | **`--ui` flag** | Launches the dashboard dev server and opens `http://localhost:3000` in your browser. |
 | **`--output` export** | `--output report.md` or `--output report.html` — save the report to a file. |
 | **Tags + search** | Attach tags to checks, search across all history by text or tag via dashboard or API. |
 | **JSON API** | RESTful API at `localhost:3000/api` for running checks, managing tags, toggling skills. See [docs/api.md](docs/api.md). |
-| **Context system** | Upload tone guides, content briefs, legal policies, and style guides. Contexts are stored in SQLite and automatically loaded by relevant skills. Manage via CLI (`checkit context add/list/show/remove`) or the dashboard Contexts page. |
-| **MCP server** | 8 tools for AI agent integration (Claude Code, Cursor, Windsurf). Start with `checkit --mcp`. Tools: `check_article`, `list_reports`, `get_report`, `upload_context`, `list_contexts`, `get_skills`, `toggle_skill`, `regenerate_article`. |
+| **Context system** | Upload tone guides, content briefs, legal policies, and style guides. Contexts are stored in SQLite and automatically loaded by relevant skills. Manage via CLI (`checkapp context add/list/show/remove`) or the dashboard Contexts page. |
+| **MCP server** | 8 tools for AI agent integration (Claude Code, Cursor, Windsurf). Start with `checkapp --mcp`. Tools: `check_article`, `list_reports`, `get_report`, `upload_context`, `list_contexts`, `get_skills`, `toggle_skill`, `regenerate_article`. |
 | **CI mode (`--ci`)** | Exits with code 1 if any skill returns a `fail` verdict. Designed for CI/CD pipelines. |
 | **JSON output (`--json`)** | Outputs structured JSON instead of the Ink terminal UI. Ideal for scripts, agents, and piping. |
 | **Brief matching** | Checks article against an uploaded content brief. Verifies coverage of required topics, audience alignment, and tone match. Requires a `brief` context. |
 | **Content purpose detection** | Detects article type (tutorial, product announcement, case study, thought leadership, etc.) and provides purpose-specific recommendations for missing elements. |
-| **Regenerate/fix** | `checkit --fix <file>` runs all checks then generates AI-suggested rewrites for every flagged sentence, using tone guide and legal policy contexts. |
+| **Regenerate/fix** | `checkapp --fix <file>` runs all checks then generates AI-suggested rewrites for every flagged sentence, using tone guide and legal policy contexts. |
 | **Cross-platform** | Mac (Apple Silicon + Intel), Linux, Windows. |
 
 ---
@@ -89,7 +89,7 @@ API cost:        $0.080
 ❌   SEO:  310 words · avg 17-word sentences · readability: Medium  (49/100)
 ────────────────────────────────────────────────
 Overall: 58/100
-Report: checkit-report.html
+Report: checkapp-report.html
 ────────────────────────────────────────────────
 ```
 
@@ -175,20 +175,20 @@ Checks: word count (800–2500 ideal), H1/H2 headings present, average sentence 
 
 ### Step 1 — Download the binary
 
-Go to the **[Releases page](https://github.com/sharonds/checkit/releases/latest)** and download for your platform:
+Go to the **[Releases page](https://github.com/sharonds/checkapp/releases/latest)** and download for your platform:
 
 | File | Platform |
 |------|----------|
-| `checkit-mac-arm64` | Mac — Apple Silicon (M1/M2/M3/M4) |
-| `checkit-mac-x64` | Mac — Intel |
-| `checkit-linux-x64` | Linux x64 |
-| `checkit-win-x64.exe` | Windows x64 |
+| `checkapp-mac-arm64` | Mac — Apple Silicon (M1/M2/M3/M4) |
+| `checkapp-mac-x64` | Mac — Intel |
+| `checkapp-linux-x64` | Linux x64 |
+| `checkapp-win-x64.exe` | Windows x64 |
 
 ### Step 2 — Make it executable (Mac/Linux only)
 
 ```bash
-chmod +x ~/Downloads/checkit-mac-arm64
-mv ~/Downloads/checkit-mac-arm64 /usr/local/bin/checkit
+chmod +x ~/Downloads/checkapp-mac-arm64
+mv ~/Downloads/checkapp-mac-arm64 /usr/local/bin/checkapp
 ```
 
 ### Step 3 — Add your API keys
@@ -217,23 +217,23 @@ TONE_GUIDE_FILE=/path/to/brand-voice.md
 Or run the interactive setup wizard:
 
 ```bash
-checkit --setup
+checkapp --setup
 ```
 
 ### Step 4 — Run it
 
 ```bash
 # Check a Google Doc (must be publicly shared)
-checkit "https://docs.google.com/document/d/XXXX/edit"
+checkapp "https://docs.google.com/document/d/XXXX/edit"
 
 # Check a local file
-checkit ./my-article.md
+checkapp ./my-article.md
 
 # Check all articles in a directory
-checkit --batch ./articles/
+checkapp --batch ./articles/
 
 # View check history
-checkit --history
+checkapp --history
 ```
 
 ---
@@ -322,47 +322,47 @@ Fetches the full text of flagged URLs to find exactly which sentences in your ar
 
 ```bash
 # Check a Google Doc (publicly shared)
-checkit "https://docs.google.com/document/d/XXXX/edit"
+checkapp "https://docs.google.com/document/d/XXXX/edit"
 
 # Check a local Markdown or text file
-checkit ./my-article.md
+checkapp ./my-article.md
 
 # Check all articles in a directory
-checkit --batch ./articles/
+checkapp --batch ./articles/
 
 # Export report to a file
-checkit ./my-article.md --output report.md
+checkapp ./my-article.md --output report.md
 
 # Open the web dashboard
-checkit --ui
+checkapp --ui
 
 # Re-run setup wizard
-checkit --setup
+checkapp --setup
 
 # Show the last 20 checks from history
-checkit --history
+checkapp --history
 ```
 
 ```bash
 # Manage contexts (tone guide, brief, legal policy)
-checkit context add tone-guide ./brand-voice.md
-checkit context add brief ./campaign-brief.md
-checkit context add legal-policy ./legal-requirements.md
-checkit context list
-checkit context show tone-guide
-checkit context remove brief
+checkapp context add tone-guide ./brand-voice.md
+checkapp context add brief ./campaign-brief.md
+checkapp context add legal-policy ./legal-requirements.md
+checkapp context list
+checkapp context show tone-guide
+checkapp context remove brief
 
 # CI mode — exit 1 on fail (for CI/CD pipelines)
-checkit --ci ./my-article.md
+checkapp --ci ./my-article.md
 
 # JSON output — structured result for scripts and agents
-checkit --json ./my-article.md
+checkapp --json ./my-article.md
 
 # Fix flagged sentences with AI-suggested rewrites
-checkit --fix ./my-article.md
+checkapp --fix ./my-article.md
 
 # MCP server — for Claude Code / Cursor / Windsurf
-checkit --mcp
+checkapp --mcp
 ```
 
 **Google Docs:** Share → Change to "Anyone with the link" → Viewer → Done.
@@ -409,13 +409,13 @@ Article input (Google Doc URL or local .md/.txt)
 
 ## Web Dashboard
 
-Checkit includes a local web dashboard for browsing check history, running new checks, and managing skills and settings from the browser.
+CheckApp includes a local web dashboard for browsing check history, running new checks, and managing skills and settings from the browser.
 
 **Start the dashboard:**
 
 ```bash
 # Via CLI flag
-checkit --ui
+checkapp --ui
 
 # Or directly from source
 cd dashboard && bun run dev
@@ -438,7 +438,7 @@ The dashboard also exposes a JSON API for programmatic access. See [docs/api.md]
 
 ## Agent Integration
 
-Checkit works with AI agents via MCP tools or CLI. See [AGENTS.md](AGENTS.md) for the full integration guide.
+CheckApp works with AI agents via MCP tools or CLI. See [AGENTS.md](AGENTS.md) for the full integration guide.
 
 ---
 
@@ -466,7 +466,7 @@ For a team publishing 100 articles per month: ~$22/month in API costs.
 
 ## Configuring Skills
 
-Enable or disable skills via the `skills` section of `~/.checkit/config.json`, or set them directly in your `.env`:
+Enable or disable skills via the `skills` section of `~/.checkapp/config.json`, or set them directly in your `.env`:
 
 ```json
 {
@@ -486,7 +486,7 @@ Skills that require unconfigured API keys skip gracefully and show a `warn` verd
 
 ### Custom Thresholds
 
-Override the default pass/warn/fail cutoffs for any skill in `~/.checkit/config.json`:
+Override the default pass/warn/fail cutoffs for any skill in `~/.checkapp/config.json`:
 
 ```json
 {
@@ -501,7 +501,7 @@ Scores >= `pass` result in a PASS verdict, scores >= `warn` result in WARN, and 
 
 ### Multi-Language Support
 
-Checkit auto-detects article language (English, Hebrew, Arabic, Chinese, Japanese, Korean). SEO keyword extraction uses language-specific stop words for Hebrew and English (more languages planned). The detected language appears in the SEO summary.
+CheckApp auto-detects article language (English, Hebrew, Arabic, Chinese, Japanese, Korean). SEO keyword extraction uses language-specific stop words for Hebrew and English (more languages planned). The detected language appears in the SEO summary.
 
 ### Tone of Voice Guide
 
@@ -527,7 +527,7 @@ Set the path: `TONE_GUIDE_FILE=/path/to/brand-voice.md`
 
 - Readability score (Flesch-Kincaid)
 - `--output report.md` / `--output report.html` export
-- Local web dashboard (`checkit --ui`) with overview, reports, check, skills, settings, docs pages
+- Local web dashboard (`checkapp --ui`) with overview, reports, check, skills, settings, docs pages
 - Tags, search, and JSON API
 - Dark mode
 - Context system — tone guides, briefs, legal policies stored in SQLite, managed via CLI or dashboard
@@ -554,7 +554,7 @@ Set the path: `TONE_GUIDE_FILE=/path/to/brand-voice.md`
 - **Second AI detector** — Originality.ai integration for cross-validation of AI detection
 - **CMS integrations** — WordPress plugin, Ghost webhook, Webflow integration
 - **Team dashboard** — multi-user web interface with per-writer stats and trends
-- **Custom skill packages** — publish your own validator as an npm package, install with `checkit skill add <package>`
+- **Custom skill packages** — publish your own validator as an npm package, install with `checkapp skill add <package>`
 - **Ranking score** — overall article quality score combining all skill signals, calibrated for SEO impact
 - **Additional LLM providers** — OpenAI (GPT-4o-mini), Google Gemini — configurable per user
 
@@ -572,7 +572,7 @@ Set the path: `TONE_GUIDE_FILE=/path/to/brand-voice.md`
 | Tone + Legal | MiniMax M2.7 (preferred) or Claude Haiku (fallback) |
 | Passage evidence | [Parallel Extract API](https://docs.parallel.ai/) |
 | Article fetch | Google Docs public export URL or local file |
-| History database | [bun:sqlite](https://bun.sh/docs/api/sqlite) — zero deps, stored at `~/.checkit/history.db` |
+| History database | [bun:sqlite](https://bun.sh/docs/api/sqlite) — zero deps, stored at `~/.checkapp/history.db` |
 | HTML reports | Self-contained inline HTML/CSS — no external dependencies |
 | Language | TypeScript strict |
 
@@ -581,7 +581,7 @@ Set the path: `TONE_GUIDE_FILE=/path/to/brand-voice.md`
 ## Project Structure
 
 ```
-checkit/
+checkapp/
 ├── src/
 │   ├── index.tsx             # Entry point — routes to setup, history, check, or --ui
 │   ├── setup.tsx             # First-run credential wizard (Ink UI)
@@ -679,8 +679,8 @@ See [docs/custom-skills.md](docs/custom-skills.md) for the full guide with examp
 Requires [Bun](https://bun.sh).
 
 ```bash
-git clone https://github.com/sharonds/checkit
-cd checkit
+git clone https://github.com/sharonds/checkapp
+cd checkapp
 bun install
 
 # Run with a local file
@@ -714,9 +714,9 @@ TONE_GUIDE_FILE=/path/to/voice.md      # optional — enables tone of voice skil
 
 ## Security
 
-- Credentials are stored **locally only** at `~/.checkit/config.json`, or read from environment variables — never stored remotely
+- Credentials are stored **locally only** at `~/.checkapp/config.json`, or read from environment variables — never stored remotely
 - Article text is sent to Copyscape (plagiarism + AI detection), optionally to Parallel AI (source page fetching), Exa AI (fact checking), and MiniMax or Anthropic (fact check, tone, legal) — all over HTTPS
-- The HTML report and SQLite database are stored locally in the current directory and `~/.checkit/`
+- The HTML report and SQLite database are stored locally in the current directory and `~/.checkapp/`
 - No analytics, no telemetry, no logging
 
 ---

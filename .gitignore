@@ -5,3 +5,8 @@ dist/
 .firecrawl/
 .env
 docs/superpowers/
+.claude/
+.playwright-mcp/
+.remember/
+*.html
+*.png

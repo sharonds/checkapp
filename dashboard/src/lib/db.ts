@@ -4,8 +4,29 @@ import { sqliteTable, integer, text, real } from "drizzle-orm/sqlite-core";
 import { desc, eq, sql } from "drizzle-orm";
 import { homedir } from "os";
 import { join } from "path";
+import { existsSync, renameSync } from "fs";
 
-const DB_PATH = join(homedir(), ".checkit", "history.db");
+const CONFIG_DIR = join(homedir(), ".checkapp");
+const LEGACY_DIRS = [
+  join(homedir(), ".checkit"),
+  join(homedir(), ".article-checker"),
+];
+const DB_PATH = join(CONFIG_DIR, "history.db");
+
+// One-time migration: move legacy config dirs to new location
+if (!existsSync(CONFIG_DIR)) {
+  for (const legacy of LEGACY_DIRS) {
+    if (existsSync(legacy)) {
+      try {
+        renameSync(legacy, CONFIG_DIR);
+        console.error(`Migrated config from ${legacy} to ${CONFIG_DIR}`);
+        break;
+      } catch (err) {
+        console.error(`Failed to migrate ${legacy} to ${CONFIG_DIR}: ${(err as Error).message}`);
+      }
+    }
+  }
+}
 
 // Schema matching CLI's bun:sqlite schema
 export const checks = sqliteTable("checks", {
@@ -45,7 +66,7 @@ let _sqlite: InstanceType<typeof Database> | null = null;
 
 export function getDb() {
   if (!_db) {
-    const dbPath = process.env.ARTICLE_CHECKER_DB ?? DB_PATH;
+    const dbPath = process.env.CHECKAPP_DB ?? DB_PATH;
     _sqlite = new Database(dbPath);
     // Create tags tables if they don't exist (the CLI may not have created them)
     _sqlite.pragma("journal_mode = WAL");

@@ -1,18 +1,18 @@
 # Agent Integration Guide
 
-Checkit can be used by AI agents via MCP tools or CLI commands.
+CheckApp can be used by AI agents via MCP tools or CLI commands.
 
 ## MCP Server (Claude Code, Cursor, Windsurf)
 
 Start the MCP server:
 
-    checkit --mcp
+    checkapp --mcp
 
 Or add to your MCP config (e.g., `.claude/settings.json`):
 
     {
       "mcpServers": {
-        "checkit": {
+        "checkapp": {
           "command": "bun",
           "args": ["run", "src/index.tsx", "--mcp"]
         }
@@ -48,30 +48,30 @@ Or add to your MCP config (e.g., `.claude/settings.json`):
 ## CLI Commands (scripts, CI/CD, OpenClaw)
 
     # Check an article (with Ink UI)
-    checkit ./article.md
+    checkapp ./article.md
 
     # Headless check with JSON output
-    checkit --json ./article.md
+    checkapp --json ./article.md
 
     # CI mode — exits 1 if any skill fails
-    checkit --ci ./article.md
+    checkapp --ci ./article.md
 
     # Batch check a directory
-    checkit --batch ./articles/
+    checkapp --batch ./articles/
 
     # Fix flagged sentences with AI-suggested rewrites
-    checkit --fix ./article.md
+    checkapp --fix ./article.md
 
     # Export report
-    checkit --output report.md ./article.md
+    checkapp --output report.md ./article.md
 
     # Manage contexts
-    checkit context add tone-guide ./brand-voice.md
-    checkit context add legal-policy ./legal-requirements.md
-    checkit context add brief ./campaign-brief.md
-    checkit context list
-    checkit context show tone-guide
-    checkit context remove brief
+    checkapp context add tone-guide ./brand-voice.md
+    checkapp context add legal-policy ./legal-requirements.md
+    checkapp context add brief ./campaign-brief.md
+    checkapp context list
+    checkapp context show tone-guide
+    checkapp context remove brief
 
 ## Context Types
 
@@ -100,8 +100,8 @@ Or add to your MCP config (e.g., `.claude/settings.json`):
 ## Data Storage
 
 All data is local:
-- Check history: `~/.checkit/history.db` (SQLite)
-- Config: `~/.checkit/config.json`
+- Check history: `~/.checkapp/history.db` (SQLite)
+- Config: `~/.checkapp/config.json`
 - Contexts: stored in the SQLite database
 
 No remote servers. No authentication needed for local use.

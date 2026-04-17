@@ -34,7 +34,7 @@ export function Sidebar() {
     <aside className="fixed inset-y-0 left-0 z-30 flex w-60 flex-col border-r border-border/10 bg-sidebar text-sidebar-foreground">
       <div className="flex h-14 items-center gap-2 border-b border-border/10 px-5">
         <span className="text-sm font-semibold tracking-tight">
-          Checkit
+          CheckApp
         </span>
       </div>
 

@@ -47,7 +47,7 @@ export class BriefSkill implements Skill {
       return {
         skillId: this.id, name: this.name, score: 50, verdict: "warn",
         summary: "Skipped — no brief uploaded",
-        findings: [{ severity: "warn", text: "Upload a content brief: checkit context add brief ./brief.md" }],
+        findings: [{ severity: "warn", text: "Upload a content brief: checkapp context add brief ./brief.md" }],
         costUsd: 0,
       };
     }

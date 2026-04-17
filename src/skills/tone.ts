@@ -46,7 +46,7 @@ export class ToneSkill implements Skill {
       return {
         skillId: this.id, name: this.name, score: 50, verdict: "warn",
         summary: "Skipped — no tone guide configured",
-        findings: [{ severity: "info", text: "Add a 'tone-guide' context via `checkit context add tone-guide ./file.md`, or set TONE_GUIDE_FILE=path/to/brand-voice.md in .env" }],
+        findings: [{ severity: "info", text: "Add a 'tone-guide' context via `checkapp context add tone-guide ./file.md`, or set TONE_GUIDE_FILE=path/to/brand-voice.md in .env" }],
         costUsd: 0,
       };
     }

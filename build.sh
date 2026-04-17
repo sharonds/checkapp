@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-echo "Building checkit binaries..."
+echo "Building checkapp binaries..."
 mkdir -p dist
 
 # Ink conditionally imports react-devtools-core (only when DEV=true).
@@ -15,17 +15,17 @@ echo 'export default { connectToDevTools: () => {} };' \
 BUN="${BUN_BIN:-bun}"
 command -v "$BUN" &>/dev/null || BUN="$HOME/.bun/bin/bun"
 
-"$BUN" build --compile --target=bun-darwin-arm64 src/index.tsx --outfile dist/checkit-mac-arm64
-echo "✓ dist/checkit-mac-arm64  (Apple Silicon)"
+"$BUN" build --compile --target=bun-darwin-arm64 src/index.tsx --outfile dist/checkapp-mac-arm64
+echo "✓ dist/checkapp-mac-arm64  (Apple Silicon)"
 
-"$BUN" build --compile --target=bun-darwin-x64 src/index.tsx --outfile dist/checkit-mac-x64
-echo "✓ dist/checkit-mac-x64    (Intel Mac)"
+"$BUN" build --compile --target=bun-darwin-x64 src/index.tsx --outfile dist/checkapp-mac-x64
+echo "✓ dist/checkapp-mac-x64    (Intel Mac)"
 
-"$BUN" build --compile --target=bun-linux-x64 src/index.tsx --outfile dist/checkit-linux-x64
-echo "✓ dist/checkit-linux-x64  (Linux)"
+"$BUN" build --compile --target=bun-linux-x64 src/index.tsx --outfile dist/checkapp-linux-x64
+echo "✓ dist/checkapp-linux-x64  (Linux)"
 
-"$BUN" build --compile --target=bun-windows-x64 src/index.tsx --outfile dist/checkit-win-x64.exe
-echo "✓ dist/checkit-win-x64.exe (Windows)"
+"$BUN" build --compile --target=bun-windows-x64 src/index.tsx --outfile dist/checkapp-win-x64.exe
+echo "✓ dist/checkapp-win-x64.exe (Windows)"
 
 echo ""
 echo "Done. Upload the dist/ files to a GitHub Release."

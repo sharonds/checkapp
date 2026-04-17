@@ -38,7 +38,7 @@ async function main() {
       if (idx !== -1 && args[idx + 1]) flagValueArgs.add(args[idx + 1]);
     }
     const source = args.find((a) => !a.startsWith("--") && !flagValueArgs.has(a));
-    if (!source) { console.error("Usage: checkit --fix <file>"); process.exit(1); }
+    if (!source) { console.error("Usage: checkapp --fix <file>"); process.exit(1); }
 
     console.log("Running checks...");
     const text = await fetchGoogleDoc(source);
@@ -94,7 +94,7 @@ async function main() {
     }
     const source = args.find((a) => !a.startsWith("--") && !flagValueArgs.has(a));
     if (!source) {
-      console.error("Usage: checkit --ci <file-or-url>");
+      console.error("Usage: checkapp --ci <file-or-url>");
       process.exit(1);
     }
 
@@ -105,7 +105,7 @@ async function main() {
         console.log(JSON.stringify(result, null, 2));
       } else {
         // CI summary
-        console.log(`\nCheckit — ${result.source}`);
+        console.log(`\nCheckApp — ${result.source}`);
         console.log(`Words: ${result.wordCount} | Cost: $${result.totalCostUsd.toFixed(3)}\n`);
         for (const r of result.results) {
           const icon = r.verdict === "pass" ? "PASS" : r.verdict === "warn" ? "WARN" : "FAIL";
@@ -153,7 +153,7 @@ async function main() {
       console.error("The --ui flag requires the dashboard/ directory. If you installed via binary, run from the source repo instead.");
       process.exit(1);
     }
-    console.log("Starting Checkit dashboard...");
+    console.log("Starting CheckApp dashboard...");
     console.log("Opening http://localhost:3000\n");
 
     const child = spawn("bun", ["run", "dev"], {
@@ -180,7 +180,7 @@ async function main() {
     db.close();
 
     if (rows.length === 0) {
-      console.log("No checks found. Run checkit <file> to get started.");
+      console.log("No checks found. Run checkapp <file> to get started.");
       process.exit(0);
     }
 
@@ -215,11 +215,11 @@ async function main() {
   if (!docUrl) {
     console.log("");
     console.log("Usage:");
-    console.log("  checkit <google-doc-url-or-file>");
+    console.log("  checkapp <google-doc-url-or-file>");
     console.log("");
     console.log("Examples:");
-    console.log('  checkit "https://docs.google.com/document/d/XXXX/edit"');
-    console.log('  checkit ./my-article.md');
+    console.log('  checkapp "https://docs.google.com/document/d/XXXX/edit"');
+    console.log('  checkapp ./my-article.md');
     console.log("");
     console.log("Options:");
     console.log("  --fix             Run checks then suggest AI rewrites for flagged sentences");
