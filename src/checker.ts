@@ -17,6 +17,9 @@ import { LegalSkill } from "./skills/legal.ts";
 import { SummarySkill } from "./skills/summary.ts";
 import { BriefSkill } from "./skills/brief.ts";
 import { PurposeSkill } from "./skills/purpose.ts";
+import { GrammarSkill } from "./skills/grammar.ts";
+import { AcademicSkill } from "./skills/academic.ts";
+import { SelfPlagiarismSkill } from "./skills/selfplagiarism.ts";
 
 export interface CheckResult {
   id: number;
@@ -37,6 +40,9 @@ export function buildSkills(config: Config): Skill[] {
   if (config.skills.summary) skills.push(new SummarySkill());
   if (config.skills.brief) skills.push(new BriefSkill());
   if (config.skills.purpose) skills.push(new PurposeSkill());
+  if (config.skills.grammar) skills.push(new GrammarSkill());
+  if (config.skills.academic) skills.push(new AcademicSkill());
+  if (config.skills.selfPlagiarism) skills.push(new SelfPlagiarismSkill());
   return skills;
 }
 

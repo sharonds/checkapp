@@ -42,7 +42,7 @@
     "setup": "bun src/index.tsx --setup",
     "build": "bash build.sh",
     "dev": "bun --watch src/index.tsx",
-    "test": "bun test src/*.test.ts src/skills/*.test.ts src/utils/*.test.ts",
+    "test": "bun test src/*.test.ts src/skills/*.test.ts src/utils/*.test.ts src/providers/*.test.ts",
     "test:dashboard": "cd dashboard && bunx vitest run",
     "test:all": "bun run test && bun run test:dashboard"
   },

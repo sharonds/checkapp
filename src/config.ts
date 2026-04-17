@@ -14,6 +14,9 @@ export interface SkillsConfig {
   summary: boolean;
   brief: boolean;
   purpose: boolean;
+  grammar?: boolean;
+  academic?: boolean;
+  selfPlagiarism?: boolean;
 }
 
 export interface Config {
@@ -29,6 +32,7 @@ export interface Config {
   skills: SkillsConfig;
   thresholds?: Record<string, Threshold>;
   contexts?: Record<string, string>;
+  providers?: Partial<Record<import("./providers/types.ts").SkillId, import("./providers/types.ts").SkillProviderConfig>>;
 }
 
 const CONFIG_DIR = join(homedir(), ".checkapp");
@@ -91,6 +95,8 @@ export function readConfig(): Config {
     toneGuideFile: process.env.TONE_GUIDE_FILE ?? file.toneGuideFile,
     skills: { ...DEFAULT_SKILLS, ...(file.skills ?? {}) },
     thresholds: file.thresholds,
+    contexts: file.contexts,
+    providers: file.providers,
   };
 }
 
