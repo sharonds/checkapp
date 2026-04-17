@@ -47,10 +47,32 @@ async function main() {
     }
   }
 
-  // --estimate-cost: wiring lands in Phase 7 B7. Fail noisily.
+  // --estimate-cost: print pre-flight cost estimate for the configured skills.
+  // Requires a source file/URL so we can count words and scale the estimate.
   if (estimateOnly) {
-    console.error("--estimate-cost is not yet wired — lands in Phase 7 B7");
-    process.exit(1);
+    if (!docUrl) {
+      console.error("Usage: checkapp <source> --estimate-cost");
+      process.exit(1);
+    }
+    if (!configExists()) {
+      console.error("--estimate-cost requires a CheckApp config (run --setup first)");
+      process.exit(1);
+    }
+    const config = readConfig();
+    const { fetchGoogleDoc } = await import("./gdoc.ts");
+    const text = await fetchGoogleDoc(docUrl);
+    const wordCount = text.split(/\s+/).filter(Boolean).length;
+    const { estimateRunCost } = await import("./cost/estimator.ts");
+    const est = estimateRunCost(config, wordCount);
+    console.log(`Estimated cost: $${est.total.toFixed(4)}  (${wordCount} words)`);
+    console.log("Per-skill breakdown:");
+    for (const [k, v] of Object.entries(est.perSkill)) {
+      console.log(`  ${k.padEnd(20)}  $${v.toFixed(4)}`);
+    }
+    for (const w of est.warnings) {
+      console.log(`\u26a0 ${w}`);
+    }
+    process.exit(0);
   }
 
   // --deep-fact-check: resolve the existing fact-check provider/apiKey (via B1's
