@@ -40,8 +40,8 @@ export class FactCheckSkill implements Skill {
   readonly name = "Fact Check";
 
   async run(text: string, config: Config): Promise<SkillResult> {
-    const provider = resolveProvider(config, "fact-check");
-    if (!provider?.apiKey) {
+    const resolved = resolveProvider(config, "fact-check");
+    if (!resolved) {
       return {
         skillId: this.id, name: this.name, score: 50, verdict: "warn",
         summary: "Skipped — no fact-check provider configured",
@@ -49,7 +49,13 @@ export class FactCheckSkill implements Skill {
         costUsd: 0,
       };
     }
-    const deepMode = provider.provider === "exa-deep-reasoning" || provider.provider === "parallel-task";
+    if (resolved.provider !== "exa-search" && resolved.provider !== "parallel-task" && resolved.provider !== "exa-deep-reasoning") {
+      return skippedResult(this, `${resolved.provider} not implemented for fact-check yet`);
+    }
+    const apiKey = resolved.apiKey;
+    if (!apiKey) return skippedResult(this, `${resolved.provider} API key missing`);
+
+    const deepMode = resolved.provider === "exa-deep-reasoning" || resolved.provider === "parallel-task";
 
     const llm = getLlmClient(config);
     if (!llm) {
@@ -61,7 +67,7 @@ export class FactCheckSkill implements Skill {
       };
     }
 
-    const exa = new Exa(provider.apiKey);
+    const exa = new Exa(apiKey);
 
     // Step 1: extract claims
     const claimsText = await llm.call(extractClaimsPrompt(text), 1024);
@@ -83,7 +89,7 @@ export class FactCheckSkill implements Skill {
           text: "No checkable statistics, dates, or research findings found — adding cited facts (studies, percentages, named data) increases credibility and SEO authority",
         }],
         costUsd: 0.001,
-        provider: provider.provider,
+        provider: resolved.provider,
       };
     }
 
@@ -176,6 +182,18 @@ Reply with JSON:
     const verdict = failCount > 0 ? "fail" : warnCount > 1 ? "warn" : "pass";
     const summary = `${assessments.length} claims checked — ${failCount} unsupported, ${warnCount} unverified (via ${llm.provider})`;
 
-    return { skillId: this.id, name: this.name, score: Math.max(0, score), verdict, summary, findings, costUsd, provider: provider.provider };
+    return { skillId: this.id, name: this.name, score: Math.max(0, score), verdict, summary, findings, costUsd, provider: resolved.provider };
   }
+}
+
+function skippedResult(skill: FactCheckSkill, reason: string): SkillResult {
+  return {
+    skillId: skill.id,
+    name: skill.name,
+    verdict: "skipped",
+    score: 0,
+    summary: `Skipped: ${reason}.`,
+    findings: [],
+    costUsd: 0,
+  };
 }
