@@ -34,6 +34,19 @@ const cleanupDeepEnv = () => {
 };
 
 async function main() {
+  // index <dir>: ingest past articles into the self-plagiarism vector index.
+  if (args[0] === "index") {
+    const { indexArchive } = await import("./cli/index-archive.ts");
+    const dir = args[1] ?? `${process.env.HOME}/checkapp/archive`;
+    try {
+      await indexArchive(dir);
+      process.exit(0);
+    } catch (err) {
+      console.error((err as Error).message);
+      process.exit(1);
+    }
+  }
+
   // --estimate-cost: wiring lands in Phase 7 B7. Fail noisily.
   if (estimateOnly) {
     console.error("--estimate-cost is not yet wired — lands in Phase 7 B7");
@@ -275,6 +288,9 @@ async function main() {
     console.log("  --output <path>   Export report to .md or .html file");
     console.log("  --setup           Re-run the credential setup wizard");
     console.log("  --history         Show the last 20 checks from history");
+    console.log("");
+    console.log("Self-plagiarism index:");
+    console.log("  index <dir>                 Ingest .md articles into Cloudflare Vectorize");
     console.log("");
     console.log("Context management:");
     console.log("  context add <type> <file>   Add a context document (tone-guide, brief, etc.)");
