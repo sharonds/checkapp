@@ -9,6 +9,8 @@ import { ExportButtons } from "@/components/export-buttons";
 import { RegeneratePanel } from "@/components/regenerate-panel";
 import { FooterBar } from "@/components/footer-bar";
 
+export const dynamic = "force-dynamic";
+
 function getVerdict(score: number): "pass" | "warn" | "fail" {
   if (score >= 75) return "pass";
   if (score >= 50) return "warn";

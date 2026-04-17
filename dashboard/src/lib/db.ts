@@ -3,7 +3,7 @@ import Database from "better-sqlite3";
 import { sqliteTable, integer, text, real } from "drizzle-orm/sqlite-core";
 import { desc, eq, sql } from "drizzle-orm";
 import { homedir } from "os";
-import { join } from "path";
+import { dirname, join } from "path";
 import { existsSync, renameSync, mkdirSync } from "fs";
 
 const CONFIG_DIR = join(homedir(), ".checkapp");
@@ -13,8 +13,15 @@ const LEGACY_DIRS = [
 ];
 const DB_PATH = join(CONFIG_DIR, "history.db");
 
-// One-time migration: move legacy config dirs to new location
-if (!existsSync(CONFIG_DIR)) {
+let _legacyMigrationRan = false;
+
+// One-time migration: move legacy config dirs to new location.
+// Deferred until getDb() is first called so that Next.js build-time
+// module evaluation does not touch the filesystem on fresh CI runners.
+function runLegacyMigrationOnce() {
+  if (_legacyMigrationRan) return;
+  _legacyMigrationRan = true;
+  if (existsSync(CONFIG_DIR)) return;
   for (const legacy of LEGACY_DIRS) {
     if (existsSync(legacy)) {
       try {
@@ -66,11 +73,19 @@ let _sqlite: InstanceType<typeof Database> | null = null;
 
 export function getDb() {
   if (!_db) {
-    // Accept both new and legacy env var names. New wins if both set.
-    const dbPath = process.env.CHECKAPP_DB ?? process.env.ARTICLE_CHECKER_DB ?? DB_PATH;
-    // Ensure the parent directory exists for the default on-disk path only
-    if (dbPath === DB_PATH) {
-      mkdirSync(CONFIG_DIR, { recursive: true });
+    runLegacyMigrationOnce();
+    // Accept new, CI/testing, and legacy env var names. First set wins.
+    const dbPath =
+      process.env.CHECKAPP_DB_PATH ??
+      process.env.CHECKAPP_DB ??
+      process.env.ARTICLE_CHECKER_DB ??
+      DB_PATH;
+    // Ensure the parent directory exists for any on-disk path (skip :memory:).
+    if (dbPath !== ":memory:") {
+      const dir = dirname(dbPath);
+      if (!existsSync(dir)) {
+        mkdirSync(dir, { recursive: true });
+      }
     }
     _sqlite = new Database(dbPath);
     // Create tags tables if they don't exist (the CLI may not have created them)

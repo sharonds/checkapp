@@ -5,6 +5,8 @@ import { FooterBar } from "@/components/footer-bar";
 import { Card, CardContent } from "@/components/ui/card";
 import { FileSearch } from "lucide-react";
 
+export const dynamic = "force-dynamic";
+
 function getVerdict(score: number): "pass" | "warn" | "fail" {
   if (score >= 75) return "pass";
   if (score >= 50) return "warn";
