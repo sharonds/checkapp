@@ -9,7 +9,7 @@ export function getToolDefinitions() {
   return [
     {
       name: "check_article",
-      description: "Run quality checks (plagiarism, AI detection, SEO, fact-check, tone, legal) on article text",
+      description: "Run CheckApp's quality checks on an article. Phase 7+ findings include optional fields: sources[] (evidence), rewrite (correction), citations[] (academic papers), claimType, confidence. MCP output is JSON.stringify(runCheckHeadlessResult) — parse and handle absent fields gracefully.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -172,7 +172,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>) {
 
 export async function startMcpServer() {
   const server = new Server(
-    { name: "checkapp", version: "1.0.0" },
+    { name: "checkapp", version: "1.1.0" },
     { capabilities: { tools: {} } }
   );
 
