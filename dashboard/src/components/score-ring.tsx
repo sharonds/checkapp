@@ -19,6 +19,7 @@ export function ScoreRing({ score, verdict, size = 80 }: ScoreRingProps) {
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (score / 100) * circumference;
   const color = VERDICT_CSS_VARS[verdict];
+  const isSkipped = verdict === "skipped";
 
   return (
     <svg
@@ -36,32 +37,49 @@ export function ScoreRing({ score, verdict, size = 80 }: ScoreRingProps) {
         stroke="currentColor"
         strokeWidth={strokeWidth}
         className="text-muted-foreground/20 dark:text-muted-foreground/30"
+        strokeDasharray={isSkipped ? `${strokeWidth * 2} ${strokeWidth}` : undefined}
       />
-      {/* Progress */}
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        fill="none"
-        stroke={color}
-        strokeWidth={strokeWidth}
-        strokeDasharray={circumference}
-        strokeDashoffset={offset}
-        strokeLinecap="round"
-        transform={`rotate(-90 ${size / 2} ${size / 2})`}
-      />
-      {/* Score text */}
-      <text
-        x="50%"
-        y="50%"
-        textAnchor="middle"
-        dominantBaseline="central"
-        fill={color}
-        fontSize={size * 0.3}
-        fontWeight="bold"
-      >
-        {score}
-      </text>
+      {/* Progress (only shown for non-skipped) */}
+      {!isSkipped && (
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke={color}
+          strokeWidth={strokeWidth}
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        />
+      )}
+      {/* Score text (only shown for non-skipped) */}
+      {!isSkipped && (
+        <text
+          x="50%"
+          y="50%"
+          textAnchor="middle"
+          dominantBaseline="central"
+          fill={color}
+          fontSize={size * 0.3}
+          fontWeight="bold"
+        >
+          {score}
+        </text>
+      )}
+      {/* Dashed ring for skipped */}
+      {isSkipped && (
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke={color}
+          strokeWidth={strokeWidth}
+          strokeDasharray={`${strokeWidth * 2} ${strokeWidth}`}
+        />
+      )}
     </svg>
   );
 }

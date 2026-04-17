@@ -1,7 +1,7 @@
 // MIRROR OF: ~/checkapp/src/skills/normalize.ts (+ types.ts Finding/SkillResult shapes)
 // If you edit here, edit there too. Drift guard in B8 will CI-fail on divergence.
 
-export type Verdict = "pass" | "warn" | "fail";
+export type Verdict = "pass" | "warn" | "fail" | "skipped";
 export type Severity = "info" | "warn" | "error";
 export type ClaimType = "scientific" | "medical" | "financial" | "general";
 
