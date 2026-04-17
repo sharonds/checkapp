@@ -18,7 +18,7 @@ describe("CLI parity", () => {
     tmp = mkdtempSync(join(tmpdir(), "checkapp-parity-"));
     dbPath = join(tmp, "history.db");
     const db = openDb(dbPath);
-    insertContext(db, { name: "Brand voice", kind: "tone", body: "Warm, concise, no jargon." });
+    insertContext(db, { type: "tone", name: "Brand voice", content: "Warm, concise, no jargon." });
     db.close();
   });
   afterEach(() => rmSync(tmp, { recursive: true, force: true }));
