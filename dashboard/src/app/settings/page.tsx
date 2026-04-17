@@ -217,9 +217,9 @@ export default function SettingsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Link href="/settings/providers">
-                <Button variant="outline">Configure →</Button>
-              </Link>
+              <Button asChild variant="outline">
+                <Link href="/settings/providers">Configure →</Link>
+              </Button>
             </CardContent>
           </Card>
 
