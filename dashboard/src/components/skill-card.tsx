@@ -9,24 +9,23 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { ScoreRing } from "./score-ring";
 import { VerdictBadge } from "./verdict-badge";
+import { ClaimDrillDown } from "./ClaimDrillDown";
+import type { Finding } from "@/lib/normalize";
 
 const ENGINE_MAP: Record<string, string> = {
   plagiarism: "Copyscape",
   "ai-detection": "Copyscape",
   seo: "Offline",
   "fact-check": "Exa AI",
+  grammar: "LanguageTool",
+  academic: "Semantic Scholar",
+  "self-plagiarism": "Vectorize",
   tone: "MiniMax",
   legal: "MiniMax",
   summary: "MiniMax",
   brief: "MiniMax",
   purpose: "MiniMax",
 };
-
-interface Finding {
-  severity: string;
-  text: string;
-  quote?: string;
-}
 
 export interface SkillResult {
   skillId: string;
@@ -74,8 +73,11 @@ export function SkillCard({ result }: { result: SkillResult }) {
                 <span className="shrink-0 mt-0.5">
                   {f.severity === "error" ? "\u274c" : "\u26a0\ufe0f"}
                 </span>
-                <div>
-                  <span>{f.text}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-start gap-2">
+                    <span className="flex-1">{f.text}</span>
+                    <ClaimDrillDown finding={f} />
+                  </div>
                   {f.quote && (
                     <blockquote className="mt-1 border-l-2 border-muted-foreground/30 pl-2 text-xs text-muted-foreground italic">
                       {f.quote}
