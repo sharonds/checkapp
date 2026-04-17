@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Loader2, Upload, FileText, Link2, AlertCircle } from "lucide-react";
@@ -27,6 +27,33 @@ export default function CheckPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CheckResult | null>(null);
+  const [estimate, setEstimate] = useState<{
+    total: number;
+    perSkill: Record<string, number>;
+    warnings: string[];
+  } | null>(null);
+
+  // Debounced cost estimate: re-fetch whenever the pasted text stabilises.
+  useEffect(() => {
+    const wc = pastedText.trim().split(/\s+/).filter(Boolean).length;
+    if (wc < 20) {
+      setEstimate(null);
+      return;
+    }
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch("/api/estimate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ wordCount: wc }),
+        });
+        if (res.ok) setEstimate(await res.json());
+      } catch {
+        /* ignore — estimate is best-effort */
+      }
+    }, 500);
+    return () => clearTimeout(t);
+  }, [pastedText]);
 
   async function readFileContent(f: File): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -157,6 +184,19 @@ export default function CheckPage() {
                 <p className="mt-1 text-xs text-muted-foreground">
                   {pastedText.length.toLocaleString()} characters
                 </p>
+              )}
+              {estimate && estimate.total > 0 && (
+                <div className="mt-2 text-sm">
+                  <p>
+                    Estimated cost:{" "}
+                    <strong>${estimate.total.toFixed(4)}</strong>
+                  </p>
+                  {estimate.warnings.map((w, i) => (
+                    <p key={i} className="mt-1 text-xs text-amber-700">
+                      ⚠ {w}
+                    </p>
+                  ))}
+                </div>
               )}
             </TabsContent>
 
