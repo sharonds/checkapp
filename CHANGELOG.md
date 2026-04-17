@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-04-17 — Phase 7.1: Review Cleanup
+
+Consolidation release. Addresses all outstanding review findings from Phase 6 + Phase 7 PRs (#11–#19), CodeQL alerts, and a second Codex validation pass. Ships as five PRs (B0–B4).
+
+### Fixed
+
+- **All three check pipelines unified** — CLI (`<Check>`), headless (`runCheckHeadless`), and dashboard `POST /api/checks` now invoke a single pure `runCheckCore()`. Removes the dashboard's `spawn()` + temp-file + "query latest row" race. (#20, Codex §1 + Codex-validation §2)
+- **Dashboard mutation surface uniformly guarded** — shared `guardLocalMutation` + `guardLocalReadOnly` applied to `/api/config`, `/api/skills`, `/api/contexts/*`, `/api/checks`, `/api/checks/[id]/tags`, `/api/providers`, `/api/estimate`. Loopback via `req.nextUrl.hostname` (not client Host header); CSRF on all mutations; `fetchWithCsrf` client helper injects the token. (#21, Codex-validation §1)
+- **Grammar correctness** — rewrites use offset-based splice (no wrong-occurrence replace for duplicated words); LLM-recheck sorted descending before splicing (no offset drift); recheck concurrency capped at 3 (respects LanguageTool managed-tier 20/min); LLM fallback caps verdict at `warn` whenever findings > 0; `ltCheck` chunks text > 18KB at sentence boundaries. (#23, PR#14 + Codex-validation §3)
+- **`skipped` + `info` verdict cascade** — `Verdict` widened CLI + dashboard side; `verdict-badge`, `score-ring`, `skill-card`, `normalize.ts` all render `skipped` + distinct `info` severity. Overall-score averages exclude `skipped`. (#20, #21, Codex-validation §5 + §8)
+- CLI runs now load DB-backed contexts uniformly with headless/MCP/dashboard (#20, Codex §1).
+- `FactCheckSkill` gates Exa SDK instantiation on provider resolution; non-Exa keys no longer flow to `new Exa()` (#20, PR#13).
+- `--deep-fact-check` works env-only (EXA_API_KEY); subprocess env cleaned before `--ui` spawn (#20, PR#13).
+- `--fix` no longer prints "article is clean" when unfixable warn/error findings remain (#20, Codex §6).
+- MCP `regenerate_article` returns structured `{ status: "skipped", reason, text, costUsd }` when no LLM provider configured (#20, Codex §7).
+- `DEFAULT_SKILLS` includes `grammar`/`academic`/`selfPlagiarism: false` so `get_skills` lists them (#20, PR#12).
+- Stub skills return `verdict: "skipped"` (excluded from overall average) instead of `score:0`+`fail` (#20, PR#12).
+- Dashboard skills API provider-aware via `supportedProviders[]`; LLM skills accept minimax/anthropic/openrouter; threshold editor gains `brief` + `purpose` (#21, Codex §2, §9).
+- Provider secrets never serialized to client props (server strips to `{ provider, extra, hasKey }`); PUT `/api/providers` preserves `apiKey` when body omits it; `""` clears; new value overwrites (#21, PR#17 D1, D3).
+- "Fix Issues" button hidden for non-rerunnable sources (MCP-origin, custom labels) via `isRerunnableSource()` (#21, Codex §5).
+- Estimator parity: `AI_DETECTION_COST` added to both CLI + dashboard; legacy `exaApiKey`/`copyscapeKey` fallback; abort controller on estimate fetch; warnings shown even at $0 total (#21, PR#18 D7, D8, D9).
+- Registry drift guard compares provider IDs per skill (#21, PR#19 H3).
+- Normalize guards `sources`/`citations`/`costBreakdown` element shapes on both CLI + dashboard (#21, #22, PR#11 F1 + F5).
+- `fetchWithBackoff`: throws on negative `maxRetries`; retries on network errors (TypeError); parses HTTP-date `Retry-After` (#22, PR#11 F2 + F4 + Codex F3).
+- `/api/providers` PUT uses `request.nextUrl.hostname` (not client-controlled Host header); GET applies `guardLocalReadOnly` (#22, PR#17 D2, D4 + GET guard).
+- CSRF token regenerated when file is empty/whitespace; `CHECKAPP_CSRF_PATH` env-overridable for tests (#22, PR#17 D5).
+- `indexArchive`: validates `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN`; `resolveArchivePath(env)` falls back to `os.homedir()`; Vectorize IDs now SHA-256 of file path (content-independent, 32 hex chars) (#22, PR#16 B6, H7).
+- CI workflow declares `permissions: contents: read` (#22, CodeQL #5).
+- Hebrew passage matching via `Intl.Segmenter` sentence splitting (no longer requires large contiguous block) (#23, Codex §4).
+- `openDb` `mkdirSync(dirname(path))` for non-`:memory:` custom paths (#24, Codex §12).
+- `sanitizeText` no double-ellipsis on already-truncated input (#24, PR#18 H5).
+- `countWords` dedupe: `src/index.tsx` uses the `gdoc.ts` helper instead of inline split (#24, PR#18 H6).
+- Phase 7 E2E placeholder `expect(true)` removed; temp DBs cleaned via `mkTmp()` + `afterEach` (#24, PR#19 H1, H2).
+- Docs narrow language support to **Hebrew + English** (tuned); CJK/Arabic detected but deferred to Phase 8 (#24, Codex §3, §8, Codex-validation §6).
+- `SECURITY.md` lists all 10 outbound services with BYOK posture (#24, Codex-validation §7).
+- `docs/security.md` aligned with actual `guardLocalMutation` implementation (#24, Codex-validation §8).
+
+### Changed
+
+- MCP server version bumped from `1.1.0` → `1.2.0` (#24).
+
+### Shared testing scaffold
+
+- New `dashboard/src/testing/index.ts` + `src/testing/helpers.ts`: `writeTestConfig`, `csrfTokenForTests`, `writeTokenFile`, `overallScore` (#22, B2.0).
+
+### Deferred to Phase 8
+
+- `--setup` re-wizard UX (Codex §10).
+- `ProviderId` type union soundness (PR#12).
+- Settings UI revert-on-failure (Codex §11).
+- CJK + Arabic + other non-Latin/non-Hebrew language tuning (Codex §3, §8, Codex-validation §6).
+- Full dashboard render-test coverage (Ink UI).
+- Estimator drift-guard output-shape comparison (one-task consolidation deferred — current drift guard is per-skill provider IDs).
+- `v1.2.0-smoke.test.ts` E2E is present but `describe.skip` — Next.js route imports don't resolve under `bun:test`. Contract is covered by dashboard vitest + MCP integration tests.
+
 ## [1.1.0] — 2026-04-18 — Phase 7: Research-Backed Editor
 
 Every flagged issue now ships with evidence, a rewrite suggestion, and a citation.
