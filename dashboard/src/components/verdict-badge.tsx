@@ -4,10 +4,11 @@ const VERDICT_STYLES = {
   pass: "bg-score-pass text-white",
   warn: "bg-score-warn text-white",
   fail: "bg-score-fail text-white",
+  skipped: "bg-gray-500 text-white",
 } as const;
 
 interface VerdictBadgeProps {
-  verdict: "pass" | "warn" | "fail";
+  verdict: "pass" | "warn" | "fail" | "skipped";
 }
 
 export function VerdictBadge({ verdict }: VerdictBadgeProps) {

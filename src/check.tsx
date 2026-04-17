@@ -20,8 +20,8 @@ type Phase =
 
 const DIVIDER = "─".repeat(48);
 
-const VERDICT_COLOR = { pass: "green", warn: "yellow", fail: "red" } as const;
-const VERDICT_ICON = { pass: "✅", warn: "⚠️ ", fail: "❌" };
+const VERDICT_COLOR = { pass: "green", warn: "yellow", fail: "red", skipped: "gray" } as const;
+const VERDICT_ICON = { pass: "✅", warn: "⚠️ ", fail: "❌", skipped: "–" };
 
 function Report({ results, words, reportPath, totalCostUsd }: {
   results: SkillResult[];
@@ -29,11 +29,11 @@ function Report({ results, words, reportPath, totalCostUsd }: {
   reportPath: string;
   totalCostUsd: number;
 }) {
-  const overallVerdict = results.some(r => r.verdict === "fail") ? "fail"
-    : results.some(r => r.verdict === "warn") ? "warn" : "pass";
-  const overallScore = results.length > 0
-    ? Math.round(results.reduce((s, r) => s + r.score, 0) / results.length)
-    : 0;
+  const scored = results.filter(r => r.verdict !== "skipped");
+  const overallVerdict = scored.some(r => r.verdict === "fail") ? "fail"
+    : scored.some(r => r.verdict === "warn") ? "warn" : "pass";
+  const overallScore = scored.length === 0 ? 0
+    : Math.round(scored.reduce((s, r) => s + r.score, 0) / scored.length);
 
   return (
     <Box flexDirection="column" paddingY={1}>
