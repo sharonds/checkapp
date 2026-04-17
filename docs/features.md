@@ -13,8 +13,25 @@
 | Content Summary | MiniMax/Claude | ~$0.002 | Requires API keys |
 | Brief Matching | MiniMax/Claude | ~$0.002 | Requires API keys + brief context |
 | Content Purpose | MiniMax/Claude | ~$0.002 | Requires API keys |
+| Grammar & Style | LanguageTool (default) / Sapling / LLM-fallback | Free / $0.0008/100w / LLM | Optional — LT free, no key required |
+| Academic Citations | Semantic Scholar | Free (100 req/5min) | Optional — no key required |
+| Self-Plagiarism | Cloudflare Vectorize / Pinecone / Upstash | ~$0.0002/article | Optional — requires one-time `checkapp index <dir>` |
 
 All enabled skills run in parallel. Skills with missing API keys skip gracefully.
+
+### Phase 7 — Research-Backed Editor (shipped 2026-04)
+
+Phase 7 extends findings with evidence + rewrite + citation. Findings now carry optional `sources[]`, `rewrite`, `citations[]`, `claimType`, and `confidence` fields. See [docs/api.md](api.md) for the extended `Finding` shape and [docs/security.md](security.md) for BYOK scope.
+
+| Phase 7 addition | Details |
+|------------------|---------|
+| Sources per fact-check finding | Exa highlights (url, title, quote, publishedDate) returned on every `fact-check` finding |
+| Rewrite per grammar finding | LanguageTool or LLM-fallback produces a corrected sentence; LLM rewrites get a second grammar pass |
+| Academic enrichment | Semantic Scholar DOIs merged onto fact-check findings whose `claimType` is scientific/medical/financial |
+| Deep fact-check | `--deep-fact-check` flag swaps the provider to Exa Deep Reasoning for multi-hop claims |
+| Claim drill-down | Dashboard `/check` page shows sources + citations + rewrite inline per finding |
+| Cost estimator | `checkapp --estimate-cost` or the Run Check page shows per-skill estimate before any API call |
+| Provider picker | Settings → Providers page lets users choose per-skill provider; no key = degraded fallback, never silent failure |
 
 ### LLM Providers
 

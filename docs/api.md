@@ -420,3 +420,27 @@ Common status codes:
 | 400 | Bad request (missing required field, text too long) |
 | 404 | Check not found |
 | 500 | Internal server error |
+
+---
+
+## Finding (Phase 7+)
+
+Each `SkillResult.findings[]` entry has the following shape. All Phase 7 fields are optional and strictly additive — pre-Phase-7 reports round-trip unchanged.
+
+```ts
+interface Finding {
+  severity: "info" | "warn" | "error";
+  text: string;
+  quote?: string;
+  // Phase 7 additions — all optional, strictly additive:
+  sources?: Array<{ url: string; title?: string; publishedDate?: string; quote?: string; relevanceScore?: number }>;
+  rewrite?: string;
+  citations?: Array<{ title: string; authors?: string[]; year?: number; doi?: string; url?: string; abstractSnippet?: string }>;
+  claimType?: "scientific" | "medical" | "financial" | "general";
+  confidence?: "high" | "medium" | "low";
+}
+```
+
+**Four-output contract:** a single fact-check finding can carry `sources[]` (evidence), `rewrite` (correction from grammar), `citations[]` (academic papers), and `claimType` simultaneously. The orchestrator's `enrichFindings()` step merges citations from enricher skills onto matching fact-check findings. See `tests/e2e/phase7.test.ts` for the load-bearing assertion.
+
+**MCP clients:** `check_article` returns `JSON.stringify(result)`. Parse with a schema that treats the Phase 7 fields as optional for back-compat with pre-Phase-7 report blobs. CheckApp ships `normalizeFinding()` (dashboard `src/lib/normalize-report.ts`) which coerces old blobs safely.

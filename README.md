@@ -19,6 +19,23 @@ Each check is a **skill** you can enable or disable. Results appear in the termi
 
 ---
 
+## Phase 7 — Research-Backed Editor
+
+Every flagged issue ships with evidence + rewrite + citation:
+
+- **Fact-check** now carries `sources[]` (Exa highlights with url/title/quote) on every finding. Upgrade to deep-reasoning with `--deep-fact-check`.
+- **Grammar & Style** (LanguageTool + LLM fallback) produces a `rewrite` per finding. LLM-fallback rewrites are grammar-checked a second time to catch mechanical errors.
+- **Academic Citations** (Semantic Scholar) merges citations onto matching fact-check findings with scientific/medical/financial claim types. Free, no API key.
+- **Self-Plagiarism** (Cloudflare Vectorize + OpenRouter embeddings) flags overlap with your past articles. Run `checkapp index <dir>` once to ingest your archive.
+
+Pick a provider per skill from the Settings → Providers dashboard. CheckApp never holds API tokens — users bring their own keys.
+
+Pre-flight cost estimate: `checkapp --estimate-cost article.md` or the Run Check page in the dashboard shows "Estimated cost: $0.0320" before spending anything.
+
+See [docs/security.md](docs/security.md) for the BYOK-alpha threat model.
+
+---
+
 ## Skills
 
 | Skill | Engine | Cost/check | Enabled by default |

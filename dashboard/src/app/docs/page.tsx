@@ -73,6 +73,42 @@ function GettingStarted() {
       </Prose>
       <CodeBlock>{`bun run checkapp --ui`}</CodeBlock>
 
+      <SectionHeading>Phase 7 — Research-Backed Editor</SectionHeading>
+      <Prose>
+        <p>
+          Every flagged issue now ships with evidence, a rewrite, and a
+          citation — not just a verdict.
+        </p>
+        <ul className="list-disc pl-5 space-y-1">
+          <li>
+            <strong>Fact-check</strong> findings carry <code>sources[]</code>{" "}
+            (Exa highlights with url, title, and quoted passage). Toggle
+            deep-reasoning with <code>--deep-fact-check</code>.
+          </li>
+          <li>
+            <strong>Grammar & Style</strong> (LanguageTool or LLM fallback)
+            returns a <code>rewrite</code> per finding. LLM-fallback rewrites
+            are grammar-checked a second time.
+          </li>
+          <li>
+            <strong>Academic Citations</strong> (Semantic Scholar) merges DOIs
+            onto fact-check findings with scientific/medical/financial claim
+            types. Free, no API key.
+          </li>
+          <li>
+            <strong>Self-Plagiarism</strong> (Cloudflare Vectorize) flags
+            overlap with your past articles. Index your archive once with{" "}
+            <code>checkapp index &lt;dir&gt;</code>.
+          </li>
+        </ul>
+        <p>
+          Pick a provider per skill from <strong>Settings → Providers</strong>.
+          CheckApp never holds API tokens — users bring their own keys. The{" "}
+          <strong>Run Check</strong> page shows a cost estimate before any API
+          call.
+        </p>
+      </Prose>
+
       <SectionHeading>Understanding scores</SectionHeading>
       <Prose>
         <p>
@@ -153,6 +189,24 @@ function SkillsReference() {
       engine: "MiniMax",
       cost: "~$0.01",
       desc: "Detects the article's content purpose (tutorial, product announcement, case study, thought leadership, etc.) and provides purpose-specific recommendations for missing elements. Adjusts scoring expectations based on detected purpose.",
+    },
+    {
+      name: "Grammar & Style",
+      engine: "LanguageTool / Sapling / LLM",
+      cost: "Free / $0.0008/100w",
+      desc: "Phase 7. Deterministic grammar, punctuation, and style rules via LanguageTool (managed or self-hosted), Sapling, or an LLM fallback. Each finding carries a `rewrite` — LLM-fallback rewrites get a second grammar pass to catch mechanical errors.",
+    },
+    {
+      name: "Academic Citations",
+      engine: "Semantic Scholar",
+      cost: "Free",
+      desc: "Phase 7. Searches peer-reviewed papers for claims flagged as scientific/medical/financial by fact-check. Merges DOIs and abstract snippets directly onto the matching fact-check finding as `citations[]`. Free, no API key required.",
+    },
+    {
+      name: "Self-Plagiarism",
+      engine: "Cloudflare Vectorize / Pinecone / Upstash",
+      cost: "~$0.0002",
+      desc: "Phase 7. Indexes your past articles (`checkapp index <dir>`) and flags passages with high cosine similarity to prior writing. Findings link to the original article and suggest rewrite or link actions.",
     },
   ];
 

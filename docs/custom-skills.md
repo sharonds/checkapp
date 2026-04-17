@@ -409,3 +409,19 @@ Each finding has a `severity` that controls how it appears in the terminal and H
 - Use `"error"` for issues that would cause legal, ethical, or factual problems if published. Examples: plagiarized content, defamatory statements, unsubstantiated health claims.
 - Use `"warn"` for issues that reduce quality but are not blockers. Examples: corporate jargon, sentences that are too long, missing headings.
 - Use `"info"` for suggestions and context. Examples: "Consider adding a meta description", "Article is within ideal word count range". Info findings keep the HTML report clean while still providing value in the terminal.
+
+---
+
+## 9. Phase 7 — Provider-picker skills
+
+New skills should use `resolveProvider(config, skillId)` from `src/providers/resolve.ts` rather than reading flat config fields. Register metadata in `src/providers/registry.ts` (and mirror to `dashboard/src/lib/providers.ts` — `scripts/check-registry-parity.ts` enforces parity in CI).
+
+Skills can return `Finding` entries with any combination of `sources[]` / `rewrite` / `citations[]` / `claimType` / `confidence`. The `enrichFindings()` step in the orchestrator (`src/skills/enrich.ts`) merges citations from enricher skills onto matching fact-check findings, so a single finding can carry all four outputs (the "four-output contract" asserted in `tests/e2e/phase7.test.ts`).
+
+### Enricher pattern
+
+Enrichers implement `EnricherSkill` — a `Skill` variant with `kind: "enricher"` and an `enrich(text, config, priorResults)` method. The orchestrator runs primary skills in parallel, then enrichers with `priorResults` passed in. Academic citations are the canonical example: the skill scans fact-check findings with `claimType: scientific | medical | financial` and attaches `citations[]` to them.
+
+### Cost estimation
+
+Each skill should contribute to the pre-flight cost estimate. Register your skill's cost function in `src/cost/estimator.ts` and mirror to `dashboard/src/lib/cost-estimator.ts`. The drift-guard script only checks provider IDs, so mirror the cost logic manually.
