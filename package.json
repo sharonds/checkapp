@@ -1,6 +1,6 @@
 {
   "name": "checkapp",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "AI content quality gate — plagiarism, AI detection, SEO, fact-check, tone, legal risk, and more. CLI + web dashboard.",
   "type": "module",
   "bin": {
@@ -42,9 +42,10 @@
     "setup": "bun src/index.tsx --setup",
     "build": "bash build.sh",
     "dev": "bun --watch src/index.tsx",
-    "test": "bun test src/*.test.ts src/skills/*.test.ts src/utils/*.test.ts src/providers/*.test.ts src/cli/*.test.ts src/cost/*.test.ts",
+    "test": "bun test src/*.test.ts src/skills/*.test.ts src/utils/*.test.ts src/providers/*.test.ts src/cli/*.test.ts src/cost/*.test.ts tests/e2e/*.test.ts",
     "test:dashboard": "cd dashboard && bunx vitest run",
-    "test:all": "bun run test && bun run test:dashboard"
+    "test:all": "bun run test && bun run test:dashboard",
+    "check:registry": "bun run scripts/check-registry-parity.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.89.0",
