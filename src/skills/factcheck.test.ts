@@ -1,4 +1,4 @@
-import { test, expect, describe, mock } from "bun:test";
+import { test, expect, describe, mock, beforeEach } from "bun:test";
 import { extractClaimsPrompt, claimConfidence, formatCitation, FactCheckSkill } from "./factcheck.ts";
 import type { Config } from "../config.ts";
 import { mockFetch, urlRouter, jsonResponse } from "../testing/mock-fetch.ts";
@@ -6,13 +6,21 @@ import { mockFetch, urlRouter, jsonResponse } from "../testing/mock-fetch.ts";
 // Exa SDK captures global.fetch at import time, so mockFetch (installed per-test)
 // doesn't intercept it. Mock the Exa class itself to route through a configurable
 // handler that the test can set.
-let exaSearchHandler: ((q: string) => Promise<any>) | null = null;
+//
+// NOTE: mock.module("exa-js", ...) is PROCESS-GLOBAL in Bun — there is no
+// documented clean-restore API (as of bun:test today), so this mock persists
+// for the life of the test process. If "exa-js" is imported elsewhere in the
+// suite, tests must tolerate this mocked implementation. Each test MUST set
+// its own exaSearchHandler (reset to null in beforeEach below); the MockExa
+// throws loudly if a test forgot to set one, so leakage across tests is
+// impossible to miss silently.
+let exaSearchHandler: ((q: string, opts: unknown) => Promise<any>) | null = null;
 mock.module("exa-js", () => ({
   default: class MockExa {
     constructor(_key: string) {}
-    async search(q: string, _opts: unknown) {
-      if (!exaSearchHandler) throw new Error("exaSearchHandler not set");
-      return exaSearchHandler(q);
+    async search(q: string, opts: unknown) {
+      if (!exaSearchHandler) throw new Error("No exaSearchHandler set — each test must set one");
+      return exaSearchHandler(q, opts);
     }
   },
 }));
@@ -63,6 +71,12 @@ describe("formatCitation", () => {
 });
 
 describe("FactCheckSkill — Phase 7 evidence", () => {
+  // Reset the process-global exa handler between tests so no test silently
+  // inherits another test's handler. Each test must explicitly set its own.
+  beforeEach(() => {
+    exaSearchHandler = null;
+  });
+
   const cfgBase: Config = {
     copyscapeUser: "", copyscapeKey: "",
     exaApiKey: "exa-key",
@@ -137,5 +151,37 @@ describe("FactCheckSkill — Phase 7 evidence", () => {
     const result = await new FactCheckSkill().run("claim", cfgNoExa as Config);
     expect(result.verdict).toBe("warn");
     expect(result.summary.toLowerCase()).toContain("provider");
+  });
+
+  test("deep-reasoning mode passes type: 'deep-reasoning' + numResults: 5 to Exa", async () => {
+    let capturedOpts: any = null;
+    let llmCallCount = 0;
+    exaSearchHandler = async (_q, opts) => {
+      capturedOpts = opts;
+      return {
+        results: [{
+          url: "https://s.com",
+          title: "t",
+          publishedDate: "2024-01-01",
+          highlights: ["h"],
+        }],
+      };
+    };
+    mockFetch(urlRouter({
+      "api.minimax.io": async () => {
+        llmCallCount++;
+        if (llmCallCount === 1) return anthropicContent("[\"a claim\"]");
+        return anthropicContent("{\"supported\":true,\"note\":\"n\",\"claimType\":\"scientific\"}");
+      },
+    }));
+    const cfg: Config = {
+      ...cfgBase,
+      providers: { "fact-check": { provider: "exa-deep-reasoning", apiKey: "k" } },
+    };
+    const result = await new FactCheckSkill().run("some claim", cfg);
+    expect(capturedOpts?.type).toBe("deep-reasoning");
+    expect(capturedOpts?.numResults).toBe(5);
+    // cost per claim should accumulate 0.025 (deep) + 0.001 (base) + 0.001 (assess) per claim
+    expect(result.costUsd).toBeGreaterThanOrEqual(0.025);
   });
 });

@@ -26,6 +26,13 @@ if (outputIndex !== -1 && !outputPath) {
 }
 const docUrl = args.find((a) => !a.startsWith("--") && a !== batchDir && a !== outputPath);
 
+// Unset the deep-fact-check env vars after the run so they can't leak into
+// child processes spawned later (e.g. --ui subprocess) or linger on exit.
+const cleanupDeepEnv = () => {
+  delete process.env.CHECKAPP_DEEP_FACT_CHECK;
+  delete process.env.CHECKAPP_DEEP_FACT_CHECK_KEY;
+};
+
 async function main() {
   // --estimate-cost: wiring lands in Phase 7 B7. Fail noisily.
   if (estimateOnly) {
@@ -37,6 +44,10 @@ async function main() {
   // resolveProvider — NOT blindly config.exaApiKey), then swap the provider to
   // exa-deep-reasoning while keeping the key. Downstream readConfig() calls honor
   // the env-var sidecar so this propagates to checker/runCheck without extra plumbing.
+  //
+  // SECURITY: env vars are unset immediately after the run (try/finally below +
+  // process.on("exit") handler) so they don't leak into any child processes
+  // spawned later (e.g. --ui subprocess) or stick around on error/exit paths.
   if (deepFactCheck) {
     const cfg = configExists() ? readConfig() : undefined;
     if (cfg) {
@@ -48,6 +59,7 @@ async function main() {
       }
       process.env.CHECKAPP_DEEP_FACT_CHECK = "1";
       process.env.CHECKAPP_DEEP_FACT_CHECK_KEY = apiKey;
+      process.once("exit", cleanupDeepEnv);
     } else {
       console.error("--deep-fact-check requires a CheckApp config (run --setup first)");
       process.exit(1);
@@ -276,7 +288,11 @@ async function main() {
   await runCheck(docUrl, outputPath);
 }
 
-main().catch((err) => {
-  console.error("Unexpected error:", err);
-  process.exit(1);
-});
+main()
+  .catch((err) => {
+    console.error("Unexpected error:", err);
+    process.exit(1);
+  })
+  .finally(() => {
+    cleanupDeepEnv();
+  });
