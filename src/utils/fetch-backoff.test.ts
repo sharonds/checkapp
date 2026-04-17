@@ -1,5 +1,5 @@
-import { describe, test, expect } from "bun:test";
-import { fetchWithBackoff } from "./fetch-backoff.ts";
+import { describe, test, expect, beforeEach } from "bun:test";
+import { fetchWithBackoff, parseRetryAfterMs } from "./fetch-backoff.ts";
 import { mockFetch, jsonResponse } from "../testing/mock-fetch.ts";
 
 describe("fetchWithBackoff", () => {
@@ -43,5 +43,44 @@ describe("fetchWithBackoff", () => {
     const res = await fetchWithBackoff("https://x.example", { maxRetries: 3, baseDelayMs: 1 });
     expect(calls).toBe(2);
     expect(res.status).toBe(200);
+  });
+
+  test("throws on maxRetries < 0 instead of silently returning null", async () => {
+    try {
+      await fetchWithBackoff("http://x", { maxRetries: -1 });
+      throw new Error("should have thrown");
+    } catch (e) {
+      expect((e as Error).message).toMatch(/maxRetries/);
+    }
+  });
+
+  test("retries on network error (not only HTTP 429/5xx)", async () => {
+    let calls = 0;
+    const fetchImpl = async () => {
+      calls++;
+      if (calls < 2) throw new TypeError("fetch failed");
+      return jsonResponse({ ok: true });
+    };
+    const res = await fetchWithBackoff("http://x", { maxRetries: 2, baseDelayMs: 1, fetchImpl });
+    expect(await res.text()).toBe(JSON.stringify({ ok: true }));
+    expect(calls).toBe(2);
+  });
+
+  test("parses HTTP-date Retry-After into milliseconds", () => {
+    const futureDate = new Date(Date.now() + 2500).toUTCString();
+    const ms = parseRetryAfterMs(futureDate);
+    expect(ms).toBeGreaterThan(2000);
+    expect(ms).toBeLessThanOrEqual(3000);
+  });
+
+  test("parses numeric Retry-After in seconds", () => {
+    const ms = parseRetryAfterMs("5");
+    expect(ms).toBe(5000);
+  });
+
+  test("returns null for invalid Retry-After", () => {
+    expect(parseRetryAfterMs(null)).toBeNull();
+    expect(parseRetryAfterMs("")).toBeNull();
+    expect(parseRetryAfterMs("invalid")).toBeNull();
   });
 });
