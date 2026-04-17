@@ -5,6 +5,14 @@ export type Verdict = "pass" | "warn" | "fail" | "skipped";
 export type Severity = "info" | "warn" | "error";
 export type ClaimType = "scientific" | "medical" | "financial" | "general";
 
+function isSource(x: unknown): x is Source {
+  return typeof x === "object" && x !== null && typeof (x as any).url === "string";
+}
+
+function isCitation(x: unknown): x is Citation {
+  return typeof x === "object" && x !== null && typeof (x as any).title === "string";
+}
+
 export interface Source {
   url: string;
   title?: string;
@@ -57,9 +65,9 @@ export function normalizeFinding(raw: unknown): Finding {
     severity: validSeverities.includes(f.severity as never) ? (f.severity as Finding["severity"]) : "info",
     text: typeof f.text === "string" ? f.text : "",
     quote: typeof f.quote === "string" ? f.quote : undefined,
-    sources: Array.isArray(f.sources) ? (f.sources as Finding["sources"]) : undefined,
+    sources: Array.isArray(f.sources) ? f.sources.filter(isSource) : undefined,
     rewrite: typeof f.rewrite === "string" ? f.rewrite : undefined,
-    citations: Array.isArray(f.citations) ? (f.citations as Finding["citations"]) : undefined,
+    citations: Array.isArray(f.citations) ? f.citations.filter(isCitation) : undefined,
     claimType: validClaimTypes.includes(f.claimType as never) ? (f.claimType as Finding["claimType"]) : undefined,
     confidence: validConfidences.includes(f.confidence as never) ? (f.confidence as Finding["confidence"]) : undefined,
   };
@@ -79,7 +87,7 @@ export function normalizeSkillResult(raw: unknown): SkillResult {
     summary: typeof r.summary === "string" ? r.summary : "",
     findings: Array.isArray(r.findings) ? r.findings.map(normalizeFinding) : [],
     costUsd: typeof r.costUsd === "number" ? r.costUsd : (typeof r.cost_usd === "number" ? (r.cost_usd as number) : 0),
-    costBreakdown: r.costBreakdown && typeof r.costBreakdown === "object" ? (r.costBreakdown as Record<string, number>) : undefined,
+    costBreakdown: r.costBreakdown && typeof r.costBreakdown === "object" && !Array.isArray(r.costBreakdown) ? (r.costBreakdown as Record<string, number>) : undefined,
     provider: typeof r.provider === "string" ? r.provider : undefined,
     error: typeof r.error === "string" ? r.error : undefined,
   };

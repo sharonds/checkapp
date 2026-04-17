@@ -14,4 +14,15 @@ describe("dashboard normalize mirror", () => {
     expect(r.findings).toHaveLength(3);
     expect(r.findings[2].text).toBe("ok");
   });
+
+  test("drops non-object elements from sources and citations", () => {
+    const f = normalizeFinding({
+      severity: "info",
+      text: "x",
+      sources: ["bad", { url: "https://ok.example", title: "Ok" }, null],
+      citations: [42, { title: "Real" }],
+    });
+    expect(f.sources).toEqual([{ url: "https://ok.example", title: "Ok" }]);
+    expect(f.citations).toEqual([{ title: "Real" }]);
+  });
 });
