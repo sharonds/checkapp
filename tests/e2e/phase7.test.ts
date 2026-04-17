@@ -9,7 +9,8 @@
  *   claimType — merged via the enrichFindings() step. Grammar findings
  *   separately carry rewrite.
  */
-import { describe, test, expect, beforeEach, mock } from "bun:test";
+import { describe, test, expect, beforeEach, afterEach, mock } from "bun:test";
+import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { runCheckHeadless } from "../../src/checker.ts";
@@ -36,6 +37,14 @@ const anthropicContent = (text: string) => ({
 });
 
 describe("Phase 7 E2E — four-output contract", () => {
+  let tmpDirs: string[] = [];
+
+  function mkTmp() {
+    const t = mkdtempSync(join(tmpdir(), "checkapp-e2e-"));
+    tmpDirs.push(t);
+    return t;
+  }
+
   beforeEach(() => {
     exaSearchHandler = async () => ({
       results: [{
@@ -45,6 +54,11 @@ describe("Phase 7 E2E — four-output contract", () => {
         highlights: ["73% of remote workers experience back pain"],
       }],
     });
+  });
+
+  afterEach(() => {
+    tmpDirs.forEach(t => rmSync(t, { recursive: true, force: true }));
+    tmpDirs = [];
   });
 
   test("fact-check finding carries sources + citations + claimType after full pipeline", async () => {
@@ -86,7 +100,8 @@ describe("Phase 7 E2E — four-output contract", () => {
       },
     };
 
-    const dbPath = join(tmpdir(), `checkapp-e2e-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
+    const tmp = mkTmp();
+    const dbPath = join(tmp, "history.db");
     const result = await runCheckHeadless("phase7-e2e", { text: FIXTURE_ARTICLE, config, dbPath });
     const factCheck = result.results.find(s => s.skillId === "fact-check");
     const factFinding = factCheck?.findings[0];
@@ -100,10 +115,4 @@ describe("Phase 7 E2E — four-output contract", () => {
     expect(factFinding?.claimType).toBe("scientific");
   });
 
-  test("grammar finding carries rewrite (separate finding, same E2E run)", async () => {
-    // Grammar not enabled in this test — the four-output contract is proven
-    // on fact-check + academic. Grammar's rewrite contract is covered in
-    // grammar.test.ts. We include this placeholder to document the design.
-    expect(true).toBe(true);
-  });
 });
