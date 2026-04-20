@@ -24,6 +24,7 @@ const KEY_LABELS: Record<string, string> = {
   exa: "EXA_API_KEY",
   minimax: "MINIMAX_API_KEY",
   anthropic: "ANTHROPIC_API_KEY",
+  openrouter: "OPENROUTER_API_KEY",
 };
 
 const SKILL_INFO: Record<string, { description: string; context?: string }> = {

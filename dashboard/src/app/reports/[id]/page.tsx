@@ -4,7 +4,7 @@ import { getCheckById, getTagsForCheck } from "@/lib/db";
 import { ScoreRing } from "@/components/score-ring";
 import { VerdictBadge } from "@/components/verdict-badge";
 import { SkillCard, type SkillResult } from "@/components/skill-card";
-import { normalizeSkillResult } from "@/lib/normalize";
+import { normalizeSkillResult, type Verdict } from "@/lib/normalize";
 import { ReportTags } from "@/components/report-tags";
 import { ExportButtons } from "@/components/export-buttons";
 import { RegeneratePanel } from "@/components/regenerate-panel";
@@ -17,8 +17,6 @@ function getVerdict(score: number): "pass" | "warn" | "fail" {
   if (score >= 50) return "warn";
   return "fail";
 }
-
-type Verdict = "pass" | "warn" | "fail" | "skipped";
 
 function resolveVerdict(normalizedVerdict: Verdict, score: number): Verdict {
   // Preserve 'skipped' from the stored skill result — it's the neutral

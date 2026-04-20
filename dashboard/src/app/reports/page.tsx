@@ -8,6 +8,11 @@ import { EmptyState } from "@/components/empty-state";
 import { LoadingSkeleton } from "@/components/loading-skeleton";
 import { FooterBar } from "@/components/footer-bar";
 
+interface StoredSkillResult {
+  score?: number;
+  verdict?: "pass" | "warn" | "fail" | "skipped";
+}
+
 interface ApiCheck {
   id: number;
   source: string;
@@ -17,7 +22,7 @@ interface ApiCheck {
   total_cost?: number;
   createdAt: string;
   created_at?: string;
-  results?: Array<{ score?: number }>;
+  results?: StoredSkillResult[];
   resultsJson?: string;
   results_json?: string;
 }
@@ -33,12 +38,13 @@ function getVerdict(score: number): "pass" | "warn" | "fail" {
   return "fail";
 }
 
-function parseResults(check: ApiCheck): Array<{ score?: number }> {
+function parseResults(check: ApiCheck): StoredSkillResult[] {
   if (Array.isArray(check.results)) return check.results;
   const raw = check.resultsJson ?? check.results_json;
   if (typeof raw === "string") {
     try {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
     } catch {
       return [];
     }
@@ -48,21 +54,23 @@ function parseResults(check: ApiCheck): Array<{ score?: number }> {
 
 function toCheckRow(c: ApiCheck): CheckRow {
   const results = parseResults(c);
-  // Exclude skipped skills — their score=0 would unfairly drag down the avg.
-  const scores = results
-    .filter((r) => (r as { verdict?: string }).verdict !== "skipped")
+  const scored = results.filter((r) => r.verdict !== "skipped");
+  const scores = scored
     .map((r) => r.score)
     .filter((s): s is number => typeof s === "number");
+  const allSkipped = results.length > 0 && scored.length === 0;
   const avgScore =
     scores.length > 0
       ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
       : 0;
+  // If every skill was skipped, don't let getVerdict(0) flip the row to FAIL.
+  const verdict: CheckRow["verdict"] = allSkipped ? "skipped" : getVerdict(avgScore);
 
   return {
     id: String(c.id),
     source: c.source,
     score: avgScore,
-    verdict: getVerdict(avgScore),
+    verdict,
     words: c.wordCount ?? c.word_count ?? 0,
     costUsd: c.totalCost ?? c.total_cost ?? 0,
     createdAt: c.createdAt ?? c.created_at ?? "",

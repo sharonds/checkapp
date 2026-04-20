@@ -7,6 +7,11 @@ import { FileSearch } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
+interface StoredSkillResult {
+  score?: number;
+  verdict?: "pass" | "warn" | "fail" | "skipped";
+}
+
 function getVerdict(score: number): "pass" | "warn" | "fail" {
   if (score >= 75) return "pass";
   if (score >= 50) return "warn";
@@ -49,25 +54,26 @@ export default function DashboardPage() {
 
   // Parse results from each check
   const parsed = recentChecks.map((c) => {
-    let results: Array<{ score?: number }> = [];
+    let results: StoredSkillResult[] = [];
     try {
-      results = JSON.parse(c.resultsJson);
+      const raw = JSON.parse(c.resultsJson);
+      results = Array.isArray(raw) ? raw : [];
     } catch {
       results = [];
     }
 
-    // Exclude skipped skills from the average — they're 'not configured',
-    // not 'failed'. Including score=0 for skipped drags the average down.
-    const scores = Array.isArray(results)
-      ? results
-          .filter((r) => (r as { verdict?: string }).verdict !== "skipped")
-          .map((r) => r.score)
-          .filter((s): s is number => typeof s === "number")
-      : [];
+    const scored = results.filter((r) => r.verdict !== "skipped");
+    const scores = scored
+      .map((r) => r.score)
+      .filter((s): s is number => typeof s === "number");
+    const allSkipped = results.length > 0 && scored.length === 0;
     const avgScore =
       scores.length > 0
         ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
         : 0;
+    const verdict: "pass" | "warn" | "fail" | "skipped" = allSkipped
+      ? "skipped"
+      : getVerdict(avgScore);
 
     return {
       id: c.id,
@@ -76,23 +82,24 @@ export default function DashboardPage() {
       totalCost: c.totalCost,
       createdAt: c.createdAt,
       avgScore,
-      verdict: getVerdict(avgScore),
+      verdict,
     };
   });
 
-  // Compute overall average score
+  // Overall average excludes rows whose score is 0 — covers both 'all skills
+  // skipped' (verdict=skipped) and rows with no scorable skills.
   const allScores = parsed.map((p) => p.avgScore).filter((s) => s > 0);
   const overallAvg =
     allScores.length > 0
       ? Math.round(allScores.reduce((a, b) => a + b, 0) / allScores.length)
       : 0;
 
-  // Verdict distribution
-  const verdictCounts = { pass: 0, warn: 0, fail: 0 };
+  // Verdict distribution — skipped gets its own bucket so the bar reflects reality.
+  const verdictCounts = { pass: 0, warn: 0, fail: 0, skipped: 0 };
   for (const p of parsed) {
     verdictCounts[p.verdict]++;
   }
-  const verdictTotal = verdictCounts.pass + verdictCounts.warn + verdictCounts.fail;
+  const verdictTotal = verdictCounts.pass + verdictCounts.warn + verdictCounts.fail + verdictCounts.skipped;
 
   // Checks this month
   const now = new Date();
@@ -202,6 +209,14 @@ export default function DashboardPage() {
                     }}
                   />
                 )}
+                {verdictCounts.skipped > 0 && (
+                  <div
+                    className="bg-muted-foreground/50"
+                    style={{
+                      width: `${(verdictCounts.skipped / verdictTotal) * 100}%`,
+                    }}
+                  />
+                )}
               </div>
             )}
             <p className="text-xs text-muted-foreground">
@@ -216,6 +231,12 @@ export default function DashboardPage() {
               <span className="text-score-fail">
                 {verdictCounts.fail} failed
               </span>
+              {verdictCounts.skipped > 0 && (
+                <>
+                  {" \u00b7 "}
+                  <span>{verdictCounts.skipped} skipped</span>
+                </>
+              )}
             </p>
           </CardContent>
         </Card>
