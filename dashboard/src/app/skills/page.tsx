@@ -14,9 +14,9 @@ interface Skill {
   id: string;
   name: string;
   engine: string;
-  requiresKeys: string[];
+  supportedProviders: string[];
   enabled: boolean;
-  keysConfigured: boolean;
+  ready: boolean;
 }
 
 const KEY_LABELS: Record<string, string> = {
@@ -24,6 +24,7 @@ const KEY_LABELS: Record<string, string> = {
   exa: "EXA_API_KEY",
   minimax: "MINIMAX_API_KEY",
   anthropic: "ANTHROPIC_API_KEY",
+  openrouter: "OPENROUTER_API_KEY",
 };
 
 const SKILL_INFO: Record<string, { description: string; context?: string }> = {
@@ -149,14 +150,14 @@ export default function SkillsPage() {
                       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
                         {/* API key status */}
                         <div className="flex items-center gap-1.5">
-                          {skill.requiresKeys.length === 0 ? (
+                          {skill.supportedProviders.length === 0 ? (
                             <>
                               <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
                               <span className="text-xs text-muted-foreground">
                                 No API keys required
                               </span>
                             </>
-                          ) : skill.keysConfigured ? (
+                          ) : skill.ready ? (
                             <>
                               <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
                               <span className="text-xs text-muted-foreground">
@@ -168,7 +169,7 @@ export default function SkillsPage() {
                               <span className="inline-block h-2 w-2 rounded-full bg-red-500" />
                               <span className="text-xs text-red-600 dark:text-red-400">
                                 Missing:{" "}
-                                {skill.requiresKeys
+                                {skill.supportedProviders
                                   .map((k) => KEY_LABELS[k] ?? k)
                                   .join(", ")}
                               </span>

@@ -15,7 +15,7 @@ export interface CheckRow {
   id: string;
   source: string;
   score: number;
-  verdict: "pass" | "warn" | "fail";
+  verdict: "pass" | "warn" | "fail" | "skipped";
   words: number;
   costUsd: number;
   createdAt: string;

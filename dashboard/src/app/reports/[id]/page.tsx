@@ -4,7 +4,7 @@ import { getCheckById, getTagsForCheck } from "@/lib/db";
 import { ScoreRing } from "@/components/score-ring";
 import { VerdictBadge } from "@/components/verdict-badge";
 import { SkillCard, type SkillResult } from "@/components/skill-card";
-import { normalizeSkillResult } from "@/lib/normalize";
+import { normalizeSkillResult, type Verdict } from "@/lib/normalize";
 import { ReportTags } from "@/components/report-tags";
 import { ExportButtons } from "@/components/export-buttons";
 import { RegeneratePanel } from "@/components/regenerate-panel";
@@ -16,6 +16,14 @@ function getVerdict(score: number): "pass" | "warn" | "fail" {
   if (score >= 75) return "pass";
   if (score >= 50) return "warn";
   return "fail";
+}
+
+function resolveVerdict(normalizedVerdict: Verdict, score: number): Verdict {
+  // Preserve 'skipped' from the stored skill result — it's the neutral
+  // 'not configured / not applicable' state and must not be recomputed
+  // from a zero score (which would render as FAIL).
+  if (normalizedVerdict === "skipped") return "skipped";
+  return getVerdict(score);
 }
 
 export default async function ReportDetailPage({
@@ -64,7 +72,7 @@ export default async function ReportDetailPage({
           skillId: n.skillId || "unknown",
           name: n.name || "Unknown Skill",
           score: n.score,
-          verdict: getVerdict(n.score),
+          verdict: resolveVerdict(n.verdict, n.score),
           summary: n.summary,
           findings: n.findings,
           costUsd: n.costUsd,
@@ -75,14 +83,18 @@ export default async function ReportDetailPage({
     results = [];
   }
 
-  const scores = results
+  // Exclude skipped skills — they're 'not configured', not 'failed'.
+  const scoredResults = results.filter((r) => r.verdict !== "skipped");
+  const scores = scoredResults
     .map((r) => r.score)
     .filter((s): s is number => typeof s === "number");
+  const allSkipped = results.length > 0 && scoredResults.length === 0;
   const avgScore =
     scores.length > 0
       ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
       : 0;
-  const verdict = getVerdict(avgScore);
+  // If every skill was skipped, don't show FAIL — show 'skipped' as the overall state.
+  const verdict: Verdict = allSkipped ? "skipped" : getVerdict(avgScore);
 
   const dateStr = new Date(check.createdAt).toLocaleDateString("en-US", {
     year: "numeric",

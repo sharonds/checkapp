@@ -36,9 +36,7 @@ export const PROVIDER_REGISTRY: Partial<Record<SkillId, ProviderMetadata[]>> = {
   "fact-check": [
     { id: "exa-search", label: "Exa Search", speed: "fast", costPerCheckUsd: 0.008, costLabel: "$0.008/check", depth: "standard", freeTier: false, requiresKey: true },
     { id: "exa-deep-reasoning", label: "Exa Deep Reasoning", speed: "slow", costPerCheckUsd: 0.025, costLabel: "$0.025/check", depth: "deep", freeTier: false, requiresKey: true },
-    { id: "parallel-search", label: "Parallel Search", speed: "fast", costPerCheckUsd: 0.005, costLabel: "$0.005/check", depth: "standard", freeTier: true, requiresKey: true },
     { id: "parallel-task", label: "Parallel Task", speed: "slow", costPerCheckUsd: 0.03, costLabel: "$0.03/check", depth: "deep", freeTier: true, requiresKey: true },
-    { id: "tavily", label: "Tavily", speed: "medium", costPerCheckUsd: 0.002, costLabel: "$0.002/check", depth: "standard", freeTier: true, requiresKey: true },
   ],
   grammar: [
     { id: "languagetool", label: "LanguageTool (managed)", speed: "fast", costPerCheckUsd: 0, costLabel: "free tier", depth: "standard", freeTier: true, requiresKey: false, endpoint: "https://api.languagetool.org/v2/check" },

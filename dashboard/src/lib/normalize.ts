@@ -78,7 +78,7 @@ export function normalizeSkillResult(raw: unknown): SkillResult {
     return { skillId: "", name: "", score: 0, verdict: "warn", summary: "", findings: [], costUsd: 0 };
   }
   const r = raw as Partial<SkillResult> & Record<string, unknown>;
-  const validVerdicts = ["pass", "warn", "fail"] as const;
+  const validVerdicts = ["pass", "warn", "fail", "skipped"] as const;
   return {
     skillId: typeof r.skillId === "string" ? r.skillId : (typeof r.skill_id === "string" ? (r.skill_id as string) : ""),
     name: typeof r.name === "string" ? r.name : "",
