@@ -11,13 +11,21 @@ const LEGACY_MAP: Partial<Record<SkillId, { provider: SkillProviderConfig["provi
   plagiarism: { provider: "copyscape", keyOf: (c) => c.copyscapeKey || undefined },
 };
 
+const GEMINI_FACT_CHECK_PROVIDERS = new Set<SkillProviderConfig["provider"]>([
+  "gemini-grounded",
+  "gemini-deep-research",
+]);
+
 export function resolveProvider(
   config: Config,
   skillId: SkillId,
 ): { provider: SkillProviderConfig["provider"]; apiKey?: string; metadata?: ProviderMetadata } | null {
   const explicit = config.providers?.[skillId];
   if (explicit?.provider) {
-    return { provider: explicit.provider, apiKey: explicit.apiKey, metadata: getProvider(skillId, explicit.provider) };
+    const apiKey =
+      explicit.apiKey ??
+      (skillId === "fact-check" && GEMINI_FACT_CHECK_PROVIDERS.has(explicit.provider) ? config.geminiApiKey : undefined);
+    return { provider: explicit.provider, apiKey, metadata: getProvider(skillId, explicit.provider) };
   }
   const legacy = LEGACY_MAP[skillId];
   if (legacy) {

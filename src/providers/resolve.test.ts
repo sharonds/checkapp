@@ -1,6 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { resolveProvider } from "./resolve.ts";
 import type { Config } from "../config.ts";
+import { PROVIDER_REGISTRY } from "./registry.ts";
 
 const base: Config = {
   copyscapeUser: "", copyscapeKey: "",
@@ -25,6 +26,38 @@ describe("resolveProvider", () => {
     const r = resolveProvider({ ...base, exaApiKey: "k-legacy" }, "fact-check");
     expect(r?.provider).toBe("exa-search");
     expect(r?.apiKey).toBe("k-legacy");
+  });
+
+  test("resolves gemini-grounded with config.geminiApiKey for fact-check", () => {
+    const provider = PROVIDER_REGISTRY["fact-check"]?.find((p) => p.id === "gemini-grounded");
+    const r = resolveProvider(
+      {
+        ...base,
+        geminiApiKey: "gk-grounded",
+        providers: { "fact-check": { provider: "gemini-grounded" } },
+      } as Config,
+      "fact-check",
+    );
+
+    expect(r?.provider).toBe("gemini-grounded");
+    expect(r?.apiKey).toBe("gk-grounded");
+    expect(r?.metadata).toEqual(provider);
+  });
+
+  test("resolves gemini-deep-research with config.geminiApiKey for fact-check", () => {
+    const provider = PROVIDER_REGISTRY["fact-check"]?.find((p) => p.id === "gemini-deep-research");
+    const r = resolveProvider(
+      {
+        ...base,
+        geminiApiKey: "gk-deep",
+        providers: { "fact-check": { provider: "gemini-deep-research" } },
+      } as Config,
+      "fact-check",
+    );
+
+    expect(r?.provider).toBe("gemini-deep-research");
+    expect(r?.apiKey).toBe("gk-deep");
+    expect(r?.metadata).toEqual(provider);
   });
 
   test("falls back to legacy copyscapeKey for plagiarism", () => {

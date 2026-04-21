@@ -5,6 +5,7 @@ export type SkillId =
 
 export type ProviderId =
   | "exa-search" | "exa-deep-reasoning" | "parallel-search" | "parallel-task" | "tavily"
+  | "gemini-grounded" | "gemini-deep-research"
   | "languagetool" | "languagetool-selfhosted" | "sapling" | "llm-fallback"
   | "copyscape" | "originality"
   | "semantic-scholar"
