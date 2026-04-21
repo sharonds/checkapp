@@ -101,12 +101,18 @@ export class FactCheckSkill implements Skill {
       ? (q: string) => exa.search(q, {
           type: "deep-reasoning",
           numResults: 5,
-          contents: { highlights: { maxCharacters: 1500, query: q } },
+          contents: {
+            text: { maxCharacters: 4000 },
+            highlights: { maxCharacters: 1000, numSentences: 3, query: q },
+          },
         })
       : (q: string) => exa.search(q, {
           type: "auto",
           numResults: 3,
-          contents: { highlights: { maxCharacters: 1500, query: q } },
+          contents: {
+            text: { maxCharacters: 4000 },
+            highlights: { maxCharacters: 1000, numSentences: 3, query: q },
+          },
         });
 
     const claimResults = await Promise.all(
@@ -121,8 +127,17 @@ export class FactCheckSkill implements Skill {
     const assessments: Array<{ claim: string; supported: boolean | null; note: string; claimType: ClaimType }> = [];
     for (const { claim, results: searchResults } of claimResults) {
       const evidence = searchResults
-        .map((r, i) => `[${i + 1}] ${r.url}\n${(r.highlights ?? []).join(" ")}`)
-        .join("\n\n");
+        .map((r, i) => {
+          const highlights = (r.highlights ?? []).join(" ");
+          const fullText = r.text ?? "";
+          return [
+            `[${i + 1}] URL: ${r.url}`,
+            `Title: ${r.title ?? "N/A"}`,
+            `Highlights: ${highlights || "N/A"}`,
+            `Full text: ${fullText || "N/A"}`,
+          ].join("\n");
+        })
+        .join("\n\n---\n\n");
 
       const assessPrompt = `Is this claim supported by the evidence below?
 Claim: "${claim}"

@@ -98,14 +98,19 @@ describe("FactCheckSkill — Phase 7 evidence", () => {
 
   test("verified claim finding carries sources[] with url + title + quote", async () => {
     let llmCallCount = 0;
-    exaSearchHandler = async () => ({
-      results: [{
-        url: "https://example.com/study",
-        title: "Remote work ergonomics study",
-        publishedDate: "2023-05-01",
-        highlights: ["73% of remote workers experience back pain"],
-      }],
-    });
+    let capturedOpts: any = null;
+    exaSearchHandler = async (_q, opts) => {
+      capturedOpts = opts;
+      return {
+        results: [{
+          url: "https://example.com/study",
+          title: "Remote work ergonomics study",
+          publishedDate: "2023-05-01",
+          highlights: ["73% of remote workers experience back pain"],
+          text: "A full article describing the study and its findings.",
+        }],
+      };
+    };
     mockFetch(urlRouter({
       "api.minimax.io": async () => {
         llmCallCount++;
@@ -124,13 +129,22 @@ describe("FactCheckSkill — Phase 7 evidence", () => {
     expect(withSources).toBeDefined();
     expect(withSources?.sources?.[0].url).toContain("example.com");
     expect(withSources?.sources?.[0].quote).toContain("73%");
+    expect(capturedOpts).toMatchObject({
+      type: "auto",
+      numResults: 3,
+      contents: {
+        text: { maxCharacters: 4000 },
+        highlights: { maxCharacters: 1000, numSentences: 3, query: "73% of remote workers experience back pain" },
+      },
+    });
     expect(result.provider).toBe("exa-search");
   });
 
   test("claimType is one of the 4 enum values", async () => {
     let llmCallCount = 0;
-    exaSearchHandler = async () => ({
-      results: [{ url: "https://s.com", title: "T", highlights: ["e"] }],
+    exaSearchHandler = async (_q, opts) => ({
+      contents: opts,
+      results: [{ url: "https://s.com", title: "T", highlights: ["e"], text: "full text" }],
     });
     mockFetch(urlRouter({
       "api.minimax.io": async () => {
@@ -175,6 +189,7 @@ describe("FactCheckSkill — Phase 7 evidence", () => {
           title: "t",
           publishedDate: "2024-01-01",
           highlights: ["h"],
+          text: "full text",
         }],
       };
     };
@@ -192,6 +207,10 @@ describe("FactCheckSkill — Phase 7 evidence", () => {
     const result = await new FactCheckSkill().run("some claim", cfg);
     expect(capturedOpts?.type).toBe("deep-reasoning");
     expect(capturedOpts?.numResults).toBe(5);
+    expect(capturedOpts?.contents).toMatchObject({
+      text: { maxCharacters: 4000 },
+      highlights: { maxCharacters: 1000, numSentences: 3, query: "a claim" },
+    });
     // cost per claim should accumulate 0.025 (deep) + 0.001 (base) + 0.001 (assess) per claim
     expect(result.costUsd).toBeGreaterThanOrEqual(0.025);
   });
