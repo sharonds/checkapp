@@ -26,6 +26,32 @@ describe("estimateRunCost", () => {
     expect(r.perSkill["fact-check"]).toBeCloseTo(0.008 * 4, 4);
   });
 
+  test("fact-check uses selected standard tier pricing when the flag is on", () => {
+    const r = estimateRunCost(
+      {
+        ...base({ factCheck: true }),
+        factCheckTierFlag: true,
+        factCheckTier: "standard",
+        providers: { "fact-check": { provider: "exa-search", apiKey: "k" } },
+      },
+      1000
+    );
+    expect(r.perSkill["fact-check"]).toBeCloseTo(0.16, 4);
+  });
+
+  test("fact-check uses provider pricing when the flag is off", () => {
+    const r = estimateRunCost(
+      {
+        ...base({ factCheck: true }),
+        factCheckTierFlag: false,
+        factCheckTier: "premium",
+        providers: { "fact-check": { provider: "exa-search", apiKey: "k" } },
+      },
+      1000
+    );
+    expect(r.perSkill["fact-check"]).toBeCloseTo(0.008 * 4, 4);
+  });
+
   test("grammar free at normal word counts", () => {
     const r = estimateRunCost(
       {

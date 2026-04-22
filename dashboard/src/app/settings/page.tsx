@@ -71,6 +71,7 @@ export default function SettingsPage() {
 
   const [provider, setProvider] = useState("minimax");
   const [factCheckTier, setFactCheckTier] = useState<FactCheckTier>("basic");
+  const [factCheckTierFlag, setFactCheckTierFlag] = useState(false);
   const [geminiKeyConfigured, setGeminiKeyConfigured] = useState(false);
   const [keyValues, setKeyValues] = useState<Record<string, string>>({});
   const [thresholds, setThresholds] = useState<
@@ -86,7 +87,10 @@ export default function SettingsPage() {
         setConfig(data.config ?? {});
         setApiKeys(data.apiKeys ?? {});
         setProvider((data.config?.llmProvider as string) ?? "minimax");
-        setFactCheckTier((data.config?.factCheckTier as FactCheckTier) ?? "basic");
+        const savedTier = data.config?.factCheckTier as FactCheckTier | undefined;
+        const routingEnabled = data.config?.factCheckTierFlag === true;
+        setFactCheckTier(routingEnabled ? (savedTier ?? "basic") : "basic");
+        setFactCheckTierFlag(routingEnabled);
         setGeminiKeyConfigured(Boolean(data.capabilities?.geminiKeyConfigured));
 
         // Initialize key values from masked config
@@ -132,18 +136,32 @@ export default function SettingsPage() {
 
   async function handleFactCheckTierChange(nextTier: FactCheckTier) {
     setFactCheckTier(nextTier);
+    const nextFlag = nextTier !== "basic";
+    setFactCheckTierFlag(nextFlag);
     try {
       const res = await fetchWithCsrf("/api/config", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ factCheckTier: nextTier }),
+        body: JSON.stringify({
+          factCheckTier: nextTier,
+          factCheckTierFlag: nextFlag,
+        }),
       });
       if (!res.ok) {
         toast.error("Failed to save");
+        setFactCheckTier(config.factCheckTier as FactCheckTier ?? "basic");
+        setFactCheckTierFlag(config.factCheckTierFlag === true);
         return;
       }
-      toast.success("Fact-check tier updated");
+      setConfig((prev) => ({
+        ...prev,
+        factCheckTier: nextTier,
+        factCheckTierFlag: nextFlag,
+      }));
+      toast.success(nextFlag ? "Fact-check routing enabled" : "Fact-check routing disabled");
     } catch {
+      setFactCheckTier(config.factCheckTier as FactCheckTier ?? "basic");
+      setFactCheckTierFlag(config.factCheckTierFlag === true);
       toast.error("Failed to save");
     }
   }
@@ -300,12 +318,22 @@ export default function SettingsPage() {
                 Choose how much external research the fact-checker should perform.
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-3">
               <FactCheckTierSelector
                 value={factCheckTier}
                 onChange={handleFactCheckTierChange}
                 geminiKeyConfigured={geminiKeyConfigured}
               />
+              <p className="text-sm text-muted-foreground">
+                {factCheckTierFlag
+                  ? `Fact-check routing is enabled. The runtime will use ${factCheckTier === "premium" ? "Deep Audit" : factCheckTier === "standard" ? "Standard" : "Basic"}.`
+                  : "Fact-check routing is disabled. The runtime will use Basic until you opt in."}
+              </p>
+              {!factCheckTierFlag && typeof config.factCheckTier === "string" && config.factCheckTier !== "basic" && (
+                <p className="text-xs text-muted-foreground">
+                  Saved tier: {config.factCheckTier === "premium" ? "Deep Audit" : "Standard"}.
+                </p>
+              )}
             </CardContent>
           </Card>
 

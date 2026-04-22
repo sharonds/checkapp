@@ -2,7 +2,7 @@
 
 import { SkillRegistry } from "./skills/registry.ts";
 import { applyThreshold } from "./thresholds.ts";
-import { buildSkills } from "./checker.ts";
+import { buildSkills, type RunCheckHooks } from "./checker.ts";
 import { openDb, loadAllContexts, type DB } from "./db.ts";
 import type { Config } from "./config.ts";
 import type { SkillResult } from "./skills/types.ts";
@@ -13,8 +13,8 @@ export interface CoreResult {
 }
 
 /** Pure pipeline: text + config → skill results. No DB write, no I/O beyond skills' own network calls. */
-export async function runCheckCore(text: string, config: Config): Promise<CoreResult> {
-  const skills = buildSkills(config);
+export async function runCheckCore(text: string, config: Config, hooks?: RunCheckHooks): Promise<CoreResult> {
+  const skills = buildSkills(config, hooks);
   const registry = new SkillRegistry(skills);
   const raw = await registry.runAll(text, config);
   const results = raw.map(r => ({

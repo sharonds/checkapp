@@ -77,7 +77,7 @@ export function FactCheckTierSelector({
 
       {!geminiKeyConfigured && (
         <p className="text-sm text-muted-foreground">
-          Add GEMINI_API_KEY to enable Standard and Deep Audit tiers.
+          Add GEMINI_API_KEY and enable fact-check routing to use Standard and Deep Audit tiers.
         </p>
       )}
     </div>

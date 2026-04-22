@@ -69,6 +69,41 @@ describe("FactCheckDeepResearchSkill", () => {
     db.close();
   });
 
+  test("initiate attaches an interaction id to an existing pending audit", async () => {
+    const db = new Database(":memory:");
+    createSchema(db);
+
+    const auditId = insertDeepAudit(db, {
+      parentType: "content_hash",
+      parentKey: "pending-hash",
+      requestedBy: "mcp",
+      startedAt: 10,
+    });
+
+    mockFetch(async () => jsonResponse({ id: "int-created" }));
+
+    const skill = new FactCheckDeepResearchSkill({ db, now: () => 25 });
+    const result = await skill.initiate(
+      "article text",
+      "content_hash",
+      "pending-hash",
+      baseConfig,
+      "mcp",
+    );
+
+    expect(result).toEqual({
+      interactionId: "int-created",
+      status: "in_progress",
+      estimatedCompletion: 25 + 15 * 60_000,
+    });
+
+    const stored = getDeepAudit(db, "int-created");
+    expect(stored?.id).toBe(auditId);
+    expect(stored?.status).toBe("in_progress");
+
+    db.close();
+  });
+
   test("fetchResult stores completed output and returns a SkillResult", async () => {
     const db = new Database(":memory:");
     createSchema(db);

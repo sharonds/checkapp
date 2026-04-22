@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Config } from "../config.ts";
 import { jsonResponse, mockFetch, urlRouter } from "../testing/mock-fetch.ts";
 import { FactCheckGroundedSkill } from "./factcheck-grounded.ts";
@@ -45,6 +48,8 @@ describe("FactCheckGroundedSkill", () => {
   });
 
   test("parses grounded response text and groundingMetadata into findings", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "checkapp-grounded-events-"));
+    process.env.CHECKAPP_AUDIT_EVENTS_PATH = join(tempDir, "audit-events.jsonl");
     let minimaxCalls = 0;
     mockFetch(urlRouter({
       "api.minimax.io": async () => {
@@ -84,28 +89,55 @@ describe("FactCheckGroundedSkill", () => {
             ],
           },
         }],
+        usageMetadata: {
+          promptTokenCount: 111,
+          candidatesTokenCount: 22,
+          totalTokenCount: 133,
+        },
       }),
     }));
 
-    const result = await new FactCheckGroundedSkill().run("Smoking laws changed in 2008.", baseConfig);
+    try {
+      const result = await new FactCheckGroundedSkill().run("Smoking laws changed in 2008.", baseConfig);
 
-    expect(minimaxCalls).toBe(1);
-    expect(result.provider).toBe("gemini-grounded");
-    expect(result.verdict).toBe("pass");
-    expect(result.summary).toContain("1 claims checked");
-    expect(result.findings).toHaveLength(1);
+      expect(minimaxCalls).toBe(1);
+      expect(result.provider).toBe("gemini-grounded");
+      expect(result.verdict).toBe("pass");
+      expect(result.summary).toContain("1 claims checked");
+      expect(result.findings).toHaveLength(1);
 
-    const finding = result.findings[0];
-    expect(finding.severity).toBe("info");
-    expect(finding.text).toContain("Verified");
-    expect(finding.text).toContain("Search: netherlands indoor smoking ban 2008");
-    expect(finding.confidence).toBe("medium");
-    expect(finding.sources?.map((source) => source.url)).toEqual([
-      "https://www.government.nl/topics/smoking",
-      "https://www.who.int/europe/news-room/fact-sheets/item/tobacco",
-    ]);
-    expect(finding.sources?.[0]?.quote).toContain("2008");
-    expect(finding.sources?.[0]?.title).toContain("Government.nl");
-    expect(result.costUsd).toBeGreaterThan(0.01);
+      const finding = result.findings[0];
+      expect(finding.severity).toBe("info");
+      expect(finding.text).toContain("Verified");
+      expect(finding.text).toContain("Search: netherlands indoor smoking ban 2008");
+      expect(finding.confidence).toBe("medium");
+      expect(finding.sources?.map((source) => source.url)).toEqual([
+        "https://www.government.nl/topics/smoking",
+        "https://www.who.int/europe/news-room/fact-sheets/item/tobacco",
+      ]);
+      expect(finding.sources?.[0]?.quote).toContain("2008");
+      expect(finding.sources?.[0]?.title).toContain("Government.nl");
+      expect(result.costUsd).toBeGreaterThan(0.01);
+
+      const lines = readFileSync(process.env.CHECKAPP_AUDIT_EVENTS_PATH!, "utf-8").trim().split("\n");
+      const groundedEvent = lines
+        .map((line) => JSON.parse(line))
+        .find((entry) => entry.event === "grounded.call");
+
+      expect(groundedEvent).toBeDefined();
+      expect(groundedEvent.payload).toMatchObject({
+        provider: "gemini-grounded",
+        model: "gemini-3.1-pro-preview",
+        httpStatus: 200,
+        costUsd: 0.01,
+        inputTokens: 111,
+        outputTokens: 22,
+        totalTokens: 133,
+      });
+      expect(typeof groundedEvent.payload.latencyMs).toBe("number");
+    } finally {
+      delete process.env.CHECKAPP_AUDIT_EVENTS_PATH;
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });

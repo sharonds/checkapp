@@ -17,6 +17,7 @@ import {
   extractText,
   type InteractionResponse,
 } from "../../../../../../../src/utils/interactions-api";
+import { createGeminiCapability } from "../../../../../../../src/providers/gemini-capability";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -69,11 +70,11 @@ const DEFAULT_COST_USD = 1.5;
 const STALE_MESSAGE = "Deep Audit exceeded the 90 minute stale threshold.";
 
 let schemaReady = false;
-// Best-effort reconciliation inside the route module: each server process kicks
-// a given in-flight interaction at most once at a time after it is observed.
-// This is not a full scheduled sweep, but it provides the page-load/startup
-// recovery path from the architecture note without touching broader files.
 const inFlightReconciliations = new Set<string>();
+let runtimeInitPromise: Promise<void> | null = null;
+void initializeDeepAuditRuntime().catch((error) => {
+  console.error(getErrorMessage(error, "Failed to initialize Deep Audit runtime"));
+});
 
 export async function GET(
   request: NextRequest,
@@ -81,6 +82,7 @@ export async function GET(
 ) {
   try {
     ensureDeepAuditSchema();
+    await initializeDeepAuditRuntime();
 
     const reportId = getReportId(await params);
     const parentKey = String(reportId);
@@ -152,6 +154,7 @@ export async function POST(
 ) {
   try {
     ensureDeepAuditSchema();
+    await initializeDeepAuditRuntime();
 
     const reportId = getReportId(await params);
     const parentKey = String(reportId);
@@ -189,7 +192,7 @@ export async function POST(
     markExpiredAuditsForParent(parentKey);
 
     const active = getActiveAuditForParent(parentKey);
-    if (active) {
+    if (active?.interaction_id) {
       if (active.status === "in_progress" && active.interaction_id) {
         triggerBackgroundReconciliation(active);
       }
@@ -215,19 +218,21 @@ export async function POST(
       parentKey,
       requestedBy: "dashboard",
     });
-    db.run(sql`
-      INSERT INTO deep_audits (
-        parent_type,
-        parent_key,
-        status,
-        requested_by,
-        started_at,
-        cost_estimate_usd
-      )
-      VALUES ('check', ${parentKey}, 'pending', 'dashboard', ${startedAt}, ${DEFAULT_COST_USD})
-    `);
+    if (!active) {
+      db.run(sql`
+        INSERT INTO deep_audits (
+          parent_type,
+          parent_key,
+          status,
+          requested_by,
+          started_at,
+          cost_estimate_usd
+        )
+        VALUES ('check', ${parentKey}, 'pending', 'dashboard', ${startedAt}, ${DEFAULT_COST_USD})
+      `);
+    }
 
-    const created = getNewestAuditForParent(parentKey);
+    const created = active ?? getNewestAuditForParent(parentKey);
     if (!created) {
       throw new Error("Deep Audit row was not created");
     }
@@ -235,7 +240,7 @@ export async function POST(
     try {
       const { id: interactionId } = await createInteraction(config.geminiApiKey, {
         input: buildDeepResearchPrompt(check.article_text),
-        agent: "deep-research-preview-04-2026",
+        agent: requireDeepResearchAgent(config.geminiApiKey),
         background: true,
         store: true,
         agent_config: {
@@ -334,6 +339,27 @@ function ensureDeepAuditSchema() {
   schemaReady = true;
 }
 
+async function initializeDeepAuditRuntime(): Promise<void> {
+  if (runtimeInitPromise) {
+    return runtimeInitPromise;
+  }
+
+  runtimeInitPromise = (async () => {
+    ensureDeepAuditSchema();
+    for (const audit of listStartupInProgressAudits()) {
+      const refreshed = await refreshAuditIfNeeded(audit, { failHard: false });
+      if (refreshed.status === "in_progress" && refreshed.interaction_id) {
+        triggerBackgroundReconciliation(refreshed);
+      }
+    }
+  })().catch((error) => {
+    runtimeInitPromise = null;
+    throw error;
+  });
+
+  return runtimeInitPromise;
+}
+
 function getReportId(params: { id: string }) {
   const reportId = Number(params.id);
   if (!Number.isInteger(reportId) || reportId <= 0) {
@@ -366,6 +392,16 @@ function getCheckArticle(reportId: number): CheckArticleRow | null {
     sql`SELECT id, source, article_text FROM checks WHERE id = ${reportId} LIMIT 1`,
   ) as CheckArticleRow[];
   return rows[0] ?? null;
+}
+
+function listStartupInProgressAudits(): DeepAuditRow[] {
+  const db = getDb();
+  return db.all(sql`
+    SELECT *
+    FROM deep_audits
+    WHERE status IN ('pending', 'in_progress')
+    ORDER BY started_at ASC, id ASC
+  `) as DeepAuditRow[];
 }
 
 function getAuditsForParent(parentKey: string): DeepAuditRow[] {
@@ -721,4 +757,13 @@ function normalizeInteractionStatus(
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
+}
+
+function requireDeepResearchAgent(apiKey: string): string {
+  const capability = createGeminiCapability({ apiKey });
+  const model = capability.getModel("deep-research");
+  if (model !== capability.models.deepResearch) {
+    throw new Error("Gemini Deep Research capability is currently unavailable");
+  }
+  return model;
 }

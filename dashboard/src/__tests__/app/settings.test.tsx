@@ -43,6 +43,7 @@ describe("Settings Page", () => {
         config: {
           llmProvider: "gemini",
           factCheckTier: "basic",
+          factCheckTierFlag: false,
           thresholds: {},
         },
         apiKeys: {
@@ -65,7 +66,7 @@ describe("Settings Page", () => {
     } as Response);
   });
 
-  test("shows all fact-check tiers and persists tier changes", async () => {
+  test("shows all fact-check tiers and persists tier changes with routing flag", async () => {
     render(<SettingsPage />);
 
     expect(await screen.findByRole("radio", { name: /basic/i })).toBeDefined();
@@ -83,7 +84,7 @@ describe("Settings Page", () => {
         expect.objectContaining({
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ factCheckTier: "premium" }),
+          body: JSON.stringify({ factCheckTier: "premium", factCheckTierFlag: true }),
         }),
       );
     });

@@ -33,12 +33,6 @@ export function emitAuditEvent<TPayload extends Record<string, unknown>>(
   const line = JSON.stringify(entry);
 
   try {
-    console.log(line);
-  } catch {
-    // Ignore stdout issues to avoid interfering with checks.
-  }
-
-  try {
     const path = process.env.CHECKAPP_AUDIT_EVENTS_PATH || DEFAULT_EVENTS_PATH;
     mkdirSync(dirname(path), { recursive: true });
     appendFileSync(path, `${line}\n`, "utf-8");

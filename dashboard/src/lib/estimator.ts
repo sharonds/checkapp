@@ -14,6 +14,8 @@ const AI_DETECTION_COST = 0.03;
 
 export interface AppConfigForEstimate {
   providers?: Partial<Record<SkillId, SkillProviderConfig>>;
+  factCheckTier?: "basic" | "standard" | "premium";
+  factCheckTierFlag?: boolean;
   skills?: {
     factCheck?: boolean;
     grammar?: boolean;
@@ -55,7 +57,16 @@ export function estimateRunCost(cfg: AppConfigForEstimate, wordCount: number): E
   const warnings: string[] = [];
   const s = cfg.skills ?? {};
 
-  if (s.factCheck) perSkill["fact-check"] = providerBase(cfg, "fact-check") * FACT_CHECK_MAX_CLAIMS;
+  if (s.factCheck) {
+    const effectiveTier = cfg.factCheckTierFlag === true ? (cfg.factCheckTier ?? "basic") : null;
+    perSkill["fact-check"] = effectiveTier
+      ? effectiveTier === "standard"
+        ? 0.16
+        : effectiveTier === "premium"
+          ? 1.5
+          : 0.04
+      : providerBase(cfg, "fact-check") * FACT_CHECK_MAX_CLAIMS;
+  }
   if ((s as any).aiDetection) {
     perSkill.aiDetection = providerBase(cfg, "ai-detection" as any) || AI_DETECTION_COST;
   }

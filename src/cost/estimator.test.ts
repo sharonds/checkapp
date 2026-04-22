@@ -29,6 +29,28 @@ describe("estimateRunCost", () => {
     expect(r.perSkill["fact-check"]).toBeCloseTo(0.008 * 4, 4); // $0.032
   });
 
+  test("fact-check uses selected standard tier pricing when the flag is on", () => {
+    const cfg: Config = {
+      ...base({ factCheck: true }),
+      factCheckTierFlag: true,
+      factCheckTier: "standard",
+      providers: { "fact-check": { provider: "exa-search", apiKey: "k" } },
+    };
+    const r = estimateRunCost(cfg, 1000);
+    expect(r.perSkill["fact-check"]).toBeCloseTo(0.16, 4);
+  });
+
+  test("fact-check uses basic provider pricing when the flag is off", () => {
+    const cfg: Config = {
+      ...base({ factCheck: true }),
+      factCheckTierFlag: false,
+      factCheckTier: "premium",
+      providers: { "fact-check": { provider: "exa-search", apiKey: "k" } },
+    };
+    const r = estimateRunCost(cfg, 1000);
+    expect(r.perSkill["fact-check"]).toBeCloseTo(0.008 * 4, 4);
+  });
+
   test("fact-check deep-reasoning is $0.025 × 4 = $0.100", () => {
     const cfg: Config = {
       ...base({ factCheck: true }),

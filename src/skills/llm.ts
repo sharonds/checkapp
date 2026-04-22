@@ -10,6 +10,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import type { Config } from "../config.ts";
+import { createGeminiCapability } from "../providers/gemini-capability.ts";
 
 export const MINIMAX_BASE_URL = "https://api.minimax.io/anthropic";
 export const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
@@ -121,7 +122,8 @@ export function getLlmClient(config: Config): LlmClient | null {
     return { provider: "minimax", model: LLM_MODEL.minimax, call: createAnthropicCaller(client, LLM_MODEL.minimax) };
   }
   if (config.llmProvider === "gemini" && config.geminiApiKey) {
-    return { provider: "gemini", model: LLM_MODEL.gemini, call: createGeminiCaller(config.geminiApiKey, LLM_MODEL.gemini) };
+    const model = createGeminiCapability({ apiKey: config.geminiApiKey }).getModel("chat");
+    return { provider: "gemini", model, call: createGeminiCaller(config.geminiApiKey, model) };
   }
 
   // Auto-detect: MiniMax -> Anthropic -> Gemini -> OpenRouter
@@ -134,7 +136,8 @@ export function getLlmClient(config: Config): LlmClient | null {
     return { provider: "anthropic", model: LLM_MODEL.anthropic, call: createAnthropicCaller(client, LLM_MODEL.anthropic) };
   }
   if (config.geminiApiKey) {
-    return { provider: "gemini", model: LLM_MODEL.gemini, call: createGeminiCaller(config.geminiApiKey, LLM_MODEL.gemini) };
+    const model = createGeminiCapability({ apiKey: config.geminiApiKey }).getModel("chat");
+    return { provider: "gemini", model, call: createGeminiCaller(config.geminiApiKey, model) };
   }
   if (config.openrouterApiKey) {
     const client = new OpenAI({ apiKey: config.openrouterApiKey, baseURL: OPENROUTER_BASE_URL });

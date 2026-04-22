@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildSkills, runCheckHeadless, selectFactCheckSkill } from "./checker.ts";
@@ -95,6 +95,45 @@ describe("runCheckHeadless", () => {
         db.close();
       }
     } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("emits tier.selected telemetry for headless checks", async () => {
+    const config = buildBaseConfig();
+    const tempDir = mkdtempSync(join(tmpdir(), "checkapp-checker-events-"));
+    const dbPath = join(tempDir, "history.db");
+    const eventsPath = join(tempDir, "audit-events.jsonl");
+    process.env.CHECKAPP_AUDIT_EVENTS_PATH = eventsPath;
+
+    try {
+      config.skills.factCheck = true;
+      config.factCheckTierFlag = true;
+      config.factCheckTier = "standard";
+
+      await runCheckHeadless("telemetry-source", {
+        text: "Claim without supporting context.",
+        config,
+        dbPath,
+        telemetrySource: "mcp",
+      });
+
+      const lines = readFileSync(eventsPath, "utf-8").trim().split("\n");
+      const tierEvent = lines
+        .map((line) => JSON.parse(line))
+        .find((entry) => entry.event === "tier.selected");
+
+      expect(tierEvent).toBeDefined();
+      expect(tierEvent.payload).toMatchObject({
+        source: "mcp",
+        requestedTier: "standard",
+        effectiveTier: "standard",
+        flagOn: true,
+        selectedImplementation: "grounded",
+        selectedSkillId: "fact-check-grounded",
+      });
+    } finally {
+      delete process.env.CHECKAPP_AUDIT_EVENTS_PATH;
       rmSync(tempDir, { recursive: true, force: true });
     }
   });

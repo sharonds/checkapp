@@ -1,4 +1,5 @@
 import type { Config } from "../config.ts";
+import { createGeminiCapability } from "../providers/gemini-capability.ts";
 import {
   getActiveAuditForParent,
   getDeepAudit,
@@ -20,7 +21,6 @@ import {
 import { BASE, createInteraction, extractText, type InteractionResponse } from "../utils/interactions-api.ts";
 import type { Skill, SkillResult } from "./types.ts";
 
-const DEEP_RESEARCH_AGENT = "deep-research-preview-04-2026";
 const ESTIMATED_COMPLETION_MS = 15 * 60_000;
 const DEFAULT_COST_USD = 1.5;
 
@@ -80,7 +80,7 @@ export class FactCheckDeepResearchSkill implements Skill {
 
     return this.withDb(async (db) => {
       const active = getActiveAuditForParent(db, parentType, parentKey);
-      if (active) {
+      if (active?.interactionId) {
         const status = active.status === "pending" ? "pending" : "in_progress";
         return {
           interactionId: active.interactionId,
@@ -89,8 +89,15 @@ export class FactCheckDeepResearchSkill implements Skill {
         };
       }
 
+      const capability = createGeminiCapability({ apiKey });
+      const model = capability.getModel("deep-research");
+      if (model !== capability.models.deepResearch) {
+        throw new Error("Gemini Deep Research capability is currently unavailable");
+      }
+
+      const pendingAuditId = active?.id ?? null;
       const startedAt = this.now();
-      const auditId = insertDeepAudit(db, {
+      const auditId = pendingAuditId ?? insertDeepAudit(db, {
         parentType,
         parentKey,
         requestedBy,
@@ -101,7 +108,7 @@ export class FactCheckDeepResearchSkill implements Skill {
       try {
         const { id: interactionId } = await createInteraction(apiKey, {
           input: buildDeepResearchPrompt(text),
-          agent: DEEP_RESEARCH_AGENT,
+          agent: model,
           background: true,
           store: true,
           agent_config: {
@@ -112,8 +119,8 @@ export class FactCheckDeepResearchSkill implements Skill {
         });
 
         db.run(
-          "UPDATE deep_audits SET interaction_id = ?, status = 'in_progress' WHERE id = ?",
-          [interactionId, auditId],
+          "UPDATE deep_audits SET interaction_id = ?, status = 'in_progress', started_at = ?, requested_by = ?, cost_estimate_usd = ? WHERE id = ?",
+          [interactionId, startedAt, requestedBy, DEFAULT_COST_USD, auditId],
         );
         emitAuditCreatedEvent({
           provider: "gemini-deep-research",

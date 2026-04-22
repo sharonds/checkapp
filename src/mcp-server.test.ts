@@ -1,8 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
 import { Database } from "bun:sqlite";
 import type { Config } from "./config.ts";
 import { createSchema, insertCheck, insertDeepAudit } from "./db.ts";
-import { __resetMcpServerTestOverrides, __setMcpServerTestOverrides, getToolDefinitions, handleToolCall } from "./mcp-server.ts";
+import { __resetMcpServerTestOverrides, __setMcpServerTestOverrides, getToolDefinitions, handleToolCall, startMcpServer } from "./mcp-server.ts";
 import type { SkillResult } from "./skills/types.ts";
 
 const baseConfig: Config = {
@@ -90,6 +90,34 @@ describe("MCP tool definitions", () => {
       expect(tool.description).toBeTruthy();
       expect(tool.inputSchema).toBeDefined();
     }
+  });
+});
+
+describe("startMcpServer", () => {
+  it("primes Gemini capability health and warns when endpoints are unavailable", async () => {
+    const errorSpy = spyOn(console, "error").mockImplementation(() => undefined);
+    const connectSpy = mock(async () => undefined);
+
+    __setMcpServerTestOverrides({
+      primeGeminiCapabilityHealthCheck: async () => ({
+        pro: true,
+        grounding: false,
+        deepResearch: false,
+        checkedAt: 1,
+      }),
+      createServer: () => ({
+        setRequestHandler() {},
+        connect: connectSpy,
+      }) as unknown as Server,
+      createTransport: () => ({}) as unknown as StdioServerTransport,
+    });
+
+    await startMcpServer();
+
+    expect(connectSpy).toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledWith(
+      "Warning: Gemini capability probe reported unavailable endpoints at startup: grounding, deepResearch",
+    );
   });
 });
 

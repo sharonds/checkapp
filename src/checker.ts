@@ -20,6 +20,7 @@ import { PurposeSkill } from "./skills/purpose.ts";
 import { GrammarSkill } from "./skills/grammar.ts";
 import { AcademicSkill } from "./skills/academic.ts";
 import { SelfPlagiarismSkill } from "./skills/selfplagiarism.ts";
+import { emitTierSelectedEvent } from "./telemetry/audit-events.ts";
 
 export interface CheckResult {
   id: number;
@@ -37,7 +38,11 @@ export interface FactCheckSelection {
   selectedSkillId: "fact-check" | "fact-check-grounded";
 }
 
-export function selectFactCheckSkill(config: Config): {
+export interface RunCheckHooks {
+  onFactCheckTierSelected?: (selection: FactCheckSelection) => void;
+}
+
+export function selectFactCheckSkill(config: Config, hooks?: RunCheckHooks): {
   skill: Skill;
   selection: FactCheckSelection;
 } {
@@ -51,9 +56,8 @@ export function selectFactCheckSkill(config: Config): {
     selectedSkillId: effectiveTier === "standard" ? "fact-check-grounded" : "fact-check",
   };
 
-  // Telemetry hook: emit `selection` from checker-level instrumentation once
-  // per-run telemetry is wired, so dashboards can distinguish requested vs.
-  // effective fact-check tier and fallback behavior.
+  hooks?.onFactCheckTierSelected?.(selection);
+
   const skill = selection.selectedImplementation === "grounded"
     ? new FactCheckGroundedSkill()
     : new FactCheckSkill();
@@ -61,12 +65,12 @@ export function selectFactCheckSkill(config: Config): {
   return { skill, selection };
 }
 
-export function buildSkills(config: Config): Skill[] {
+export function buildSkills(config: Config, hooks?: RunCheckHooks): Skill[] {
   const skills: Skill[] = [];
   if (config.skills.plagiarism) skills.push(new PlagiarismSkill());
   if (config.skills.aiDetection) skills.push(new AiDetectionSkill());
   if (config.skills.seo) skills.push(new SeoSkill());
-  if (config.skills.factCheck) skills.push(selectFactCheckSkill(config).skill);
+  if (config.skills.factCheck) skills.push(selectFactCheckSkill(config, hooks).skill);
   if (config.skills.tone) skills.push(new ToneSkill());
   if (config.skills.legal) skills.push(new LegalSkill());
   if (config.skills.summary) skills.push(new SummarySkill());
@@ -78,6 +82,21 @@ export function buildSkills(config: Config): Skill[] {
   return skills;
 }
 
+export function createTierTelemetryHooks(source: string): RunCheckHooks {
+  return {
+    onFactCheckTierSelected(selection) {
+      emitTierSelectedEvent({
+        source,
+        requestedTier: selection.requestedTier ?? null,
+        effectiveTier: selection.effectiveTier,
+        flagOn: selection.flagOn,
+        selectedImplementation: selection.selectedImplementation,
+        selectedSkillId: selection.selectedSkillId,
+      });
+    },
+  };
+}
+
 /**
  * Run all enabled skills headlessly (no Ink UI).
  *
@@ -87,17 +106,28 @@ export function buildSkills(config: Config): Skill[] {
  */
 export async function runCheckHeadless(
   source: string,
-  options?: { text?: string; config?: Config; dbPath?: string },
+  options?: { text?: string; config?: Config; dbPath?: string; telemetrySource?: string; hooks?: RunCheckHooks },
 ): Promise<CheckResult> {
   const baseConfig = options?.config ?? readConfig();
   const { config, db } = loadContextsIntoConfig(baseConfig, options?.dbPath);
   try {
     const text = options?.text ?? await fetchGoogleDoc(source);
     const wordCount = countWords(text);
-    const { results, totalCostUsd } = await runCheckCore(text, config);
+    const hooks = mergeHooks(createTierTelemetryHooks(options?.telemetrySource ?? "cli"), options?.hooks);
+    const { results, totalCostUsd } = await runCheckCore(text, config, hooks);
     const id = insertCheck(db, { source, wordCount, results, totalCostUsd, articleText: text });
     return { id, source, wordCount, results, totalCostUsd };
   } finally {
     db.close();
   }
+}
+
+function mergeHooks(primary?: RunCheckHooks, secondary?: RunCheckHooks): RunCheckHooks | undefined {
+  if (!primary && !secondary) return undefined;
+  return {
+    onFactCheckTierSelected(selection) {
+      primary?.onFactCheckTierSelected?.(selection);
+      secondary?.onFactCheckTierSelected?.(selection);
+    },
+  };
 }

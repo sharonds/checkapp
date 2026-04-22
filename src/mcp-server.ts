@@ -16,6 +16,7 @@ import {
 } from "./db.ts";
 import type { Config } from "./config.ts";
 import { readConfig, writeConfig } from "./config.ts";
+import { primeGeminiCapabilityHealthCheck } from "./providers/gemini-capability.ts";
 import { FactCheckDeepResearchSkill } from "./skills/factcheck-deep-research.ts";
 
 const ESTIMATED_COMPLETION_MS = 15 * 60_000;
@@ -25,6 +26,12 @@ const mcpServerDeps = {
   readConfig,
   writeConfig,
   createDeepResearchSkill: () => new FactCheckDeepResearchSkill(),
+  primeGeminiCapabilityHealthCheck,
+  createServer: () => new Server(
+    { name: "checkapp", version: "1.2.0" },
+    { capabilities: { tools: {} } }
+  ),
+  createTransport: () => new StdioServerTransport(),
 };
 
 export function __setMcpServerTestOverrides(overrides: Partial<typeof mcpServerDeps>) {
@@ -36,6 +43,12 @@ export function __resetMcpServerTestOverrides() {
   mcpServerDeps.readConfig = readConfig;
   mcpServerDeps.writeConfig = writeConfig;
   mcpServerDeps.createDeepResearchSkill = () => new FactCheckDeepResearchSkill();
+  mcpServerDeps.primeGeminiCapabilityHealthCheck = primeGeminiCapabilityHealthCheck;
+  mcpServerDeps.createServer = () => new Server(
+    { name: "checkapp", version: "1.2.0" },
+    { capabilities: { tools: {} } }
+  );
+  mcpServerDeps.createTransport = () => new StdioServerTransport();
 }
 
 export function getToolDefinitions() {
@@ -154,7 +167,7 @@ export async function handleToolCall(name: string, args: Record<string, unknown>
     case "check_article": {
       const text = args.text as string;
       const source = (args.source as string) ?? "mcp-check";
-      const result = await runCheckHeadless(source, { text });
+      const result = await runCheckHeadless(source, { text, telemetrySource: "mcp" });
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     }
     case "list_reports": {
@@ -221,7 +234,7 @@ export async function handleToolCall(name: string, args: Record<string, unknown>
       const { regenerateArticle } = await import("./regenerate.ts");
       const text = args.text as string;
       const config = args.config as any;
-      const checkResult = await runCheckHeadless("mcp-regenerate", { text, config });
+      const checkResult = await runCheckHeadless("mcp-regenerate", { text, config, telemetrySource: "mcp" });
       const regen = await regenerateArticle(text, checkResult.results, { config });
       return { content: [{ type: "text", text: JSON.stringify(regen, null, 2) }] };
     }
@@ -335,10 +348,9 @@ function errorResponse(message: string) {
 }
 
 export async function startMcpServer() {
-  const server = new Server(
-    { name: "checkapp", version: "1.2.0" },
-    { capabilities: { tools: {} } }
-  );
+  await primeGeminiStartupHealth();
+
+  const server = mcpServerDeps.createServer();
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: getToolDefinitions(),
@@ -348,6 +360,23 @@ export async function startMcpServer() {
     return handleToolCall(request.params.name, (request.params.arguments ?? {}) as Record<string, unknown>);
   });
 
-  const transport = new StdioServerTransport();
+  const transport = mcpServerDeps.createTransport();
   await server.connect(transport);
+}
+
+async function primeGeminiStartupHealth() {
+  try {
+    const health = await mcpServerDeps.primeGeminiCapabilityHealthCheck();
+    const unavailable = Object.entries(health)
+      .filter(([key, value]) => key !== "checkedAt" && value === false)
+      .map(([key]) => key);
+    if (unavailable.length > 0) {
+      console.error(
+        `Warning: Gemini capability probe reported unavailable endpoints at startup: ${unavailable.join(", ")}`,
+      );
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Warning: Gemini capability startup probe failed: ${message}`);
+  }
 }

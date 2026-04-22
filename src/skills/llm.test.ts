@@ -45,6 +45,22 @@ describe("getLlmClient", () => {
     expect(c!.model).toBe("gemini-3.1-pro-preview");
   });
 
+  it("uses the capability layer model selection for gemini", () => {
+    const prior = process.env.GEMINI_MODEL_PRO;
+    process.env.GEMINI_MODEL_PRO = "gemini-custom-pro";
+    try {
+      const c = getLlmClient({ ...baseConfig, geminiApiKey: "gk", llmProvider: "gemini" });
+      expect(c!.provider).toBe("gemini");
+      expect(c!.model).toBe("gemini-custom-pro");
+    } finally {
+      if (prior === undefined) {
+        delete process.env.GEMINI_MODEL_PRO;
+      } else {
+        process.env.GEMINI_MODEL_PRO = prior;
+      }
+    }
+  });
+
   it("auto-detects openrouter when only openrouter key set", () => {
     const c = getLlmClient({ ...baseConfig, openrouterApiKey: "ok" });
     expect(c!.provider).toBe("openrouter");

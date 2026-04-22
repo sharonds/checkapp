@@ -63,7 +63,12 @@ export function estimateRunCost(config: Config, wordCount: number): EstimateResu
   };
 
   if (config.skills.factCheck) {
-    perSkill["fact-check"] = providerBase("fact-check") * FACT_CHECK_MAX_CLAIMS;
+    const effectiveTier = config.factCheckTierFlag === true
+      ? (config.factCheckTier ?? "basic")
+      : null;
+    perSkill["fact-check"] = effectiveTier
+      ? estimateFactCheckCost(effectiveTier)
+      : providerBase("fact-check") * FACT_CHECK_MAX_CLAIMS;
   }
   if ((config.skills as any).aiDetection) {
     perSkill.aiDetection = providerBase("ai-detection" as any) || AI_DETECTION_COST;

@@ -1,4 +1,5 @@
 import type { Config } from "../config.ts";
+import { createGeminiCapability } from "../providers/gemini-capability.ts";
 import { resolveProvider } from "../providers/resolve.ts";
 import { emitGroundedCallEvent } from "../telemetry/audit-events.ts";
 import { getLlmClient, parseJsonResponse, LLM_MODEL } from "./llm.ts";
@@ -35,6 +36,11 @@ interface GeminiGroundedResponse {
     };
     groundingMetadata?: GeminiGroundingMetadata;
   }>;
+  usageMetadata?: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    totalTokenCount?: number;
+  };
 }
 
 interface GroundedAssessment {
@@ -161,7 +167,12 @@ async function extractClaims(
 }
 
 async function assessClaimGrounded(claim: string, apiKey: string): Promise<Omit<GroundedClaimResult, "claim">> {
-  const response = await fetchGroundedAssessment(claim, apiKey, 1);
+  const response = await fetchGroundedAssessment(
+    claim,
+    apiKey,
+    createGeminiCapability({ apiKey }).getModel("grounded"),
+    1,
+  );
   const candidate = response.candidates?.[0];
   const text = (candidate?.content?.parts ?? [])
     .filter((part) => part.thought !== true)
@@ -181,17 +192,13 @@ async function assessClaimGrounded(claim: string, apiKey: string): Promise<Omit<
 async function fetchGroundedAssessment(
   claim: string,
   apiKey: string,
+  model: string,
   retriesLeft: number,
 ): Promise<GeminiGroundedResponse> {
-  emitGroundedCallEvent({
-    provider: "gemini-grounded",
-    model: GEMINI_GROUNDED_MODEL,
-    claimPreview: claim.slice(0, 160),
-    retriesLeft,
-  });
+  const startedAt = Date.now();
 
   const response = await fetch(
-    `${GEMINI_BASE_URL}/${GEMINI_GROUNDED_MODEL}:generateContent?key=${apiKey}`,
+    `${GEMINI_BASE_URL}/${model}:generateContent?key=${apiKey}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -211,16 +218,55 @@ async function fetchGroundedAssessment(
     },
   );
 
+  const latencyMs = Date.now() - startedAt;
+
   if ((response.status === 500 || response.status === 503) && retriesLeft > 0) {
+    emitGroundedCallEvent({
+      provider: "gemini-grounded",
+      model,
+      claimPreview: claim.slice(0, 160),
+      retriesLeft,
+      httpStatus: response.status,
+      latencyMs,
+      costUsd: 0.01,
+      inputTokens: null,
+      outputTokens: null,
+      totalTokens: null,
+    });
     await sleep(3_000);
-    return fetchGroundedAssessment(claim, apiKey, retriesLeft - 1);
+    return fetchGroundedAssessment(claim, apiKey, model, retriesLeft - 1);
   }
 
   if (!response.ok) {
+    emitGroundedCallEvent({
+      provider: "gemini-grounded",
+      model,
+      claimPreview: claim.slice(0, 160),
+      retriesLeft,
+      httpStatus: response.status,
+      latencyMs,
+      costUsd: 0.01,
+      inputTokens: null,
+      outputTokens: null,
+      totalTokens: null,
+    });
     throw new Error(`Gemini grounded error: HTTP ${response.status}`);
   }
 
-  return (await response.json()) as GeminiGroundedResponse;
+  const data = (await response.json()) as GeminiGroundedResponse;
+  emitGroundedCallEvent({
+    provider: "gemini-grounded",
+    model,
+    claimPreview: claim.slice(0, 160),
+    retriesLeft,
+    httpStatus: response.status,
+    latencyMs,
+    costUsd: 0.01,
+    inputTokens: data.usageMetadata?.promptTokenCount ?? null,
+    outputTokens: data.usageMetadata?.candidatesTokenCount ?? null,
+    totalTokens: data.usageMetadata?.totalTokenCount ?? null,
+  });
+  return data;
 }
 
 function buildGroundedPrompt(claim: string): string {
