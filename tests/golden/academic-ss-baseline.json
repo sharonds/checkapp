@@ -1,0 +1,22 @@
+{
+  "skillId": "academic",
+  "name": "Academic Citations",
+  "verdict": "pass",
+  "findings": [
+    {
+      "text": "Suggested citations for: \"A 2017 meta-analysis in BMJ confirmed this.\"",
+      "claimType": "scientific",
+      "citations": [
+        {
+          "title": "Vitamin D supplementation",
+          "authors": [
+            "Martineau AR"
+          ],
+          "year": 2017,
+          "doi": "10.1136/bmj.i6583",
+          "url": "https://www.bmj.com/content/356/bmj.i6583"
+        }
+      ]
+    }
+  ]
+}

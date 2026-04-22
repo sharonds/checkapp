@@ -16,6 +16,7 @@ export const PROVIDER_REGISTRY: Partial<Record<SkillId, ProviderMetadata[]>> = {
   ],
   academic: [
     { id: "semantic-scholar", label: "Semantic Scholar", speed: "medium", costPerCheckUsd: 0, costLabel: "free", depth: "standard", freeTier: true, requiresKey: false, endpoint: "https://api.semanticscholar.org/graph/v1/paper/search" },
+    { id: "openalex", label: "OpenAlex", speed: "fast", costPerCheckUsd: 0, costLabel: "Free (polite pool with mailto)", depth: "standard", freeTier: true, requiresKey: false, endpoint: "https://api.openalex.org/works" },
   ],
   "self-plagiarism": [
     { id: "cloudflare-vectorize", label: "Cloudflare Vectorize", speed: "fast", costPerCheckUsd: 0.0001, costLabel: "$0.01/1M vectors", depth: "standard", freeTier: true, requiresKey: true },

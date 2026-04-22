@@ -2,6 +2,7 @@ import type { SkillResult, Finding, Citation, EnricherSkill, ClaimType } from ".
 import type { Config } from "../config.ts";
 import { resolveProvider } from "../providers/resolve.ts";
 import { ssSearch } from "../providers/semanticscholar.ts";
+import { oaSearch } from "../providers/openalex.ts";
 
 const MAX_ENRICH_TARGETS = 5;
 const TARGET_CLAIM_TYPES = new Set<ClaimType>(["scientific", "medical", "financial"]);
@@ -52,7 +53,9 @@ export class AcademicSkill implements EnricherSkill {
 
     const findings: Finding[] = [];
     for (const target of targets.slice(0, MAX_ENRICH_TARGETS)) {
-      const papers = await ssSearch(target.claim, 3);
+      const papers = resolved.provider === "openalex"
+        ? await oaSearch(target.claim, 3, { mailto: resolved.apiKey })
+        : await ssSearch(target.claim, 3);
       const citations: Citation[] = papers.map((p) => ({
         title: p.title,
         authors: p.authors?.map(a => a.name),

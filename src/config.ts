@@ -28,6 +28,7 @@ export interface Config {
   minimaxApiKey?: string;
   openrouterApiKey?: string;
   geminiApiKey?: string;
+  openalexMailto?: string;
   llmProvider?: "minimax" | "anthropic" | "openrouter" | "gemini";
   factCheckTier?: "basic" | "standard" | "premium";
   factCheckTierFlag?: boolean;
@@ -109,6 +110,7 @@ export function readConfig(): Config {
     minimaxApiKey: process.env.MINIMAX_API_KEY ?? file.minimaxApiKey,
     openrouterApiKey: process.env.OPENROUTER_API_KEY ?? file.openrouterApiKey,
     geminiApiKey: process.env.GEMINI_API_KEY ?? file.geminiApiKey,
+    openalexMailto: process.env.OPENALEX_MAILTO ?? file.openalexMailto,
     llmProvider: (() => {
       const validProviders = ["minimax", "anthropic", "openrouter", "gemini"];
       const rawProvider = process.env.LLM_PROVIDER ?? file.llmProvider;

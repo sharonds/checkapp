@@ -88,6 +88,33 @@ describe("resolveProvider", () => {
     expect(resolveProvider({ ...base, copyscapeKey: "" }, "plagiarism")).toBeNull();
   });
 
+  test("routes academic → openalex when openalexMailto is set", () => {
+    const r = resolveProvider(
+      { ...base, openalexMailto: "me@example.com" },
+      "academic"
+    );
+    expect(r?.provider).toBe("openalex");
+    expect(r?.apiKey).toBe("me@example.com");
+  });
+
+  test("academic falls back to null when no openalexMailto and no explicit provider", () => {
+    const r = resolveProvider({ ...base }, "academic");
+    expect(r).toBeNull();
+  });
+
+  test("explicit providers[academic] still wins over openalexMailto", () => {
+    const r = resolveProvider(
+      {
+        ...base,
+        openalexMailto: "me@example.com",
+        providers: { academic: { provider: "semantic-scholar", apiKey: "ss-key" } },
+      } as Config,
+      "academic"
+    );
+    expect(r?.provider).toBe("semantic-scholar");
+    expect(r?.apiKey).toBe("ss-key");
+  });
+
   test("metadata is undefined when provider id is not in registry", () => {
     const r = resolveProvider(
       { ...base, providers: { "fact-check": { provider: "nonexistent" as never, apiKey: "k" } } } as Config,

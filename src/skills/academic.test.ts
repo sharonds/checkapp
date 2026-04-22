@@ -83,3 +83,76 @@ describe("AcademicSkill — enricher", () => {
     expect(r.findings.length).toBe(0);
   });
 });
+
+const baseConfig: Config = {
+  copyscapeUser: "", copyscapeKey: "",
+  skills: {
+    plagiarism: false, aiDetection: false, seo: false,
+    factCheck: false, tone: false, legal: false,
+    summary: false, brief: false, purpose: false,
+    academic: true,
+  },
+};
+
+const sampleText = "A 2017 study found that vitamin D supplementation reduces the risk of acute respiratory tract infections.";
+
+describe("AcademicSkill provider routing", () => {
+  test("routes to OpenAlex when openalexMailto is configured", async () => {
+    let openalexCalls = 0;
+    let ssCalls = 0;
+    mockFetch(urlRouter({
+      "api.openalex.org": async () => {
+        openalexCalls++;
+        return jsonResponse({
+          results: [{
+            id: "https://openalex.org/W1",
+            doi: "https://doi.org/10.1136/bmj.i6583",
+            title: "Vitamin D supplementation to prevent acute respiratory tract infections",
+            publication_year: 2017,
+            authorships: [{ author: { display_name: "Martineau AR" } }],
+            primary_location: { landing_page_url: "https://www.bmj.com/content/356/bmj.i6583" },
+          }],
+        });
+      },
+      "api.semanticscholar.org": async () => {
+        ssCalls++;
+        return jsonResponse({ data: [] });
+      },
+    }));
+
+    const skill = new AcademicSkill();
+    const result = await skill.enrich(sampleText, { ...baseConfig, openalexMailto: "test@example.com" }, []);
+
+    expect(openalexCalls).toBeGreaterThan(0);
+    expect(ssCalls).toBe(0);
+    expect(result.findings.length).toBeGreaterThan(0);
+  });
+
+  test("routes to Semantic Scholar via legacy explicit providers config (no openalexMailto)", async () => {
+    let openalexCalls = 0;
+    let ssCalls = 0;
+    mockFetch(urlRouter({
+      "api.openalex.org": async () => {
+        openalexCalls++;
+        return jsonResponse({ results: [] });
+      },
+      "api.semanticscholar.org": async () => {
+        ssCalls++;
+        return jsonResponse({
+          data: [{
+            paperId: "S1", title: "Some SS paper", year: 2019, authors: [{ name: "X" }],
+          }],
+        });
+      },
+    }));
+
+    const skill = new AcademicSkill();
+    await skill.enrich(sampleText, {
+      ...baseConfig,
+      providers: { academic: { provider: "semantic-scholar", apiKey: "ss-key" } },
+    } as Config, []);
+
+    expect(ssCalls).toBeGreaterThan(0);
+    expect(openalexCalls).toBe(0);
+  });
+});

@@ -8,7 +8,7 @@ export type ProviderId =
   | "gemini-grounded" | "gemini-deep-research"
   | "languagetool" | "languagetool-selfhosted" | "sapling" | "llm-fallback"
   | "copyscape" | "originality"
-  | "semantic-scholar"
+  | "semantic-scholar" | "openalex"
   | "cloudflare-vectorize" | "pinecone" | "upstash-vector";
 
 export interface SkillProviderConfig {
