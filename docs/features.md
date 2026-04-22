@@ -57,7 +57,7 @@ CheckApp supports three LLM providers for AI-powered skills (fact check, tone, l
 
 Set the provider via `LLM_PROVIDER` env var or the Settings page in the dashboard.
 
-### Language Support (v1.2.0)
+### Language Support (v1.3.0)
 
 CheckApp is tuned and tested for **English and Hebrew**. Other scripts (Arabic, Chinese, Japanese, Korean, Russian, etc.) are detected, but SEO tokenization, passage-matching (`MIN_WORDS` uses whitespace tokens), and sentence splitting are NOT tuned for them. Non-Latin / non-Hebrew content may produce approximate or misleading scores. Full CJK + Arabic support is planned for Phase 8.
 

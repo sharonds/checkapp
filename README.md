@@ -593,7 +593,7 @@ Set the path: `TONE_GUIDE_FILE=/path/to/brand-voice.md`
 - **Team dashboard** — multi-user web interface with per-writer stats and trends
 - **Custom skill packages** — publish your own validator as an npm package, install with `checkapp skill add <package>`
 - **Ranking score** — overall article quality score combining all skill signals, calibrated for SEO impact
-- **Additional LLM providers** — OpenAI (GPT-4o-mini), Google Gemini — configurable per user
+- **Additional LLM providers** — OpenAI (GPT-4o-mini) configurable per user (Google Gemini already ships in 1.3.0 via the Standard + Deep Audit fact-check tiers)
 
 ---
 

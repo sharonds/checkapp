@@ -65,10 +65,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Removed restrictive `includeDomains` filter from Exa search that caused false negatives on topics outside the hardcoded allowlist.
 - **Gemini Deep Research capability probe** was sending `background=false, store=false` to `/interactions`, which Gemini rejects with HTTP 400. That silently gated out every real Deep Research call through the cached health check. Probe now uses `background=true, store=true` (both required). Caught by the live Premium smoke.
 - `dashboard/src/app/api/checks/route.ts` now honors `CHECKAPP_DB_PATH` instead of hardcoding `~/.checkapp/history.db`.
+- **Dashboard React hydration under `next dev`** (#44, PR #47). Next 16's dev-only cross-origin gate silently dropped HMR + RSC Flight chunks for requests via `127.0.0.1` when the server bound to `localhost`. React never hydrated — every interactive control was inert, `useEffect`-fetch pages (`/settings`, `/skills`, `/contexts`, `/reports`) showed a skeleton forever. Fix: `allowedDevOrigins: ["127.0.0.1", "localhost"]` in `dashboard/next.config.ts`. CLI, MCP, and HTTP API surfaces were unaffected throughout.
+- Dashboard summary date buckets (`buildDashboardSummary`) now compute month start and 7-day bars in UTC, matching SQLite `datetime('now')` — previously drifted ±1 day near month boundaries for any non-UTC host.
+- Dashboard sidebar theme toggle hydration-guards via `useSyncExternalStore` so the server-rendered button has a stable `aria-label` and doesn't trigger a hydration mismatch.
+- `ScenarioExaResult` type now declares `publishedDate?` so the dashboard build typechecks the downstream fact-check import.
+- MCP `deep_audit_article` test is now hermetic: the deep-research skill binds to the in-memory test DB instead of leaking `int-new` into `~/.checkapp/history.db` between runs.
 
-### Known issues
+### Added — dashboard UI E2E coverage (PR #47)
 
-- **Dashboard React hydration fails app-wide under `next dev`** — pre-existing on `main`, not introduced by Plan 2. Interactive controls (tier selector, skill toggles, forms) are silent; only server-rendered content is visible. Tracked in [sharonds/checkapp#44](https://github.com/sharonds/checkapp/issues/44) with a follow-up plan in `docs/superpowers/plans/2026-04-23-plan-dashboard-hydration-fix.md`. CLI + MCP + all HTTP API surfaces are unaffected.
+- Hydration oracle `tests/e2e/browser/ui-theme-toggle.test.ts` — detects React hydration via `__react*` DOM markers + click assertion on the sidebar theme toggle.
+- Five new UI E2E tests driven via agent-browser against the live dashboard: `ui-skills-page`, `ui-contexts-page`, `ui-settings-tier-selector`, `ui-check-form`, `ui-reports-page`.
+- API-layer workaround `tests/e2e/browser/dashboard-default-off.test.ts` retired — coverage moved to the real `ui-settings-tier-selector` interaction.
 
 ### Notes
 

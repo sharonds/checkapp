@@ -44,4 +44,8 @@ Total ~$1.75 and ~20 min for a full live run. Keep runs rare.
 
 ### What the Premium live smoke caught on first run
 
-The Gemini capability probe at `src/providers/gemini-capability.ts` was sending `background=false, store=false` to `/interactions`, which Gemini now rejects (HTTP 400). That silently gated out every real Deep Research call through the cached health check. Fixed in commit `12c1eff` (probe now uses `background=true, store=true`). Moral: live smokes catch bugs mocks can't.
+The Gemini capability probe at `src/providers/gemini-capability.ts` was sending `background=false, store=false` to `/interactions`, which Gemini rejects (HTTP 400). That silently gated out every real Deep Research call through the cached health check. Probe now uses `background=true, store=true`. Moral: live smokes catch bugs mocks can't.
+
+## Related — browser E2E lane (no API cost)
+
+`bun run test:e2e:browser` runs a non-live lane that drives a real Chrome via agent-browser against the booted dashboard, with provider responses mocked from `tests/e2e/fixtures/`. It now covers the dashboard UI — theme toggle hydration oracle, `/skills`, `/contexts`, `/settings` tier selector, `/check`, `/reports` + DeepAuditPanel — per #44 / PR #47. See `tests/e2e/README.md`.
