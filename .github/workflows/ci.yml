@@ -35,6 +35,13 @@ jobs:
       - name: Run dashboard tests
         run: cd dashboard && bunx vitest run
 
+      - name: Install agent-browser
+        run: npm install -g agent-browser && agent-browser install
+
+      - name: Run browser E2E lane
+        run: bun run test:e2e:browser
+        timeout-minutes: 5
+
       - name: Build dashboard
         run: cd dashboard && bun run build
 
