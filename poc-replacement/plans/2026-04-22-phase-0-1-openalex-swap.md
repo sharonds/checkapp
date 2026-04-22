@@ -2,13 +2,19 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace Semantic Scholar with OpenAlex as the academic-citations provider to fix the production bug where SS's free tier returns HTTP 429 on every call from shared IPs. Preserves SS as a legacy fallback for users with paid API keys. Zero default-behavior change when `OPENALEX_MAILTO` is unset.
+**Goal:** Replace Semantic Scholar with OpenAlex as the academic-citations provider to fix the production bug where SS's free tier returns HTTP 429 on every call from shared IPs. Preserve the existing Semantic Scholar code path as a legacy fallback for users with an explicit `providers.academic` config entry. Zero default-behavior change when `OPENALEX_MAILTO` is unset.
 
-**Architecture:** Add OpenAlex as a first-class provider in `ProviderId` and the registry. Create `src/providers/openalex.ts` mirroring the existing `ssSearch` interface so callers can swap providers with no downstream shape change. Extend `resolveProvider` to prefer OpenAlex for the `academic` skill when `openalexMailto` is configured. Academic skill reads the resolver's result and dispatches to the correct client. SS code path remains as the legacy fallback.
+**Architecture:** Add OpenAlex as a first-class provider in `ProviderId` and the registry. Create `src/providers/openalex.ts` mirroring the existing `ssSearch` interface so callers can swap providers with no downstream shape change. Extend `resolveProvider` to prefer OpenAlex for the `academic` skill when `openalexMailto` is configured. Academic skill reads the resolver's result and dispatches to the correct client.
 
-**Tech Stack:** TypeScript strict, Bun, `bun:test`, existing Node `fetch` (no new deps).
+**Tech Stack:** TypeScript strict, Bun, `bun:test`, existing Node `fetch` (no new deps). Test mocking uses the repo's existing `src/testing/mock-fetch.ts` helpers (`mockFetch` + `urlRouter` + `jsonResponse`).
 
 **Prerequisites:** Plan 3 research is complete. See `poc-replacement/DECISION-MATRIX.md` for the verdict rationale and `poc-replacement/03-academic-citations/RESULTS.md` for the full POC data (OpenAlex 1s latency, 80% acceptable-support recall, 10% exact-gold recall vs Semantic Scholar which was completely unreachable).
+
+### Explicit scope decision: **no paid Semantic Scholar auth in this plan**
+
+The existing `ssSearch` implementation in `src/providers/semanticscholar.ts` makes unauthenticated requests only — there is no `SEMANTIC_SCHOLAR_API_KEY` field in `Config` and no header/query plumbing for it. Adding authenticated-SS support is a distinct workstream (Config field + env loader + header wiring + test coverage) and is intentionally deferred to a later plan if the product team decides a paid-SS tier is worth maintaining alongside OpenAlex.
+
+Throughout this document, "legacy SS fallback" means the existing **unauthenticated** SS code path. Users whose `config.providers.academic` is explicitly set to `{ provider: "semantic-scholar" }` continue to hit SS via the unauthenticated call — same as today, same 429 risk as today. This plan does not improve or degrade that path; it only adds OpenAlex as a new default.
 
 ---
 
@@ -104,7 +110,7 @@ test("loads OPENALEX_MAILTO from env", () => {
   const saved = process.env.OPENALEX_MAILTO;
   process.env.OPENALEX_MAILTO = "research@example.com";
   try {
-    const config = loadConfig();
+    const config = readConfig();
     expect(config.openalexMailto).toBe("research@example.com");
   } finally {
     if (saved === undefined) delete process.env.OPENALEX_MAILTO;
@@ -116,7 +122,7 @@ test("openalexMailto is undefined when env unset", () => {
   const saved = process.env.OPENALEX_MAILTO;
   delete process.env.OPENALEX_MAILTO;
   try {
-    const config = loadConfig();
+    const config = readConfig();
     expect(config.openalexMailto).toBeUndefined();
   } finally {
     if (saved !== undefined) process.env.OPENALEX_MAILTO = saved;
@@ -308,6 +314,12 @@ describe("oaSearch", () => {
     expect(papers).toEqual([]);
   });
 
+  test("returns empty array on malformed JSON response", async () => {
+    mockFetch(new Response("<html>not json</html>", { status: 200 }));
+    const papers = await oaSearch("anything", 5);
+    expect(papers).toEqual([]);
+  });
+
   test("includes mailto in URL when provided", async () => {
     let capturedUrl = "";
     globalThis.fetch = mock((url: string) => {
@@ -420,7 +432,7 @@ export async function oaSearch(
 - [ ] **Step 4: Run tests to verify all pass**
 
 Run: `bun test src/providers/openalex.test.ts`
-Expected: PASS, 7 tests.
+Expected: PASS, 8 tests.
 
 - [ ] **Step 5: Run full test suite**
 
@@ -534,12 +546,13 @@ Run: `sed -n '50,70p' src/skills/academic.ts` to inspect the exact context.
 
 Append these cases to `src/skills/academic.test.ts`. If the file doesn't have a `describe` block for OpenAlex routing, wrap them in one.
 
+**Use the repo's existing `mockFetch` + `urlRouter` pattern** (see `src/skills/academic.test.ts` for reference). Do NOT mutate ESM bindings — the repo does not do that.
+
 ```typescript
-import { describe, test, expect, mock, afterEach } from "bun:test";
+import { describe, test, expect } from "bun:test";
 import { AcademicSkill } from "./academic.ts";
 import type { Config } from "../config.ts";
-import * as openalex from "../providers/openalex.ts";
-import * as semanticscholar from "../providers/semanticscholar.ts";
+import { mockFetch, urlRouter, jsonResponse } from "../testing/mock-fetch.ts";
 
 const baseConfig: Config = {
   copyscapeUser: "", copyscapeKey: "",
@@ -553,36 +566,55 @@ const baseConfig: Config = {
 
 const sampleText = "Vitamin D supplementation reduces the risk of acute respiratory tract infections.";
 
-afterEach(() => {
-  mock.restore();
-});
-
 describe("AcademicSkill provider routing", () => {
-  test("calls oaSearch when openalexMailto is configured", async () => {
-    const oaSpy = mock(async () => [{
-      paperId: "W1", title: "Vitamin D supplementation", year: 2017,
-      authors: [{ name: "Martineau AR" }],
-      externalIds: { DOI: "10.1136/bmj.i6583" },
-      url: "https://www.bmj.com/content/356/bmj.i6583",
-    }]);
-    const ssSpy = mock(async () => []);
-    (openalex as unknown as { oaSearch: typeof openalex.oaSearch }).oaSearch = oaSpy as unknown as typeof openalex.oaSearch;
-    (semanticscholar as unknown as { ssSearch: typeof semanticscholar.ssSearch }).ssSearch = ssSpy as unknown as typeof semanticscholar.ssSearch;
+  test("routes to OpenAlex when openalexMailto is configured", async () => {
+    let openalexCalls = 0;
+    let ssCalls = 0;
+    mockFetch(urlRouter({
+      "api.openalex.org": async () => {
+        openalexCalls++;
+        return jsonResponse({
+          results: [{
+            id: "https://openalex.org/W1",
+            doi: "https://doi.org/10.1136/bmj.i6583",
+            title: "Vitamin D supplementation to prevent acute respiratory tract infections",
+            publication_year: 2017,
+            authorships: [{ author: { display_name: "Martineau AR" } }],
+            primary_location: { landing_page_url: "https://www.bmj.com/content/356/bmj.i6583" },
+          }],
+        });
+      },
+      "api.semanticscholar.org": async () => {
+        ssCalls++;
+        return jsonResponse({ data: [] });
+      },
+    }));
 
     const skill = new AcademicSkill();
-    await skill.enrich(sampleText, { ...baseConfig, openalexMailto: "test@example.com" }, []);
+    const result = await skill.enrich(sampleText, { ...baseConfig, openalexMailto: "test@example.com" }, []);
 
-    expect(oaSpy).toHaveBeenCalled();
-    expect(ssSpy).not.toHaveBeenCalled();
+    expect(openalexCalls).toBeGreaterThan(0);
+    expect(ssCalls).toBe(0);
+    expect(result.findings.length).toBeGreaterThan(0);
   });
 
-  test("falls back to ssSearch when no openalexMailto and explicit semantic-scholar provider", async () => {
-    const oaSpy = mock(async () => []);
-    const ssSpy = mock(async () => [{
-      paperId: "S1", title: "Some SS paper", year: 2019, authors: [{ name: "X" }],
-    }]);
-    (openalex as unknown as { oaSearch: typeof openalex.oaSearch }).oaSearch = oaSpy as unknown as typeof openalex.oaSearch;
-    (semanticscholar as unknown as { ssSearch: typeof semanticscholar.ssSearch }).ssSearch = ssSpy as unknown as typeof semanticscholar.ssSearch;
+  test("routes to Semantic Scholar via legacy explicit providers config (no openalexMailto)", async () => {
+    let openalexCalls = 0;
+    let ssCalls = 0;
+    mockFetch(urlRouter({
+      "api.openalex.org": async () => {
+        openalexCalls++;
+        return jsonResponse({ results: [] });
+      },
+      "api.semanticscholar.org": async () => {
+        ssCalls++;
+        return jsonResponse({
+          data: [{
+            paperId: "S1", title: "Some SS paper", year: 2019, authors: [{ name: "X" }],
+          }],
+        });
+      },
+    }));
 
     const skill = new AcademicSkill();
     await skill.enrich(sampleText, {
@@ -590,8 +622,8 @@ describe("AcademicSkill provider routing", () => {
       providers: { academic: { provider: "semantic-scholar", apiKey: "ss-key" } },
     } as Config, []);
 
-    expect(ssSpy).toHaveBeenCalled();
-    expect(oaSpy).not.toHaveBeenCalled();
+    expect(ssCalls).toBeGreaterThan(0);
+    expect(openalexCalls).toBe(0);
   });
 });
 ```
@@ -662,21 +694,20 @@ Fix any critical issues in a follow-up commit.
 - Create: `tests/golden/academic-ss-baseline.json` (captured output)
 - Create: `tests/golden/academic-ss-baseline.test.ts` (comparison test)
 
-- [ ] **Step 1: Capture baseline with mocked `ssSearch`**
+- [ ] **Step 1: Capture baseline using the repo's fetch-mocking pattern**
 
 Create `tests/golden/academic-ss-baseline.test.ts`:
 
 ```typescript
-import { describe, test, expect, mock, afterEach } from "bun:test";
+import { describe, test, expect } from "bun:test";
 import { AcademicSkill } from "../../src/skills/academic.ts";
-import * as ss from "../../src/providers/semanticscholar.ts";
+import { mockFetch, urlRouter, jsonResponse } from "../../src/testing/mock-fetch.ts";
 import type { Config } from "../../src/config.ts";
 import { readFileSync, existsSync, writeFileSync } from "fs";
 import { join } from "path";
 
 const config: Config = {
   copyscapeUser: "", copyscapeKey: "",
-  exaApiKey: "test",
   providers: { academic: { provider: "semantic-scholar", apiKey: "ss-key" } },
   skills: {
     plagiarism: false, aiDetection: false, seo: false,
@@ -689,19 +720,20 @@ const config: Config = {
 const fixturePath = join(import.meta.dir, "academic-ss-baseline.json");
 const sampleText = "Vitamin D reduces the risk of acute respiratory infections. A 2017 meta-analysis in BMJ confirmed this.";
 
-afterEach(() => mock.restore());
-
 describe("academic skill — SS path regression", () => {
   test("output shape matches captured baseline when using SS", async () => {
-    const fakePapers = [{
-      paperId: "S-fixed",
-      title: "Vitamin D supplementation",
-      year: 2017,
-      authors: [{ name: "Martineau AR" }],
-      externalIds: { DOI: "10.1136/bmj.i6583" },
-      url: "https://www.bmj.com/content/356/bmj.i6583",
-    }];
-    (ss as unknown as { ssSearch: typeof ss.ssSearch }).ssSearch = mock(async () => fakePapers) as unknown as typeof ss.ssSearch;
+    mockFetch(urlRouter({
+      "api.semanticscholar.org": async () => jsonResponse({
+        data: [{
+          paperId: "S-fixed",
+          title: "Vitamin D supplementation",
+          year: 2017,
+          authors: [{ name: "Martineau AR" }],
+          externalIds: { DOI: "10.1136/bmj.i6583" },
+          url: "https://www.bmj.com/content/356/bmj.i6583",
+        }],
+      }),
+    }));
 
     const skill = new AcademicSkill();
     const result = await skill.enrich(sampleText, config, []);
@@ -744,11 +776,37 @@ Expected: valid JSON with `skillId`, `findings` array, and citation data sourced
 Run: `bun test tests/golden/academic-ss-baseline.test.ts`
 Expected: PASS on comparison (canonical === baseline).
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Widen the `test` npm script to include `tests/golden/`**
+
+**Important:** `package.json` has an explicit allowlist for the `test` script — it does NOT glob `tests/golden/` or `tests/integration/`. Without this step, the phase-gate `bun test` run would silently skip the new regression test.
+
+Open `package.json`. Find the `"test"` script (around line 45). Append ` tests/golden/*.test.ts` to the end of the existing command. Before:
+
+```json
+"test": "bun test src/*.test.ts src/skills/*.test.ts src/utils/*.test.ts src/providers/*.test.ts src/cli/*.test.ts src/cost/*.test.ts tests/e2e/*.test.ts",
+```
+
+After:
+
+```json
+"test": "bun test src/*.test.ts src/skills/*.test.ts src/utils/*.test.ts src/providers/*.test.ts src/cli/*.test.ts src/cost/*.test.ts tests/e2e/*.test.ts tests/golden/*.test.ts",
+```
+
+Integration tests (`tests/integration/*.test.ts`) stay out of this script — they require network and are gated by env flag; CI runs them in a separate step.
+
+- [ ] **Step 6: Verify the widened script picks up the new test**
+
+Run: `bun test`
+Expected: all tests pass, count increases by 1 (the new golden test).
+
+- [ ] **Step 7: Commit**
 
 ```bash
-git add tests/golden/academic-ss-baseline.json tests/golden/academic-ss-baseline.test.ts
-git commit -m "test(academic): golden-file regression for Semantic Scholar path"
+git add tests/golden/academic-ss-baseline.json tests/golden/academic-ss-baseline.test.ts package.json
+git commit -m "test(academic): golden-file regression for Semantic Scholar path
+
+Widens npm 'test' script to include tests/golden/*.test.ts (was an
+allowlist that silently skipped this directory)."
 ```
 
 ---
@@ -772,25 +830,34 @@ const RUN = process.env.OPENALEX_INTEGRATION === "1";
 const mailto = process.env.OPENALEX_MAILTO;
 
 describe.skipIf(!RUN)("OpenAlex live API", () => {
-  test("returns papers for a well-known medical claim", async () => {
+  test("returns a well-formed paper list for a well-known medical query", async () => {
     const papers = await oaSearch(
-      "Vitamin D supplementation reduces acute respiratory tract infections",
+      "Vitamin D supplementation acute respiratory tract infections",
       5,
       { mailto }
     );
+    // Soft invariants — don't assert a specific paper rank, since search ordering can drift.
     expect(papers.length).toBeGreaterThan(0);
-    // Martineau 2017 is the canonical paper; OpenAlex surfaces it in our POC
-    const hasMartineau = papers.some((p) =>
-      p.title.toLowerCase().includes("vitamin d") &&
-      p.year === 2017 &&
-      p.externalIds?.DOI === "10.1136/bmj.i6583"
+    // Every returned paper has the expected SSPaper shape:
+    for (const p of papers) {
+      expect(typeof p.paperId).toBe("string");
+      expect(p.paperId.length).toBeGreaterThan(0);
+      expect(typeof p.title).toBe("string");
+      expect(p.title.length).toBeGreaterThan(0);
+      expect(Array.isArray(p.authors)).toBe(true);
+    }
+    // At least one result is topical (contains "vitamin" OR "respiratory" in title).
+    const topical = papers.some((p) =>
+      /vitamin|respiratory|infection/i.test(p.title)
     );
-    expect(hasMartineau).toBe(true);
+    expect(topical).toBe(true);
   }, 15000);
 
-  test("returns empty for nonsense query without throwing", async () => {
-    const papers = await oaSearch("zxqvwypqxcvbnmasdf", 3, { mailto });
-    expect(papers).toEqual([]);
+  test("does not throw for a low-signal query", async () => {
+    // We avoid asserting [] because the OpenAlex index can return fuzzy matches
+    // even for garbage strings. The invariant is "no throw, returns an array".
+    const papers = await oaSearch("zxqvwypqxcvbnmasdfgklqwerty", 3, { mailto });
+    expect(Array.isArray(papers)).toBe(true);
   }, 15000);
 });
 ```
@@ -822,21 +889,16 @@ git commit -m "test(openalex): live-API integration test (gated on OPENALEX_INTE
 
 - [ ] **Step 1: Add `OPENALEX_MAILTO` to `.env.example`**
 
-Open `.env.example`. Find the section where other optional keys are documented (look for `SEMANTIC_SCHOLAR_API_KEY` or similar). Add:
+Open `.env.example`. Find the section where other optional keys are documented. Add only the OpenAlex line:
 
 ```bash
 # OpenAlex — academic citations provider (default, recommended).
 # Free service; the mailto identifies your client for the polite pool
 # (100k requests/day). No API key required.
 OPENALEX_MAILTO=your-email@example.com
-
-# Semantic Scholar — legacy academic citations provider (fallback only).
-# Free tier has aggressive per-IP rate limits (429 errors on shared IPs).
-# Set this only if you have a paid SS API key.
-SEMANTIC_SCHOLAR_API_KEY=
 ```
 
-If there's no existing SS key line, add both new lines in the "academic citations" area.
+**Do not** add a `SEMANTIC_SCHOLAR_API_KEY` entry — this plan does not wire authenticated SS requests (see the scope decision in the plan header). Users who already have an explicit `providers.academic = semantic-scholar` entry in their config continue to hit SS unauthenticated, same as before.
 
 - [ ] **Step 2: Add a citations section to README.md**
 
@@ -849,7 +911,7 @@ CheckApp finds peer-reviewed supporting papers for scientific, medical, and fina
 
 **Default provider: OpenAlex.** Free, ~250M indexed works, no API key required. Set `OPENALEX_MAILTO=your@email.com` in your `.env` to use the polite pool (100k req/day).
 
-**Legacy provider: Semantic Scholar.** Supported for users with a paid SS API key (set `SEMANTIC_SCHOLAR_API_KEY`). The free tier of SS has aggressive per-IP rate limiting and is effectively unusable on shared IPs — that's why OpenAlex is the default.
+**Legacy provider: Semantic Scholar.** Users with an explicit `providers.academic = { provider: "semantic-scholar" }` config continue to hit SS. Note: the free tier of SS has aggressive per-IP rate limiting and is effectively unusable on shared IPs — that's why OpenAlex is the new default. Authenticated (paid) SS requests are not currently wired in the client; support for a paid SS API key is a separate workstream.
 
 See `poc-replacement/03-academic-citations/RESULTS.md` for the comparison data that drove this decision.
 ```
@@ -875,43 +937,59 @@ git commit -m "docs(citations): OpenAlex default provider, SS as legacy fallback
 
 **Files:** no code changes — this task is the verification gate.
 
-- [ ] **Step 1: Run the full test suite**
+**Important:** the npm `test` script is an explicit allowlist (it does NOT glob `tests/integration/` at all, and only globs `tests/golden/` after Task 7 widens it). The phase-gate must run the specific test paths that matter, not rely on `bun test` covering everything by accident.
+
+- [ ] **Step 1: Run the main unit-test suite**
 
 Run: `bun test`
-Expected: all tests pass. Record the count: `__________`.
+Expected: all tests pass. Record the count: `__________`. Confirm it includes `tests/golden/academic-ss-baseline.test.ts` (should appear in the output — Task 7 widened the script).
 
-- [ ] **Step 2: Run the dashboard test suite**
+- [ ] **Step 2: Run the new provider tests explicitly**
 
-Run: `bun run test:dashboard` (or the project's equivalent command — check `package.json` scripts)
-Expected: green, no regression.
+Run: `bun test src/providers/openalex.test.ts src/providers/resolve.test.ts src/providers/registry.test.ts src/skills/academic.test.ts src/providers/types.test.ts src/config.test.ts`
+Expected: PASS, no skipped.
 
-- [ ] **Step 3: Manual smoke test — user WITHOUT OPENALEX_MAILTO**
+- [ ] **Step 3: Run the golden-file regression test explicitly**
 
-Run (from the repo root): `bun run build`
-Then:
+Run: `bun test tests/golden/academic-ss-baseline.test.ts`
+Expected: PASS (comparison against the committed baseline).
+
+- [ ] **Step 4: Run the live-API integration test**
+
+Run: `OPENALEX_INTEGRATION=1 OPENALEX_MAILTO=sharon.spirit@gmail.com bun test tests/integration/academic-openalex.test.ts`
+Expected: PASS, 2 tests (not skipped).
+
+- [ ] **Step 5: Run the dashboard test suite**
+
+Run: `bun run test:dashboard`
+Expected: green, no regression from Plan 2 baseline.
+
+- [ ] **Step 6: Manual smoke test — user WITHOUT OPENALEX_MAILTO**
+
+Use `bun src/index.tsx` (the non-watch entry point — do NOT use `bun run dev`, that's the watch-mode launcher per `package.json:44`).
 
 ```bash
 # Ensure OPENALEX_MAILTO is unset for this test:
 unset OPENALEX_MAILTO
-bun run dev check poc/articles/01-health.md --skills academic > /tmp/smoke-before.json
+bun src/index.tsx check poc/articles/01-health.md --skills academic > /tmp/smoke-before.json
 ```
 
-Expected: JSON output with citations from Semantic Scholar (or "skipped" with a clear message if no SS key). Identical to behavior before this plan.
+Expected: JSON output with citations from Semantic Scholar (or "skipped" with a clear message if no explicit `providers.academic` config exists). Identical to behavior before this plan for the default-config case.
 
-- [ ] **Step 4: Manual smoke test — user WITH OPENALEX_MAILTO**
+- [ ] **Step 7: Manual smoke test — user WITH OPENALEX_MAILTO**
 
 ```bash
-OPENALEX_MAILTO=sharon.spirit@gmail.com bun run dev check poc/articles/01-health.md --skills academic > /tmp/smoke-after.json
+OPENALEX_MAILTO=sharon.spirit@gmail.com bun src/index.tsx check poc/articles/01-health.md --skills academic > /tmp/smoke-after.json
 ```
 
-Expected: JSON output with citations from OpenAlex. Citations should include the Martineau 2017 BMJ paper (DOI `10.1136/bmj.i6583`) if the article contains the vitamin D claim.
+Expected: JSON output with citations from OpenAlex. At least one citation should be returned (topical to vitamin D / respiratory infection claims in the article). Do NOT assert a specific DOI — OpenAlex ranking can drift.
 
-- [ ] **Step 5: Compare smoke-test results**
+- [ ] **Step 8: Compare smoke-test results**
 
 Run: `diff /tmp/smoke-before.json /tmp/smoke-after.json | head -20`
-Expected: non-empty diff — the "after" version contains more / better citations because OpenAlex is working where SS 429'd.
+Expected: non-empty diff — the "after" version contains citations (OpenAlex worked), the "before" either is skipped or contains SS results (possibly empty due to 429).
 
-- [ ] **Step 6: Dispatch `superpowers:code-reviewer` on the full phase diff**
+- [ ] **Step 9: Dispatch `superpowers:code-reviewer` on the full phase diff**
 
 Run: `git log --oneline main..HEAD`
 Record the commit range, then dispatch the agent with this prompt:
@@ -920,7 +998,7 @@ Record the commit range, then dispatch the agent with this prompt:
 
 If the agent surfaces any critical issue, fix it as a new atomic commit, then re-run steps 1 and 2.
 
-- [ ] **Step 7: Dispatch `pr-review-toolkit:pr-test-analyzer`**
+- [ ] **Step 10: Dispatch `pr-review-toolkit:pr-test-analyzer`**
 
 Use prompt:
 
@@ -1027,7 +1105,7 @@ Fixes the production bug where users get HTTP 429 errors on every academic-citat
 - [ ] `bun test` — all tests green including 7 new OpenAlex tests + 3 routing tests
 - [ ] `OPENALEX_INTEGRATION=1 OPENALEX_MAILTO=... bun test tests/integration/academic-openalex.test.ts` — live API hit works
 - [ ] Golden-file test confirms SS-path behavior unchanged for users without `OPENALEX_MAILTO`
-- [ ] Manual smoke: `bun run dev check poc/articles/01-health.md --skills academic` with and without `OPENALEX_MAILTO` set
+- [ ] Manual smoke: `bun src/index.tsx check poc/articles/01-health.md --skills academic` with and without `OPENALEX_MAILTO` set
 
 ## Deployment action
 Set `OPENALEX_MAILTO=sharon.spirit@gmail.com` in production `.env` after merge.
@@ -1077,11 +1155,13 @@ If the repo policy requires external review, tag a reviewer and wait for approva
 
 **4. Test coverage of critical paths**
 
-- OpenAlex happy path: Task 4 step 1 (mocked) + Task 8 (live).
-- OpenAlex failure paths (non-OK, network error, malformed): Task 4 step 1.
-- Academic skill provider routing: Task 6 step 2.
-- SS legacy path regression: Task 7 (golden file).
+- OpenAlex happy path: Task 4 step 1 (mocked) + Task 8 (live, shape-only).
+- OpenAlex failure paths (non-OK, network error, malformed JSON): Task 4 step 1.
+- Academic skill provider routing: Task 6 step 2 (fetch-based, not ESM mutation).
+- SS legacy path regression: Task 7 (golden file, captured via same fetch-mock helper).
 - Resolver fallback: Task 5 step 2.
+- Test runner coverage: Task 7 step 5 widens `package.json` `test` script to include `tests/golden/*.test.ts` (the script is an explicit allowlist, not a glob).
+- Integration tests: gated on `OPENALEX_INTEGRATION=1`, invoked explicitly in Task 10 step 4 (not auto-run by `bun test`).
 
 **5. Rollback path**
 
