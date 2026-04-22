@@ -25,7 +25,7 @@ Every flagged issue ships with evidence + rewrite + citation:
 
 - **Fact-check** now carries `sources[]` (Exa highlights with url/title/quote) on every finding. Upgrade to deep-reasoning with `--deep-fact-check`.
 - **Grammar & Style** (LanguageTool + LLM fallback) produces a `rewrite` per finding. LLM-fallback rewrites are grammar-checked a second time to catch mechanical errors.
-- **Academic Citations** (OpenAlex by default) merges citations onto matching fact-check findings with scientific/medical/financial claim types. Free, no API key — see [Academic Citations](#academic-citations) below.
+- **Academic Citations** (OpenAlex recommended, Semantic Scholar legacy) merges citations onto matching fact-check findings with scientific/medical/financial claim types. Free, no API key — see [Academic Citations](#academic-citations) below.
 - **Self-Plagiarism** (Cloudflare Vectorize + OpenRouter embeddings) flags overlap with your past articles. Run `checkapp index <dir>` once to ingest your archive.
 
 Pick a provider per skill from the Settings → Providers dashboard. CheckApp never holds API tokens — users bring their own keys.
@@ -59,7 +59,7 @@ All enabled skills run in parallel. Adding more skills does not increase total t
 
 CheckApp finds peer-reviewed supporting papers for scientific, medical, and financial claims.
 
-**Default provider: OpenAlex.** Free, ~250M indexed works, no API key required. Set `OPENALEX_MAILTO=your@email.com` in your `.env` to use the polite pool (100k req/day).
+**Recommended provider: OpenAlex.** Free, ~250M indexed works, no API key required. Set `OPENALEX_MAILTO=your@email.com` in your `.env` to enable it — this both activates the routing (skill is skipped if unset and no explicit provider is configured) and joins the polite pool (100k req/day).
 
 **Legacy provider: Semantic Scholar.** Users with an explicit `providers.academic = { provider: "semantic-scholar" }` config continue to hit SS. Note: the free tier of SS has aggressive per-IP rate limiting and is effectively unusable on shared IPs — that's why OpenAlex is the new default. Authenticated (paid) SS requests are not currently wired in the client; support for a paid SS API key is a separate workstream.
 

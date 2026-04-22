@@ -49,9 +49,15 @@ describe("academic skill — SS path regression", () => {
     }, null, 2);
 
     if (!existsSync(fixturePath)) {
-      writeFileSync(fixturePath, canonical);
-      console.log(`Wrote initial baseline → ${fixturePath}. Re-run to compare.`);
-      return;
+      if (process.env.UPDATE_GOLDEN === "1") {
+        writeFileSync(fixturePath, canonical);
+        console.log(`Wrote initial baseline → ${fixturePath}. Re-run to compare.`);
+        return;
+      }
+      throw new Error(
+        `Missing golden fixture: ${fixturePath}. ` +
+        `Run with UPDATE_GOLDEN=1 to generate, then commit the file.`
+      );
     }
     const baseline = readFileSync(fixturePath, "utf8");
     expect(canonical).toBe(baseline);
