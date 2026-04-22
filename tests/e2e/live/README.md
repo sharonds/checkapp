@@ -32,4 +32,16 @@ Keep live runs rare. The mocked lane (`bun run test:e2e:browser`) is the one tha
 
 ## Status
 
-**Empty today.** Populate as the team runs into real-world provider deltas that the mocked fixtures don't catch.
+All three tiers covered as of 2026-04-22:
+
+| Test | Wall time | Cost | Provider |
+|---|---|---|---|
+| `basic-live.test.ts` | ~50s | ~$0.05 | Exa + MiniMax |
+| `standard-live.test.ts` | ~140s | ~$0.20 | Gemini 3.1 Pro + Google Search |
+| `premium-live.test.ts` | 5–15 min | ~$1.50 | Gemini Deep Research |
+
+Total ~$1.75 and ~20 min for a full live run. Keep runs rare.
+
+### What the Premium live smoke caught on first run
+
+The Gemini capability probe at `src/providers/gemini-capability.ts` was sending `background=false, store=false` to `/interactions`, which Gemini now rejects (HTTP 400). That silently gated out every real Deep Research call through the cached health check. Fixed in commit `12c1eff` (probe now uses `background=true, store=true`). Moral: live smokes catch bugs mocks can't.
