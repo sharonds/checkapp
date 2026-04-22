@@ -729,6 +729,9 @@ bun src/index.tsx --history
 # Run tests
 bun test
 
+# End-to-end tests (mocked providers, real Next.js dashboard + CLI + MCP)
+bun run test:e2e:browser
+
 # Build all platform binaries
 bash build.sh
 ```

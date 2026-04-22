@@ -45,6 +45,7 @@
     "test": "bun test src/*.test.ts src/skills/*.test.ts src/utils/*.test.ts src/providers/*.test.ts src/cli/*.test.ts src/cost/*.test.ts tests/e2e/*.test.ts",
     "test:dashboard": "cd dashboard && bunx vitest run",
     "test:e2e:browser": "bun test tests/e2e/browser/*.test.ts",
+    "test:e2e:live": "bun test tests/e2e/live/*.test.ts",
     "test:all": "bun run test && bun run test:dashboard",
     "check:registry": "bun run scripts/check-registry-parity.ts"
   },
