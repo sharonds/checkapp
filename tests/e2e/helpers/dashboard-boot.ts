@@ -5,6 +5,7 @@ export interface BootOptions {
   scenario: string;
   configPath: string;
   dbPath: string;
+  csrfPath?: string;
   cwd?: string;
   startupTimeoutMs?: number;
 }
@@ -61,6 +62,7 @@ export async function bootDashboard(opts: BootOptions): Promise<DashboardHandle>
       CHECKAPP_E2E_SCENARIO: opts.scenario,
       CHECKAPP_CONFIG_PATH: opts.configPath,
       CHECKAPP_DB_PATH: opts.dbPath,
+      ...(opts.csrfPath ? { CHECKAPP_CSRF_PATH: opts.csrfPath } : {}),
       CHECKAPP_ALLOW_LIVE_PROVIDERS: "0",
       NODE_ENV: "development",
     },

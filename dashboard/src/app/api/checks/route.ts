@@ -11,7 +11,8 @@ import { join } from "path";
 
 const MAX_TEXT_LENGTH = 50_000;
 const CONFIG_DIR = join(homedir(), ".checkapp");
-const DB_PATH = join(CONFIG_DIR, "history.db");
+// CHECKAPP_DB_PATH lets tests and E2E harnesses redirect the default DB.
+const DB_PATH = process.env.CHECKAPP_DB_PATH ?? join(CONFIG_DIR, "history.db");
 
 export async function GET(request: Request) {
   try {

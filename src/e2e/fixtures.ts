@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { getScenario } from "./mode.ts";
 
 export interface ScenarioExaResult {
@@ -51,7 +52,11 @@ export interface Scenario {
   };
 }
 
-const FIXTURES_DIR = join(process.cwd(), "tests/e2e/fixtures");
+// src/e2e/fixtures.ts → repo-root/tests/e2e/fixtures. Anchor via import.meta
+// so it works regardless of process.cwd() (dashboard server cwd = dashboard/).
+// Override with CHECKAPP_E2E_FIXTURES_DIR if fixtures move.
+const __thisDir = dirname(fileURLToPath(import.meta.url));
+const FIXTURES_DIR = process.env.CHECKAPP_E2E_FIXTURES_DIR ?? join(__thisDir, "..", "..", "tests", "e2e", "fixtures");
 
 export function loadScenario(name?: string): Scenario {
   const scenarioName = name ?? getScenario();
