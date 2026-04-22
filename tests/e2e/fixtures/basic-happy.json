@@ -1,0 +1,34 @@
+{
+  "name": "basic-happy",
+  "article": "Coffee contains caffeine, a stimulant that can improve alertness. The human heart pumps blood throughout the body.",
+  "tier": "basic",
+  "flagOn": false,
+  "providers": {
+    "minimax": {
+      "text": "{\"claims\":[{\"text\":\"Coffee contains caffeine, a stimulant\"},{\"text\":\"The human heart pumps blood throughout the body\"}]}"
+    },
+    "exa": {
+      "results": [
+        {
+          "url": "https://example.edu/caffeine",
+          "title": "Caffeine overview",
+          "text": "Coffee naturally contains caffeine, a central nervous system stimulant widely consumed for its alerting effects.",
+          "highlights": ["Coffee naturally contains caffeine, a central nervous system stimulant"]
+        },
+        {
+          "url": "https://example.edu/cardiology-basics",
+          "title": "Cardiology basics",
+          "text": "The heart is a muscular organ that pumps blood through the circulatory system of the body.",
+          "highlights": ["The heart is a muscular organ that pumps blood"]
+        }
+      ]
+    },
+    "geminiChat": {
+      "text": "{\"assessments\":[{\"claim\":\"Coffee contains caffeine, a stimulant\",\"supported\":true,\"note\":\"Verified against cited sources.\"},{\"claim\":\"The human heart pumps blood throughout the body\",\"supported\":true,\"note\":\"Verified against cited sources.\"}]}"
+    }
+  },
+  "expect": {
+    "reportVerdict": "pass",
+    "uiContains": ["Fact Check", "Basic"]
+  }
+}

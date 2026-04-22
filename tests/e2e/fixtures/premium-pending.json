@@ -1,0 +1,17 @@
+{
+  "name": "premium-pending",
+  "article": "Coffee contains caffeine, a stimulant that can improve alertness. The human heart pumps blood throughout the body.",
+  "tier": "premium",
+  "flagOn": true,
+  "providers": {
+    "deepResearch": {
+      "initiateResponse": { "interaction_id": "int_pending_001" },
+      "pollStates": [
+        { "status": "in_progress" }
+      ]
+    }
+  },
+  "expect": {
+    "uiContains": ["Deep Audit", "in progress"]
+  }
+}

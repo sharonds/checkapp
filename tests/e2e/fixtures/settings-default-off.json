@@ -1,0 +1,10 @@
+{
+  "name": "settings-default-off",
+  "article": "",
+  "tier": "basic",
+  "flagOn": false,
+  "providers": {},
+  "expect": {
+    "uiContains": ["Fact Check Tier", "Basic"]
+  }
+}

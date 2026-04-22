@@ -1,0 +1,31 @@
+{
+  "name": "standard-happy",
+  "article": "Coffee contains caffeine, a stimulant that can improve alertness. The human heart pumps blood throughout the body.",
+  "tier": "standard",
+  "flagOn": true,
+  "providers": {
+    "minimax": {
+      "text": "{\"claims\":[{\"text\":\"Coffee contains caffeine, a stimulant\"},{\"text\":\"The human heart pumps blood throughout the body\"}]}"
+    },
+    "geminiGrounded": {
+      "claims": [
+        {
+          "claim": "Coffee contains caffeine, a stimulant",
+          "supported": true,
+          "note": "Confirmed by multiple high-quality sources including the NIH and Mayo Clinic.",
+          "sources": ["https://www.nih.gov/caffeine", "https://www.mayoclinic.org/caffeine"]
+        },
+        {
+          "claim": "The human heart pumps blood throughout the body",
+          "supported": true,
+          "note": "Well-established physiology.",
+          "sources": ["https://www.nhlbi.nih.gov/health/how-heart-works"]
+        }
+      ]
+    }
+  },
+  "expect": {
+    "reportVerdict": "pass",
+    "uiContains": ["Fact Check", "Standard", "nih.gov"]
+  }
+}
