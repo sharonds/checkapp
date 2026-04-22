@@ -19,6 +19,11 @@ interface CheckResult {
   results: SkillResult[];
 }
 
+interface CheckDetail extends CheckResult {
+  overallScore?: number;
+  score?: number;
+}
+
 interface EstimateState {
   total: number;
   perSkill: Record<string, number>;
@@ -120,25 +125,27 @@ export default function CheckPage() {
           body.error ?? `Check failed with status ${res.status}`
         );
       }
-      await res.json();
+      const created = await res.json();
+      const checkId = Number(created?.id);
+      if (!Number.isFinite(checkId) || checkId <= 0) {
+        throw new Error("Check completed but no check id was returned.");
+      }
 
-      // Fetch the full check to get results
-      const checksRes = await fetch("/api/checks?limit=1");
-      if (checksRes.ok) {
-        const checks = await checksRes.json();
-        if (Array.isArray(checks) && checks.length > 0) {
-          const checkData = checks[0];
-          setResult({
-            id: checkData.id,
-            results: checkData.results ?? [],
-          });
-          const overallScore = checkData.overallScore ?? checkData.score;
-          if (overallScore != null) {
-            toast.success(`Check complete — score ${overallScore}/100`);
-          } else {
-            toast.success("Check complete");
-          }
-        }
+      const checkRes = await fetch(`/api/checks/${encodeURIComponent(String(checkId))}`);
+      if (!checkRes.ok) {
+        throw new Error(`Failed to fetch check ${checkId} with status ${checkRes.status}`);
+      }
+
+      const checkData = (await checkRes.json()) as CheckDetail;
+      setResult({
+        id: checkData.id ?? checkId,
+        results: checkData.results ?? [],
+      });
+      const overallScore = checkData.overallScore ?? checkData.score;
+      if (overallScore != null) {
+        toast.success(`Check complete — score ${overallScore}/100`);
+      } else {
+        toast.success("Check complete");
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "An error occurred.";
@@ -165,28 +172,32 @@ export default function CheckPage() {
 
         <div className="mt-6 max-w-2xl space-y-6">
           <Tabs
-            defaultValue={0}
+            value={activeTab}
             onValueChange={(val) => {
-              const modes: InputMode[] = ["paste", "file", "url"];
-              setActiveTab(modes[val as number] ?? "paste");
+              if (val === "paste" || val === "file" || val === "url") {
+                setActiveTab(val);
+              }
             }}
           >
             <TabsList>
-              <TabsTrigger value={0}>
+              <TabsTrigger value="paste">
                 <FileText className="mr-1.5 h-3.5 w-3.5" />
                 Paste Text
               </TabsTrigger>
-              <TabsTrigger value={1}>
+              <TabsTrigger value="file">
                 <Upload className="mr-1.5 h-3.5 w-3.5" />
                 Upload File
               </TabsTrigger>
-              <TabsTrigger value={2}>
+              <TabsTrigger value="url" disabled>
                 <Link2 className="mr-1.5 h-3.5 w-3.5" />
                 Paste URL
               </TabsTrigger>
             </TabsList>
+            <p className="mt-2 text-xs text-muted-foreground">
+              URL import is not available yet. Paste the article text directly for now.
+            </p>
 
-            <TabsContent value={0} className="mt-4">
+            <TabsContent value="paste" className="mt-4">
               <textarea
                 value={pastedText}
                 onChange={(e) => setPastedText(e.target.value)}
@@ -216,7 +227,7 @@ export default function CheckPage() {
               )}
             </TabsContent>
 
-            <TabsContent value={1} className="mt-4">
+            <TabsContent value="file" className="mt-4">
               <Card>
                 <CardContent className="py-6">
                   <div className="flex flex-col items-center gap-3">
@@ -253,7 +264,7 @@ export default function CheckPage() {
               </Card>
             </TabsContent>
 
-            <TabsContent value={2} className="mt-4">
+            <TabsContent value="url" className="mt-4">
               <input
                 type="url"
                 value={urlValue}

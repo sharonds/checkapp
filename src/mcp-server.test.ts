@@ -3,6 +3,7 @@ import { Database } from "bun:sqlite";
 import type { Config } from "./config.ts";
 import { createSchema, insertCheck, insertDeepAudit } from "./db.ts";
 import { __resetMcpServerTestOverrides, __setMcpServerTestOverrides, getToolDefinitions, handleToolCall, startMcpServer } from "./mcp-server.ts";
+import { FactCheckDeepResearchSkill } from "./skills/factcheck-deep-research.ts";
 import type { SkillResult } from "./skills/types.ts";
 
 const baseConfig: Config = {
@@ -41,6 +42,11 @@ beforeEach(() => {
     openDb: () => dbHandle,
     readConfig: () => baseConfig,
     writeConfig: async () => undefined,
+    // Bind the deep-research skill to the same in-memory DB the MCP handler
+    // uses. Without this override the skill opens the real ~/.checkapp/
+    // history.db, which persists interaction_ids between runs and trips the
+    // UNIQUE constraint on the second `initiates a new deep audit` invocation.
+    createDeepResearchSkill: () => new FactCheckDeepResearchSkill({ db: dbHandle }),
   });
 });
 

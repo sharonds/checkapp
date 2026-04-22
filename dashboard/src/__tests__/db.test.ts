@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   getRecentChecks,
+  getAllChecks,
   getCheckById,
   getTotalStats,
   getAllTags,
@@ -13,8 +14,10 @@ import {
   deleteContextByType,
   getDb,
   closeDb,
+  buildDashboardSummary,
 } from "../lib/db";
 import { sql } from "drizzle-orm";
+import type { Check } from "../lib/db";
 
 beforeEach(() => {
   process.env.ARTICLE_CHECKER_DB = ":memory:";
@@ -54,6 +57,21 @@ describe("getRecentChecks", () => {
   });
 });
 
+describe("getAllChecks", () => {
+  it("returns the full history, not just the recent slice", () => {
+    const db = getDb();
+    for (let i = 1; i <= 12; i++) {
+      db.run(
+        sql`INSERT INTO checks (source, word_count, results_json, total_cost) VALUES (${`row-${i}.md`}, 100, '[]', 0.01)`
+      );
+    }
+    const checks = getAllChecks();
+    expect(checks).toHaveLength(12);
+    expect(checks[0].source).toBe("row-12.md");
+    expect(checks[11].source).toBe("row-1.md");
+  });
+});
+
 describe("getCheckById", () => {
   it("returns null for non-existent id", () => {
     expect(getCheckById(999)).toBeNull();
@@ -88,6 +106,153 @@ describe("getTotalStats", () => {
     const stats = getTotalStats();
     expect(stats.totalChecks).toBe(2);
     expect(stats.totalCost).toBeCloseTo(0.15);
+  });
+});
+
+describe("buildDashboardSummary", () => {
+  it("summarizes all checks, including rows outside the recent 10", () => {
+    const now = new Date("2026-04-22T12:00:00.000Z");
+    const checks: Check[] = [
+      {
+        id: 12,
+        source: "check-12.md",
+        wordCount: 100,
+        resultsJson: JSON.stringify([{ score: 100, verdict: "pass" }]),
+        totalCost: 0.1,
+        createdAt: "2026-04-22T10:00:00.000Z",
+      },
+      {
+        id: 11,
+        source: "check-11.md",
+        wordCount: 100,
+        resultsJson: JSON.stringify([{ score: 100, verdict: "pass" }]),
+        totalCost: 0.1,
+        createdAt: "2026-04-21T10:00:00.000Z",
+      },
+      {
+        id: 10,
+        source: "check-10.md",
+        wordCount: 100,
+        resultsJson: JSON.stringify([{ score: 100, verdict: "pass" }]),
+        totalCost: 0.1,
+        createdAt: "2026-04-20T10:00:00.000Z",
+      },
+      {
+        id: 9,
+        source: "check-9.md",
+        wordCount: 100,
+        resultsJson: JSON.stringify([{ score: 100, verdict: "pass" }]),
+        totalCost: 0.1,
+        createdAt: "2026-04-19T10:00:00.000Z",
+      },
+      {
+        id: 8,
+        source: "check-8.md",
+        wordCount: 100,
+        resultsJson: JSON.stringify([{ score: 100, verdict: "pass" }]),
+        totalCost: 0.1,
+        createdAt: "2026-04-17T10:00:00.000Z",
+      },
+      {
+        id: 7,
+        source: "check-7.md",
+        wordCount: 100,
+        resultsJson: JSON.stringify([{ score: 100, verdict: "pass" }]),
+        totalCost: 0.1,
+        createdAt: "2026-04-16T10:00:00.000Z",
+      },
+      {
+        id: 6,
+        source: "check-6.md",
+        wordCount: 100,
+        resultsJson: JSON.stringify([{ score: 100, verdict: "pass" }]),
+        totalCost: 0.1,
+        createdAt: "2026-04-15T10:00:00.000Z",
+      },
+      {
+        id: 5,
+        source: "check-5.md",
+        wordCount: 100,
+        resultsJson: JSON.stringify([{ score: 100, verdict: "pass" }]),
+        totalCost: 0.1,
+        createdAt: "2026-04-14T10:00:00.000Z",
+      },
+      {
+        id: 4,
+        source: "check-4.md",
+        wordCount: 100,
+        resultsJson: JSON.stringify([{ score: 100, verdict: "pass" }]),
+        totalCost: 0.1,
+        createdAt: "2026-04-13T10:00:00.000Z",
+      },
+      {
+        id: 3,
+        source: "check-3.md",
+        wordCount: 100,
+        resultsJson: JSON.stringify([{ score: 100, verdict: "pass" }]),
+        totalCost: 0.1,
+        createdAt: "2026-04-12T10:00:00.000Z",
+      },
+      {
+        id: 2,
+        source: "check-2.md",
+        wordCount: 100,
+        resultsJson: JSON.stringify([{ score: 0, verdict: "fail" }]),
+        totalCost: 0.77,
+        createdAt: "2026-04-18T10:00:00.000Z",
+      },
+      {
+        id: 1,
+        source: "check-1.md",
+        wordCount: 100,
+        resultsJson: JSON.stringify([{ verdict: "skipped" }]),
+        totalCost: 1.23,
+        createdAt: "2026-03-30T10:00:00.000Z",
+      },
+    ];
+
+    const summary = buildDashboardSummary(checks, now);
+
+    expect(summary.parsedChecks).toHaveLength(12);
+    expect(summary.checksThisMonth).toBe(11);
+    expect(summary.verdictCounts).toEqual({
+      pass: 10,
+      warn: 0,
+      fail: 1,
+      skipped: 1,
+    });
+    expect(summary.overallAvg).toBe(91);
+    expect(summary.days.find((day) => day.shortDate === "Apr 18")?.cost).toBeCloseTo(0.77);
+  });
+
+  it("month + day buckets are UTC — not affected by host timezone", () => {
+    // "now" is UTC midnight on the 1st. A host timezone east of UTC would
+    // previously resolve monthStart to the 30th of the prior month and bucket
+    // a check on Apr 1 UTC into the Apr 30 label. Verify both are UTC-pinned.
+    const now = new Date("2026-05-01T00:00:00.000Z");
+    const checks: Check[] = [
+      {
+        id: 1,
+        source: "apr-30-utc.md",
+        wordCount: 100,
+        resultsJson: JSON.stringify([{ score: 80, verdict: "pass" }]),
+        totalCost: 0.5,
+        createdAt: "2026-04-30T23:30:00.000Z",
+      },
+      {
+        id: 2,
+        source: "may-01-utc.md",
+        wordCount: 100,
+        resultsJson: JSON.stringify([{ score: 80, verdict: "pass" }]),
+        totalCost: 0.25,
+        createdAt: "2026-05-01T00:30:00.000Z",
+      },
+    ];
+
+    const summary = buildDashboardSummary(checks, now);
+    expect(summary.checksThisMonth).toBe(1);
+    expect(summary.days.find((d) => d.shortDate === "May 1")?.cost).toBeCloseTo(0.25);
+    expect(summary.days.find((d) => d.shortDate === "Apr 30")?.cost).toBeCloseTo(0.5);
   });
 });
 

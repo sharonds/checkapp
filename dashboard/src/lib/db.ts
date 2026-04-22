@@ -115,6 +115,11 @@ export function getRecentChecks(limit: number) {
   return db.select().from(checks).orderBy(desc(checks.id)).limit(limit).all();
 }
 
+export function getAllChecks() {
+  const db = getDb();
+  return db.select().from(checks).orderBy(desc(checks.id)).all();
+}
+
 export function getCheckById(id: number) {
   const db = getDb();
   const rows = db
@@ -137,6 +142,139 @@ export function getTotalStats() {
   return {
     totalChecks: row?.total_checks ?? 0,
     totalCost: row?.total_cost ?? 0,
+  };
+}
+
+interface StoredSkillResult {
+  score?: number;
+  verdict?: "pass" | "warn" | "fail" | "skipped";
+}
+
+export interface DashboardParsedCheck {
+  id: number;
+  source: string;
+  wordCount: number;
+  totalCost: number;
+  createdAt: string;
+  avgScore: number;
+  verdict: "pass" | "warn" | "fail" | "skipped";
+}
+
+export interface DashboardSummary {
+  parsedChecks: DashboardParsedCheck[];
+  overallAvg: number;
+  verdictCounts: {
+    pass: number;
+    warn: number;
+    fail: number;
+    skipped: number;
+  };
+  checksThisMonth: number;
+  days: Array<{ label: string; shortDate: string; cost: number }>;
+  maxCost: number;
+}
+
+// UTC-pinned so bucket labels match the UTC createdAt timestamps SQLite writes
+// via datetime('now'). Without timeZone:"UTC" the label drifts relative to the
+// bucket near midnight in non-UTC timezones.
+function getDayLabel(date: Date): string {
+  return date.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" });
+}
+
+function formatDateShort(date: Date): string {
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+function getVerdict(score: number): "pass" | "warn" | "fail" {
+  if (score >= 75) return "pass";
+  if (score >= 50) return "warn";
+  return "fail";
+}
+
+export function buildDashboardSummary(checks: Check[], now = new Date()): DashboardSummary {
+  const parsedChecks = checks.map((c) => {
+    let results: StoredSkillResult[] = [];
+    try {
+      const raw = JSON.parse(c.resultsJson);
+      results = Array.isArray(raw) ? raw : [];
+    } catch {
+      results = [];
+    }
+
+    const scored = results.filter((r) => r.verdict !== "skipped");
+    const scores = scored
+      .map((r) => r.score)
+      .filter((s): s is number => typeof s === "number");
+    const allSkipped = results.length > 0 && scored.length === 0;
+    const avgScore =
+      scores.length > 0
+        ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
+        : 0;
+    const verdict: "pass" | "warn" | "fail" | "skipped" = allSkipped
+      ? "skipped"
+      : getVerdict(avgScore);
+
+    return {
+      id: c.id,
+      source: c.source,
+      wordCount: c.wordCount,
+      totalCost: c.totalCost,
+      createdAt: c.createdAt,
+      avgScore,
+      verdict,
+    };
+  });
+
+  const scoredChecks = parsedChecks.filter((p) => p.verdict !== "skipped");
+  const scoredAverage = scoredChecks.map((p) => p.avgScore);
+  const overallAvg =
+    scoredAverage.length > 0
+      ? Math.round(scoredAverage.reduce((a, b) => a + b, 0) / scoredAverage.length)
+      : 0;
+
+  const verdictCounts = { pass: 0, warn: 0, fail: 0, skipped: 0 };
+  for (const p of parsedChecks) {
+    verdictCounts[p.verdict]++;
+  }
+
+  // UTC-pinned month start so the comparison is UTC vs UTC (createdAt is
+  // produced by SQLite datetime('now') which is UTC). Local-time constructors
+  // drift by ±1 day for users east of UTC near month boundaries.
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
+    .toISOString()
+    .slice(0, 10);
+  const checksThisMonth = checks.filter((c) => c.createdAt >= monthStart).length;
+
+  const days: Array<{ label: string; shortDate: string; cost: number }> = [];
+  // Walk backwards from today in UTC so day-keys line up with createdAt's UTC
+  // timestamps. setUTCDate keeps arithmetic in UTC instead of local time.
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now);
+    d.setUTCDate(d.getUTCDate() - i);
+    const dateStr = d.toISOString().slice(0, 10);
+    const cost = checks.reduce(
+      (sum, c) => (c.createdAt.startsWith(dateStr) ? sum + c.totalCost : sum),
+      0
+    );
+    days.push({
+      label: getDayLabel(d),
+      shortDate: formatDateShort(d),
+      cost,
+    });
+  }
+  const maxCost = Math.max(...days.map((d) => d.cost), 0.001);
+
+  return {
+    parsedChecks,
+    overallAvg,
+    verdictCounts,
+    checksThisMonth,
+    days,
+    maxCost,
   };
 }
 

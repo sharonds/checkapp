@@ -39,7 +39,7 @@ export default function RootLayout({
       <body className="flex min-h-full">
         <Providers>
           <Sidebar />
-          <main className="ml-60 flex min-h-screen flex-1 flex-col">
+          <main className="flex min-h-screen flex-1 flex-col pt-[7.25rem] md:ml-60 md:pt-0">
             {children}
           </main>
           <Toaster position="bottom-right" theme="system" richColors />

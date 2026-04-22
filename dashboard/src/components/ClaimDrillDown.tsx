@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { safeHref, sanitizeText } from "@/lib/sanitize";
 import type { Finding } from "@/lib/normalize";
+import { formatShortDate } from "@/lib/format";
 
 interface Props { finding: Finding; }
 
@@ -39,7 +40,7 @@ export function ClaimDrillDown({ finding }: Props) {
               </a>
               {s.publishedDate && (
                 <Badge variant="secondary" className="ml-2">
-                  {new Date(s.publishedDate).toLocaleDateString()}
+                  {formatShortDate(s.publishedDate)}
                 </Badge>
               )}
               {typeof s.relevanceScore === "number" && (

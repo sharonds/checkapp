@@ -1,4 +1,4 @@
-import { getRecentChecks, getTotalStats } from "@/lib/db";
+import { buildDashboardSummary, getAllChecks, getTotalStats } from "@/lib/db";
 import { CheckTable, type CheckRow } from "@/components/check-table";
 import { EmptyState } from "@/components/empty-state";
 import { FooterBar } from "@/components/footer-bar";
@@ -7,34 +7,15 @@ import { FileSearch } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
-interface StoredSkillResult {
-  score?: number;
-  verdict?: "pass" | "warn" | "fail" | "skipped";
-}
-
-function getVerdict(score: number): "pass" | "warn" | "fail" {
-  if (score >= 75) return "pass";
-  if (score >= 50) return "warn";
-  return "fail";
-}
-
 function scoreColorClass(score: number): string {
   if (score >= 75) return "text-score-pass";
   if (score >= 50) return "text-score-warn";
   return "text-score-fail";
 }
 
-function getDayLabel(date: Date): string {
-  return date.toLocaleDateString("en-US", { weekday: "short" });
-}
-
-function formatDateShort(date: Date): string {
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
 export default function DashboardPage() {
   const stats = getTotalStats();
-  const recentChecks = getRecentChecks(10);
+  const allChecks = getAllChecks();
 
   if (stats.totalChecks === 0) {
     return (
@@ -52,85 +33,13 @@ export default function DashboardPage() {
     );
   }
 
-  // Parse results from each check
-  const parsed = recentChecks.map((c) => {
-    let results: StoredSkillResult[] = [];
-    try {
-      const raw = JSON.parse(c.resultsJson);
-      results = Array.isArray(raw) ? raw : [];
-    } catch {
-      results = [];
-    }
-
-    const scored = results.filter((r) => r.verdict !== "skipped");
-    const scores = scored
-      .map((r) => r.score)
-      .filter((s): s is number => typeof s === "number");
-    const allSkipped = results.length > 0 && scored.length === 0;
-    const avgScore =
-      scores.length > 0
-        ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
-        : 0;
-    const verdict: "pass" | "warn" | "fail" | "skipped" = allSkipped
-      ? "skipped"
-      : getVerdict(avgScore);
-
-    return {
-      id: c.id,
-      source: c.source,
-      wordCount: c.wordCount,
-      totalCost: c.totalCost,
-      createdAt: c.createdAt,
-      avgScore,
-      verdict,
-    };
-  });
-
-  // Overall average excludes rows whose score is 0 — covers both 'all skills
-  // skipped' (verdict=skipped) and rows with no scorable skills.
-  const allScores = parsed.map((p) => p.avgScore).filter((s) => s > 0);
-  const overallAvg =
-    allScores.length > 0
-      ? Math.round(allScores.reduce((a, b) => a + b, 0) / allScores.length)
-      : 0;
-
-  // Verdict distribution — skipped gets its own bucket so the bar reflects reality.
-  const verdictCounts = { pass: 0, warn: 0, fail: 0, skipped: 0 };
-  for (const p of parsed) {
-    verdictCounts[p.verdict]++;
-  }
-  const verdictTotal = verdictCounts.pass + verdictCounts.warn + verdictCounts.fail + verdictCounts.skipped;
-
-  // Checks this month
-  const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-    .toISOString()
-    .slice(0, 10);
-  const checksThisMonth = recentChecks.filter(
-    (c) => c.createdAt >= monthStart
-  ).length;
-
-  // Cost chart — last 7 calendar days
-  const days: Array<{ label: string; shortDate: string; cost: number }> = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().slice(0, 10);
-    days.push({
-      label: getDayLabel(d),
-      shortDate: formatDateShort(d),
-      cost: 0,
-    });
-    for (const c of recentChecks) {
-      if (c.createdAt.startsWith(dateStr)) {
-        days[days.length - 1].cost += c.totalCost;
-      }
-    }
-  }
-  const maxCost = Math.max(...days.map((d) => d.cost), 0.001);
-
-  // Transform for CheckTable
-  const checkRows: CheckRow[] = parsed.map((p) => ({
+  const dashboard = buildDashboardSummary(allChecks);
+  const verdictTotal =
+    dashboard.verdictCounts.pass +
+    dashboard.verdictCounts.warn +
+    dashboard.verdictCounts.fail +
+    dashboard.verdictCounts.skipped;
+  const checkRows: CheckRow[] = dashboard.parsedChecks.slice(0, 10).map((p) => ({
     id: String(p.id),
     source: p.source,
     score: p.avgScore,
@@ -155,8 +64,8 @@ export default function DashboardPage() {
           </Card>
           <Card size="sm">
             <CardContent>
-              <p className={`text-2xl font-bold ${scoreColorClass(overallAvg)}`}>
-                {overallAvg}
+              <p className={`text-2xl font-bold ${scoreColorClass(dashboard.overallAvg)}`}>
+                {dashboard.overallAvg}
               </p>
               <p className="text-xs text-muted-foreground">Average Score</p>
             </CardContent>
@@ -171,7 +80,7 @@ export default function DashboardPage() {
           </Card>
           <Card size="sm">
             <CardContent>
-              <p className="text-2xl font-bold">{checksThisMonth}</p>
+              <p className="text-2xl font-bold">{dashboard.checksThisMonth}</p>
               <p className="text-xs text-muted-foreground">Checks This Month</p>
             </CardContent>
           </Card>
@@ -185,35 +94,35 @@ export default function DashboardPage() {
             </p>
             {verdictTotal > 0 && (
               <div className="flex h-3 w-full overflow-hidden rounded-full">
-                {verdictCounts.pass > 0 && (
+                {dashboard.verdictCounts.pass > 0 && (
                   <div
                     className="bg-score-pass"
                     style={{
-                      width: `${(verdictCounts.pass / verdictTotal) * 100}%`,
+                      width: `${(dashboard.verdictCounts.pass / verdictTotal) * 100}%`,
                     }}
                   />
                 )}
-                {verdictCounts.warn > 0 && (
+                {dashboard.verdictCounts.warn > 0 && (
                   <div
                     className="bg-score-warn"
                     style={{
-                      width: `${(verdictCounts.warn / verdictTotal) * 100}%`,
+                      width: `${(dashboard.verdictCounts.warn / verdictTotal) * 100}%`,
                     }}
                   />
                 )}
-                {verdictCounts.fail > 0 && (
+                {dashboard.verdictCounts.fail > 0 && (
                   <div
                     className="bg-score-fail"
                     style={{
-                      width: `${(verdictCounts.fail / verdictTotal) * 100}%`,
+                      width: `${(dashboard.verdictCounts.fail / verdictTotal) * 100}%`,
                     }}
                   />
                 )}
-                {verdictCounts.skipped > 0 && (
+                {dashboard.verdictCounts.skipped > 0 && (
                   <div
                     className="bg-muted-foreground/50"
                     style={{
-                      width: `${(verdictCounts.skipped / verdictTotal) * 100}%`,
+                      width: `${(dashboard.verdictCounts.skipped / verdictTotal) * 100}%`,
                     }}
                   />
                 )}
@@ -221,20 +130,20 @@ export default function DashboardPage() {
             )}
             <p className="text-xs text-muted-foreground">
               <span className="text-score-pass">
-                {verdictCounts.pass} passed
+                {dashboard.verdictCounts.pass} passed
               </span>
               {" \u00b7 "}
               <span className="text-score-warn">
-                {verdictCounts.warn} warnings
+                {dashboard.verdictCounts.warn} warnings
               </span>
               {" \u00b7 "}
               <span className="text-score-fail">
-                {verdictCounts.fail} failed
+                {dashboard.verdictCounts.fail} failed
               </span>
-              {verdictCounts.skipped > 0 && (
+              {dashboard.verdictCounts.skipped > 0 && (
                 <>
                   {" \u00b7 "}
-                  <span>{verdictCounts.skipped} skipped</span>
+                  <span>{dashboard.verdictCounts.skipped} skipped</span>
                 </>
               )}
             </p>
@@ -248,7 +157,7 @@ export default function DashboardPage() {
               API Cost — Last 7 Days
             </p>
             <div className="flex items-end gap-2" style={{ height: 120 }}>
-              {days.map((day) => (
+              {dashboard.days.map((day) => (
                 <div
                   key={day.shortDate}
                   className="flex flex-1 flex-col items-center gap-1"
@@ -261,7 +170,7 @@ export default function DashboardPage() {
                   <div
                     className="w-full rounded-sm bg-primary/80 transition-all dark:bg-primary/60"
                     style={{
-                      height: `${Math.max((day.cost / maxCost) * 80, day.cost > 0 ? 4 : 0)}px`,
+                      height: `${Math.max((day.cost / dashboard.maxCost) * 80, day.cost > 0 ? 4 : 0)}px`,
                     }}
                   />
                   <span className="text-[10px] text-muted-foreground">

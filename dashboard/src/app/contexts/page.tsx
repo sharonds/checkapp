@@ -7,6 +7,7 @@ import { FooterBar } from "@/components/footer-bar";
 import { LoadingSkeleton } from "@/components/loading-skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { formatNumber, formatShortDate } from "@/lib/format";
 import {
   Sheet,
   SheetContent,
@@ -268,11 +269,11 @@ export default function ContextsPage() {
                           {/* Status row */}
                           <div className="flex items-center gap-2 text-xs text-muted-foreground">
                             <span className="inline-block h-2 w-2 rounded-full bg-green-500" />
-                            <span>{ctx.content.length.toLocaleString()} chars</span>
+                            <span>{formatNumber(ctx.content.length)} chars</span>
                             <span className="text-muted-foreground/50">|</span>
                             <span>
                               Updated{" "}
-                              {new Date(ctx.updatedAt).toLocaleDateString()}
+                              {formatShortDate(ctx.updatedAt)}
                             </span>
                           </div>
 
@@ -410,10 +411,10 @@ export default function ContextsPage() {
                   {sheetCtx ? (
                     <span className="flex items-center gap-2">
                       <span className="inline-block h-2 w-2 rounded-full bg-green-500" />
-                      {sheetCtx.content.length.toLocaleString()} chars
+                      {formatNumber(sheetCtx.content.length)} chars
                       <span className="text-muted-foreground/50">|</span>
                       Updated{" "}
-                      {new Date(sheetCtx.updatedAt).toLocaleDateString()}
+                      {formatShortDate(sheetCtx.updatedAt)}
                     </span>
                   ) : (
                     "No content configured"

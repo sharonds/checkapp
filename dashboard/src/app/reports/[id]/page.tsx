@@ -10,6 +10,7 @@ import { ExportButtons } from "@/components/export-buttons";
 import { RegeneratePanel } from "@/components/regenerate-panel";
 import { FooterBar } from "@/components/footer-bar";
 import { DeepAuditPanel } from "@/components/DeepAuditPanel";
+import { formatDateTime, formatNumber } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -97,13 +98,7 @@ export default async function ReportDetailPage({
   // If every skill was skipped, don't show FAIL — show 'skipped' as the overall state.
   const verdict: Verdict = allSkipped ? "skipped" : getVerdict(avgScore);
 
-  const dateStr = new Date(check.createdAt).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const dateStr = formatDateTime(check.createdAt);
 
   return (
     <div className="flex flex-1 flex-col">
@@ -135,7 +130,7 @@ export default async function ReportDetailPage({
               </span>
               <span className="inline-flex items-center gap-1">
                 <FileText className="h-3.5 w-3.5" />
-                {check.wordCount.toLocaleString()} words
+                {formatNumber(check.wordCount)} words
               </span>
               <span className="inline-flex items-center gap-1">
                 <DollarSign className="h-3.5 w-3.5" />

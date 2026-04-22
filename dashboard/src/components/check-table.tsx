@@ -10,6 +10,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { VerdictBadge } from "./verdict-badge";
+import { formatNumber, formatShortDate } from "@/lib/format";
 
 export interface CheckRow {
   id: string;
@@ -25,21 +26,6 @@ function scoreColor(score: number): string {
   if (score >= 75) return "text-score-pass";
   if (score >= 50) return "text-score-warn";
   return "text-score-fail";
-}
-
-function relativeTime(dateStr: string): string {
-  const now = Date.now();
-  const then = new Date(dateStr).getTime();
-  const diffMs = now - then;
-  const diffMin = Math.floor(diffMs / 60_000);
-
-  if (diffMin < 1) return "just now";
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h ago`;
-  const diffDay = Math.floor(diffHr / 24);
-  if (diffDay < 30) return `${diffDay}d ago`;
-  return new Date(dateStr).toLocaleDateString();
 }
 
 export function CheckTable({ checks }: { checks: CheckRow[] }) {
@@ -76,13 +62,13 @@ export function CheckTable({ checks }: { checks: CheckRow[] }) {
               <VerdictBadge verdict={check.verdict} />
             </TableCell>
             <TableCell className="text-right">
-              {check.words.toLocaleString()}
+              {formatNumber(check.words)}
             </TableCell>
             <TableCell className="text-right">
               ${check.costUsd.toFixed(4)}
             </TableCell>
             <TableCell className="text-muted-foreground">
-              {relativeTime(check.createdAt)}
+              {formatShortDate(check.createdAt)}
             </TableCell>
           </TableRow>
         ))}

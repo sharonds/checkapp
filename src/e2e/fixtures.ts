@@ -8,6 +8,7 @@ export interface ScenarioExaResult {
   title: string;
   text: string;
   highlights: string[];
+  publishedDate?: string;
 }
 
 export interface ScenarioGroundedClaim {

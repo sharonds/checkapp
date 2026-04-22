@@ -1,6 +1,7 @@
 "use client";
 
 import { Download } from "lucide-react";
+import { formatDateTime, formatNumber } from "@/lib/format";
 
 interface SkillResult {
   name: string;
@@ -26,9 +27,9 @@ function generateMarkdown(props: ExportButtonsProps): string {
   lines.push(`# Article Check Report`);
   lines.push("");
   lines.push(`**Source:** ${props.source}`);
-  lines.push(`**Date:** ${new Date(props.createdAt).toLocaleString()}`);
+  lines.push(`**Date:** ${formatDateTime(props.createdAt)}`);
   lines.push(`**Score:** ${props.score}/100 (${props.verdict.toUpperCase()})`);
-  lines.push(`**Word Count:** ${props.wordCount.toLocaleString()}`);
+  lines.push(`**Word Count:** ${formatNumber(props.wordCount)}`);
   lines.push(`**Total Cost:** $${props.totalCost.toFixed(4)}`);
   lines.push("");
 

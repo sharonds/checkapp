@@ -4,7 +4,6 @@ import { FooterBar } from "@/components/footer-bar";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
@@ -532,32 +531,32 @@ export default function DocsPage() {
         </p>
 
         <div className="mt-6 max-w-3xl">
-          <Tabs defaultValue={0}>
+          <Tabs defaultValue="getting-started">
             <TabsList>
-              <TabsTrigger value={0}>Getting Started</TabsTrigger>
-              <TabsTrigger value={1}>Skills</TabsTrigger>
-              <TabsTrigger value={2}>Scores</TabsTrigger>
-              <TabsTrigger value={3}>API Keys</TabsTrigger>
-              <TabsTrigger value={4}>CLI</TabsTrigger>
-              <TabsTrigger value={5}>FAQ</TabsTrigger>
+              <TabsTrigger value="getting-started">Getting Started</TabsTrigger>
+              <TabsTrigger value="skills">Skills</TabsTrigger>
+              <TabsTrigger value="scores">Scores</TabsTrigger>
+              <TabsTrigger value="api-keys">API Keys</TabsTrigger>
+              <TabsTrigger value="cli">CLI</TabsTrigger>
+              <TabsTrigger value="faq">FAQ</TabsTrigger>
             </TabsList>
 
-            <TabsContent value={0} className="mt-6">
+            <TabsContent value="getting-started" className="mt-6">
               <GettingStarted />
             </TabsContent>
-            <TabsContent value={1} className="mt-6">
+            <TabsContent value="skills" className="mt-6">
               <SkillsReference />
             </TabsContent>
-            <TabsContent value={2} className="mt-6">
+            <TabsContent value="scores" className="mt-6">
               <ScoreGuide />
             </TabsContent>
-            <TabsContent value={3} className="mt-6">
+            <TabsContent value="api-keys" className="mt-6">
               <ApiKeysSetup />
             </TabsContent>
-            <TabsContent value={4} className="mt-6">
+            <TabsContent value="cli" className="mt-6">
               <CliReference />
             </TabsContent>
-            <TabsContent value={5} className="mt-6">
+            <TabsContent value="faq" className="mt-6">
               <Faq />
             </TabsContent>
           </Tabs>
