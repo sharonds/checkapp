@@ -115,8 +115,12 @@ export function createGeminiCapability(options: GeminiCapabilityOptions = {}): G
       probeModel(`${baseUrl}/interactions?key=${encodeURIComponent(apiKey)}`, {
         input: "ping",
         agent: models.deepResearch,
-        background: false,
-        store: false,
+        // Gemini requires background=true AND store=true for agent
+        // interactions — anything else returns HTTP 400. This creates a
+        // real background job every probe, but it's cheap (~1 prompt-level
+        // token) and the 5-min health cache keeps the frequency low.
+        background: true,
+        store: true,
         agent_config: {
           type: "deep-research",
           thinking_summaries: "auto",
