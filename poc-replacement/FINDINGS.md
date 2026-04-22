@@ -22,10 +22,11 @@ full synthesis.
    supplement as a strictly-better secondary signal for AI detection (vs Gemini).
    The original "MiniMax vs Gemini" question becomes a three-way with GPT-5.4 winning.
 
-3. **Deep Research is a narrow premium tier, not a default.** Validated in Plan 1 for
-   fact-check (novel methodological catches). Tested here on legal-with-policy — LOST
-   to standard LLMs. Its value is in broad research without a reference doc; the
-   legal-no-policy mode would be the right test (untested, recommended).
+3. **Deep Research is strictly a fact-check premium tier.** Validated in Plan 1 for
+   fact-check. **Tested both legal modes and rejected.** Mode A lost to MiniMax/Gemini;
+   Mode B lost to GPT-5.4 (2.67 vs 3.00). Judge rationale: DR overstates enforcement
+   risk and offers comprehensive regulatory citations but limited actionable editing
+   guidance. Legal use cases will be served by GPT-5.4, not DR.
 
 | API / Skill | Verdict | Evidence strength | Notes |
 |---|---|---|---|
@@ -68,9 +69,9 @@ These POCs follow the same design principles as the fact-check research in `poc/
 | 1 — Plagiarism (initial+extended) | 16+16 calls | ~$0.16 + ~$0.61 | **$0.77** |
 | 2 — AI Detection | 20+20 calls | $0.20 + $0.06 | **$0.26** |
 | 3 — Academic Citations | 10 OA + 10 Gem + ~100 judge | $0 + $0.38 + $0.30 | **$0.68** |
-| 4 — LLM Skills Swap (3-way + DR) | ~54 provider + 54 judge + DR | $0.30 + $0.05 + $1.50 | **$1.85** |
+| 4 — LLM Skills Swap (3-way + 2× DR) | ~54 provider + 54 judge + 2× DR | $0.30 + $0.05 + $3.00 | **$3.35** |
 | 2 — AI Detection supplement (GPT-5.4) | 20 calls | $0.05 | **$0.05** |
-| **Total** | | | **$3.61 / $15.00 budget** |
+| **Total** | | | **$5.11 / $15.00 budget** |
 
 ---
 

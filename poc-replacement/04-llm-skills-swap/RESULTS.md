@@ -113,19 +113,48 @@ specific fixes. Deep Research's strength — broad regulatory synthesis — beco
 liability: it produces comprehensive-but-generic regulatory overviews that miss the
 specific policy violations the user actually cares about.
 
-### Where Deep Research MIGHT still be useful (not tested)
+### UPDATE: DR tested on Legal Mode B (no-policy) — NULL RESULT
 
-**Legal Mode B (no policy document).** Standard LLMs scored 1.50–3.11 here, with only
-GPT-5.4 producing usable output. Deep Research's broad regulatory knowledge might push
-this to 4+ by systematically identifying inherent legal risks the article author may
-not know about (e.g., state AG precedents, industry-specific guidance, international
-compliance).
+Ran a second Deep Research audit of 01-health **without** the legal policy, to test
+whether DR's broad regulatory knowledge earns its keep when the skill has to identify
+inherent legal risks on its own.
 
-**Recommendation:** Do NOT test DR on more policy-checked articles ($1.50 × 5 more = $7.50
-wasted). DO test DR on ONE more no-policy article to see if this is where the premium
-tier actually earns its keep.
+| vs | DR score | Opponent | Winner |
+|---|---|---|---|
+| MiniMax | 3.00 | 2.67 | DR (narrowly, both weak) |
+| Gemini | 2.67 | 1.00 | DR (but Gemini is unusable baseline) |
+| GPT-5.4 | 2.67 | **3.00** | **GPT-5.4** |
 
-**Not in this POC — deferred decision.**
+**DR mean across pairings: 2.78/5. Adoption threshold: > 4.0. Decision: DO NOT ADOPT.**
+
+### Judge reasoning (consistent across all pairings)
+
+- "Cites several real authorities (FTC Act, FDCA/DSHEA, FDA structure/function and
+  health-claim frameworks) but **overstates enforcement risk** and gives only limited
+  concrete rewrite guidance"
+- "Highly specific on laws but **overstates enforcement** and **offers little concrete
+  editing guidance**"
+
+### Conclusion: Deep Research is legal-unsuitable at both modes
+
+DR's comprehensive regulatory citation becomes a liability in legal analysis. It
+produces legal textbook-style overviews rather than article-specific fixes. GPT-5.4
+wins on actionability even in the mode where DR's broad research capability should
+most pay off.
+
+**DR's premium-tier value remains fact-check only** (Plan 1's Engine C, which DID find
+novel methodological catches — variable-confusion, acute-vs-chronic, FMD-vs-fasting —
+that standard LLMs missed). The legal domain has a different quality bar (actionable
+editorial guidance, not academic regulatory survey) where DR's strength doesn't translate.
+
+### Cost confirmation
+
+- DR legal no-policy: ~$1.50, 579s (~10 min), 5,696 words
+- GPT-5.4 legal no-policy: ~$0.015, 30s, 1,500 words
+- **GPT-5.4 is 100× cheaper, 19× faster, and scored HIGHER on actionability.**
+
+No second DR article test needed — the signal across 2 articles (with-policy + no-policy)
+is clear and consistent.
 
 ---
 

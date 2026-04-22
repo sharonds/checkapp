@@ -1,0 +1,51 @@
+{
+  "timestamp": "2026-04-22T13:56:50.911Z",
+  "drWordCount": 5696,
+  "drElapsedSec": 578.868,
+  "drCostUsd": 1.5,
+  "drMeanScore": 2.7777777777777772,
+  "results": [
+    {
+      "opponent": "minimax",
+      "drScores": {
+        "risk_specificity": 5,
+        "severity_calibration": 2,
+        "actionability": 2
+      },
+      "oppScores": {
+        "risk_specificity": 2,
+        "severity_calibration": 3,
+        "actionability": 3
+      },
+      "reasoning": "A cites many specific statutes and FTC/FDA concepts but overstates risk and offers only generic remediation, while B is more concrete about one claim but lacks legal specificity and only moderately calibrates severity."
+    },
+    {
+      "opponent": "gemini",
+      "drScores": {
+        "risk_specificity": 4,
+        "severity_calibration": 2,
+        "actionability": 2
+      },
+      "oppScores": {
+        "risk_specificity": 1,
+        "severity_calibration": 1,
+        "actionability": 1
+      },
+      "reasoning": "A cites several real authorities (FTC Act, FDCA/DSHEA, FDA structure/function and health-claim frameworks) but overstates/overgeneralizes enforcement risk and gives only limited concrete rewrite guidance; B is non-specific, incorrectly declares no risks, and offers no remediation."
+    },
+    {
+      "opponent": "openai",
+      "drScores": {
+        "risk_specificity": 5,
+        "severity_calibration": 2,
+        "actionability": 1
+      },
+      "oppScores": {
+        "risk_specificity": 2,
+        "severity_calibration": 3,
+        "actionability": 4
+      },
+      "reasoning": "A is highly specific on laws but overstates enforcement and offers little concrete editing guidance; B is more actionable with phrasing fixes but lacks explicit legal citations and only moderately calibrates severity."
+    }
+  ]
+}

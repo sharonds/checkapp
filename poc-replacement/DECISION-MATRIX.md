@@ -25,7 +25,7 @@ document.
 | LLM skills — summary | MiniMax-M2.7 | **replace** | GPT-5.4 |
 | LLM skills — brief | MiniMax-M2.7 | **replace** | GPT-5.4 |
 | LLM skills — purpose | MiniMax-M2.7 | **replace** | GPT-5.4 |
-| Legal premium tier | — | **new, conditional** | Gemini Deep Research, **only for legal-no-policy mode, UNTESTED** |
+| Legal premium tier | — | **reject** | Deep Research tested on both modes, scored 2.78/5 no-policy; DO NOT adopt for legal |
 | Grammar | LanguageTool | **not tested** | No change (rule-based, LLM overkill) |
 | Self-plagiarism | Cloudflare Vectorize | **not tested** | No change (user's private index, grounding can't access) |
 
@@ -156,9 +156,20 @@ GPT-5.4 beats Gemini 18–0–0 (a complete sweep).
 | Rollback path | `LLM_PROVIDER` env toggle back to MiniMax |
 | Dependency impact | OPENAI_API_KEY becomes required; MiniMax retained for legal-with-policy |
 
-**Deep Research legal:** Tested on 01-health legal-with-policy. **Lost** to MiniMax
-(3.33 vs 4.33) and Gemini (2.00 vs 4.33), tied with GPT-5.4. Not worth $1.50 in Mode A.
-Mode B (no-policy) untested — hypothesized to be where DR earns its keep.
+**Deep Research legal — tested both modes:**
+
+Mode A (with policy): DR lost to MiniMax (3.33 vs 4.33) and Gemini (2.00 vs 4.33),
+tied with GPT-5.4.
+
+Mode B (no policy): DR mean 2.78/5. Beat MiniMax narrowly (3.00 vs 2.67) and Gemini
+(2.67 vs 1.00, Gemini unusable), but **lost to GPT-5.4** (2.67 vs 3.00). Judge
+reasoning consistent: DR "overstates enforcement risk" and "offers limited concrete
+rewrite guidance".
+
+**Conclusion:** Deep Research is unsuitable for legal skill at either mode. DR's
+comprehensive regulatory citation becomes a liability — produces legal textbook
+overviews rather than article-specific fixes. DR's premium-tier value remains
+**fact-check only** (Plan 1's Engine C).
 
 ---
 
@@ -265,18 +276,16 @@ fact-check completes.
 4. Per-skill prompts unchanged — only provider selection changes
 5. Cost telemetry per skill call for cost alerting
 
-### Follow-on E — Legal premium "Deep Legal Audit"
+### Follow-on E — Legal premium "Deep Legal Audit" ~~CANCELLED~~
 
-**Conditional** — only if additional testing on legal-no-policy mode shows Deep Research
-scores > 4/5:
+**Decision: do NOT implement.** Deep Research tested on both legal modes — scored 2.78/5
+in no-policy mode (below the 4.0 adoption threshold) and lost to standard LLMs in both
+modes. Documented in `04-llm-skills-swap/RESULTS.md` and `04-llm-skills-swap/dr-nopolicy-judgement-*.json`.
 
-1. Single-skill premium tier, opt-in per article
-2. Queued async job, ~8 min, ~$1.50
-3. Output format: publishable legal audit (citations, severity ranking, remediation)
-4. Pricing: market as premium add-on for regulated-content teams (pharma, finance,
-   health-tech)
-5. DO NOT ship as default — the Mode A test showed DR underperforms standard LLMs when
-   a policy is supplied
+Legal-no-policy will be served by GPT-5.4 (3.11 mean, 3.00 on 01-health head-to-head
+vs DR's 2.67) with an appropriate "best-effort, not legal advice" disclaimer.
+
+DR remains the right premium tier for fact-check (Plan 1's Engine C, validated there).
 
 ---
 
