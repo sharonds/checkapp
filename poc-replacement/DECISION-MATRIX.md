@@ -13,12 +13,12 @@ document.
 
 ## One-page summary
 
-| API / Skill | Current provider | **Verdict** | Recommended replacement / augmentation |
+| API / Skill | Current provider | **Verdict** | Recommended combined architecture |
 |---|---|---|---|
 | Fact-check (core) | Exa + LLM | **replace** | Gemini 3.1 Pro grounded (Plan 2 in progress) |
-| Plagiarism | Copyscape csearch | **augment** | Keep Copyscape. Add Gemini grounded for near-verbatim detection when CS returns <10% similarity |
-| AI Detection | Copyscape aicheck | **augment** | Keep Copyscape. Add **GPT-5.4** (not Gemini) as secondary signal — complementary failure modes |
-| Academic Citations | Semantic Scholar | **replace (forced)** + **augment** | Replace SS with OpenAlex (SS free tier unusable). Add Gemini grounded as async "deep citation search" premium |
+| Plagiarism | Copyscape csearch | **combine** | Always run Copyscape + Gemini grounded in parallel. One unified verdict with sentence-level attribution, merged URL list, combined similarity score |
+| AI Detection | Copyscape aicheck | **combine** | Always run Copyscape + **GPT-5.4** (not Gemini) in parallel. One unified probability + highlighted passages. No 4-state ambiguity surface |
+| Academic Citations | Semantic Scholar | **replace + combine** | Replace SS with OpenAlex (forced — SS broken). Always run OpenAlex sync + Gemini grounded async. User sees one unified citation list, OpenAlex results immediate, Gemini canonical-source upgrades merge in when ready |
 | LLM skills — tone | MiniMax-M2.7 | **replace** | GPT-5.4 |
 | LLM skills — legal (with policy) | MiniMax-M2.7 | **keep** | MiniMax (cheapest, narrow win) |
 | LLM skills — legal (no policy) | not offered | **new capability** | GPT-5.4 (only provider that scores > 2/5) |
@@ -58,7 +58,7 @@ From Plan 1 research:
 
 ---
 
-### Plagiarism — **augment**
+### Plagiarism — **combine**
 
 POC 1 results (16 articles incl. Hebrew and non-Wikipedia sources, 119 sentences):
 - Copyscape: 98.3% sentence accuracy, 95.3% recall — but 0% on one near-verbatim article
@@ -73,13 +73,25 @@ POC 1 results (16 articles incl. Hebrew and non-Wikipedia sources, 119 sentences
 | Rollback path | Disable Gemini secondary → Copyscape-only behavior (current production) |
 | Dependency impact | GEMINI_API_KEY shared with fact-check — no new dependency |
 
-**Key design constraint:** Copyscape's aggregate similarity % is unreliable across
-non-Wikipedia sources (26% on Britannica content vs 65% on equivalent Wikipedia).
-Trigger Gemini secondary in the 10–30% similarity band where Copyscape confidence is weakest.
+**Architecture:** Always run both engines in parallel on every article. Merge into one
+unified plagiarism result:
+- Similarity score: combined (prefer Gemini's semantic estimate, supplement with
+  Copyscape's statistical match where it's higher)
+- Matched URLs: union of both engines' source lists, deduplicated by hostname
+- Sentence-level attribution: prefer Gemini (per-sentence JSON output), fall back to
+  Copyscape span mapping
+- Confidence indicator: "both agree" / "minor divergence" / "major divergence" —
+  internal telemetry only, not user-facing
+
+**Why combine rather than hybrid-with-trigger:** Copyscape's aggregate similarity % is
+unreliable across non-Wikipedia sources (26% on Britannica vs 65% on equivalent
+Wikipedia). A trigger-based secondary check would miss cases where Copyscape wrongly
+reports low confidence. Running both always eliminates that failure mode at modest
+cost.
 
 ---
 
-### AI Detection — **augment with GPT-5.4 (not Gemini)**
+### AI Detection — **combine Copyscape + GPT-5.4 (not Gemini)**
 
 POC 2 results (20 samples, 10 AI / 10 HUMAN, 4 provenance types):
 
@@ -98,16 +110,25 @@ POC 2 results (20 samples, 10 AI / 10 HUMAN, 4 provenance types):
 | Column | Value |
 |---|---|
 | Evidence strength | **Moderate** — n=20, all AI samples from Claude (one LLM family); production should validate 100+ |
-| Production readiness | Requires 4-state UX (both-AI / CS-AI-only / GPT-AI-only / both-HUMAN) |
-| Rollback path | Return to Copyscape-only binary output |
+| Production readiness | Single unified verdict output. No ambiguity-surface in UI |
+| Rollback path | Disable GPT-5.4 side → Copyscape-only binary output |
 | Dependency impact | OPENAI_API_KEY added (same as used in skills) |
+
+**Architecture:** Always run both engines on every article. Merge into one unified result:
+- Probability score: weighted average (Copyscape weight 0.55, GPT-5.4 weight 0.45 —
+  proportional to their Spearman calibration 0.896 / 0.875)
+- Verdict: AI if combined probability > 50%, otherwise HUMAN
+- Highlighted passages: union of Copyscape's high-AI-score segments and GPT-5.4's
+  identified AI passages
+- User-facing UI: single probability number + highlighted passages. No 4-state
+  ambiguity — where the engines disagree, the weighted score captures it in one number.
 
 **Cost note:** GPT-5.4 at $0.0025/sample is slightly cheaper than Gemini ($0.003) and
 meaningfully cheaper than Copyscape ($0.010) for this specific task.
 
 ---
 
-### Academic Citations — **replace** (Semantic Scholar → OpenAlex) **+ augment** (Gemini)
+### Academic Citations — **replace** (SS → OpenAlex) **+ combine** (with Gemini)
 
 POC 3 results (10 claims across medical/scientific/financial):
 
@@ -127,9 +148,17 @@ observed in this POC (polite pool with `mailto` parameter).
 | Column | Value |
 |---|---|
 | Evidence strength | **Moderate** — n=10 claims, judge bias noted on acceptable-support metric |
-| Production readiness | Requires async job pattern for Gemini premium tier (~60s latency) |
-| Rollback path | Fall back to OpenAlex default (free, instant, 80% acceptable-support) |
+| Production readiness | Requires async merge pattern (OpenAlex instant, Gemini merges when ready ~60s later) |
+| Rollback path | Disable Gemini side → OpenAlex-only output (80% acceptable-support still) |
 | Dependency impact | Drops SEMANTIC_SCHOLAR_API_KEY requirement; GEMINI_API_KEY shared |
+
+**Architecture:** Every citation request fires both engines simultaneously. OpenAlex
+results return in ~1s and render immediately (80% acceptable-support, instant feel).
+Gemini returns ~60s later and **merges into the same citation list**, promoting its
+canonical-paper finds to the top. User sees one list that gets better. Not a separate
+"premium tier" — this is the default citation experience for paid users.
+
+Free-tier users get OpenAlex only (no Gemini cost). Paid tier gets the combined result.
 
 ---
 
@@ -175,29 +204,29 @@ overviews rather than article-specific fixes. DR's premium-tier value remains
 
 ## Cost impact analysis
 
-### Per-article cost if every "replace" verdict adopted
-
-Baseline: one article, full audit pass through all skills.
+### Per-article cost — combined architecture, always-on
 
 | Provider change | Before | After | Δ per article |
 |---|---|---|---|
-| Fact-check Exa → Gemini | $0.055 | $0.155 | +$0.10 |
-| Plagiarism Copyscape alone → CS + occasional Gemini | $0.01 | $0.01 + $0.038 × 20% = $0.018 | +$0.008 |
-| AI detection Copyscape alone → CS + GPT-5.4 | $0.01 | $0.01 + $0.0025 = $0.013 | +$0.003 |
-| Citations SS free → OpenAlex default | $0 | $0 | $0 |
-| Citations + Gemini premium (opt-in, 20% of articles) | $0 | $0.038 × 20% = $0.008 | +$0.008 |
+| Fact-check Exa → Gemini | $0.055 | $0.155 | +$0.100 |
+| Plagiarism Copyscape alone → **combine** CS + Gemini | $0.010 | $0.048 | +$0.038 |
+| AI detection Copyscape alone → **combine** CS + GPT-5.4 | $0.010 | $0.013 | +$0.003 |
+| Citations SS broken → OpenAlex + Gemini combined (paid tier) | $0 | $0.038 | +$0.038 |
 | LLM skills MiniMax → GPT-5.4 (4 of 5 skills) | $0.004 | $0.060 | +$0.056 |
-| **Per-article delta** | | | **+~$0.18** |
+| **Per-article delta** | **$0.079** | **$0.314** | **+$0.235** |
 
 ### Monthly cost at scale
 
 For a team publishing 100 articles/month through CheckApp:
 
-| Scenario | Current (MiniMax-based) | Recommended (GPT-5.4-based) | Delta |
+| Scenario | Current (MiniMax-based) | Recommended (combined) | Delta |
 |---|---|---|---|
-| Basic tier (free citations + minimal skills) | ~$5 | ~$5 | $0 |
-| Standard tier (all skills + fact-check) | ~$6 | ~$24 | +$18 |
-| Premium tier (+ Deep Research audits, avg 10/month) | ~$21 | ~$39 | +$18 |
+| Free tier (OpenAlex, Copyscape-only plagiarism/AI) | ~$1 | ~$1 | $0 |
+| Paid tier (combined everything + fact-check) | ~$8 | ~$31 | +$23 |
+| Enterprise tier (above + Deep Research fact-check avg 10/mo) | ~$23 | ~$46 | +$23 |
+
+~4× cost increase on the paid tier. Justified by quality/confidence: the user gets
+ONE unified verdict per check, not two different answers to reconcile.
 
 ### API key changes
 
@@ -222,41 +251,56 @@ For each replace/augment verdict, concrete task lists to extend Plan 2. These sh
 behind **new feature flags**, not promoted to default until the same gating process as
 fact-check completes.
 
-### Follow-on A — Plagiarism hybrid (augment verdict)
+### Follow-on A — Plagiarism combined verdict
 
-1. Add `--plagiarism-hybrid` flag that enables secondary Gemini check
-2. Trigger rule: Copyscape similarity ∈ [10%, 30%] OR matches include non-Wikipedia
-   domain → fire Gemini grounded check
-3. Response schema extension: add `secondarySignal: {engine, similarity, copiedSentences}`
-4. Dashboard: show secondary findings when primary is ambiguous
-5. Rollback playbook: flag off restores Copyscape-only behavior
-6. Telemetry: flagged-sentence overlap between engines (should be > 80% where both run)
+1. Add `--plagiarism-combined` flag (default on for paid tier; off for free)
+2. Always run Copyscape + Gemini grounded in parallel on every article
+3. Response schema: single `PlagiarismResult` with merged fields
+   - `similarityPct` = combined score (see algorithm below)
+   - `matchedUrls` = union, deduplicated by hostname
+   - `sentences[]` = per-sentence attribution from Gemini + Copyscape span mapping
+   - `_debug.perEngine` = raw Copyscape + Gemini outputs (internal-only, not exposed)
+4. Combination algorithm:
+   - If Copyscape ≥ 30% AND Gemini flags ≥ 1 sentence → similarity = max(CS pct, Gemini pct)
+   - If Copyscape < 10% AND Gemini flags 0 sentences → similarity = CS pct (likely clean)
+   - Ambiguous zone (one engine flags, other doesn't) → take max of the two, prefer
+     Gemini's sentence-level output for user display
+5. Dashboard UI: one number, one list of sources, one list of flagged sentences
+6. Telemetry: internal disagreement rate (should be < 20% based on POC 1 data)
 
-### Follow-on B — AI Detection hybrid (GPT-5.4 as secondary)
+### Follow-on B — AI Detection combined verdict (GPT-5.4, not Gemini)
 
-1. Add `--ai-detection-hybrid` flag, default off
-2. Trigger rule: always when flag is on (cheap, $0.0025/call)
-3. Response: 4-state combined verdict (both-AI / CS-only / GPT-only / both-HUMAN)
-4. UI copy for each state:
-   - both-AI: "Very likely AI-generated"
-   - CS-only: "Statistical markers suggest AI, but prose reads human — possibly AI with human polish"
-   - GPT-only: "Prose patterns suggest AI, but statistical signals are weaker — possibly AI with heavy editing" (note: never happened in POC)
-   - both-HUMAN: "Likely human-authored"
+1. Add `--ai-detection-combined` flag (default on for paid tier)
+2. Always run Copyscape aicheck + GPT-5.4 in parallel on every article
+3. Response: single `AiDetectorResult` with combined output
+   - `aiProbability` = weighted average (0.55 × Copyscape + 0.45 × GPT-5.4, weights
+     proportional to Spearman calibration)
+   - `verdict` = "ai" | "human" based on 50% threshold
+   - `flaggedPassages[]` = union of Copyscape high-AI segments + GPT-5.4 identified passages
+   - `_debug.perEngine` = raw outputs (internal, not user-facing)
+4. User-facing UI: single probability number + highlighted passages in the article. No
+   ambiguity states, no disagreement display, no "consulted secondary" banner
 5. Validation on 100+ production samples before flag-default-on
 6. Dependency: ensure `OPENAI_API_KEY` is configured
 
-### Follow-on C — Citations: OpenAlex replacement + Gemini premium
+### Follow-on C — Citations: OpenAlex replacement + Gemini combined
 
 1. Replace Semantic Scholar client entirely — see `src/providers/semanticscholar.ts`.
-   New file: `src/providers/openalex.ts`. Interface unchanged.
-2. Add `--citations-deep-search` premium flag that queues a Gemini grounded citation
-   search as an async job (60s typical, can go to 240s)
-3. Job state machine (reuse the Deep Audit pattern from Plan 2): `pending | in_progress |
-   completed | failed | stale`
-4. UI: show OpenAlex results instantly; "Find canonical source" button kicks off Gemini job
-5. Email / in-app notification on Gemini completion
-6. Telemetry: OpenAlex hit rate (acceptable-support), Gemini upgrade rate, Gemini
-   median-vs-p95 latency
+   New file: `src/providers/openalex.ts`. Interface unchanged for upstream callers.
+2. For every citation request (paid tier): fire OpenAlex + Gemini grounded in parallel
+   - OpenAlex returns in ~1s, render immediately
+   - Gemini returns in ~60s, **merges into the same citation list**, promoting any
+     canonical paper it found to the top
+3. Job state machine for the Gemini side: `pending | in_progress | completed | failed`
+   (reuse the Deep Audit pattern from Plan 2)
+4. UI: one citation list. OpenAlex results appear first (with subtle "loading more..."
+   indicator). Gemini's canonical-paper hits slot in when ready. No separate tabs,
+   no separate buttons.
+5. Optional notification on Gemini completion (email / push) for articles the user
+   already navigated away from
+6. Telemetry: OpenAlex hit rate (acceptable-support), Gemini upgrade rate (canonical
+   paper found that OpenAlex missed), Gemini median + p95 latency
+7. Free tier: OpenAlex only, no Gemini cost. Paid tier: combined.
 
 ### Follow-on D — LLM skills: MiniMax → GPT-5.4
 

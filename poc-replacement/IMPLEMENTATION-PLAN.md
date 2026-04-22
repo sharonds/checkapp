@@ -139,61 +139,84 @@ new ~$10/mo. Price accordingly in the paid tier.
 
 ---
 
-### Phase 3 — Hybrid augmentations (2-3 weeks)
+### Phase 3 — Combined signals (2-3 weeks)
 
-**Goal:** Implement the two augment verdicts where a secondary signal improves quality
-at modest cost.
+**Goal:** Unify plagiarism and AI-detection outputs so the user sees one confident
+verdict per check, not primary + secondary. Always run both engines; merge into one
+result. Product quality decision — always-on combined signals justify the paid tier.
 
-#### Phase 3.1 — Plagiarism: Copyscape + Gemini secondary
+#### Phase 3.1 — Plagiarism: combine Copyscape + Gemini into one verdict
 
 Changes:
-- [ ] New flag: `--plagiarism-hybrid` (cli) / `plagiarism.hybrid: true` (config)
-- [ ] Trigger rule in `src/skills/plagiarism.ts`: when Copyscape returns
-      `10% ≤ similarityPct ≤ 30%` OR `matches[0].url` is a non-Wikipedia domain,
-      additionally fire Gemini grounded check
-- [ ] Extend `PlagiarismResult` type with `secondarySignal?: { engine, similarityPct,
-      copiedSentences, source }`
-- [ ] Dashboard: surface secondary findings as a collapsed subsection
-- [ ] CLI output: indicate when secondary fired ("primary uncertain — consulted
-      secondary")
+- [ ] New flag: `--plagiarism-combined` / `plagiarism.combined: true` (default ON for
+      paid tier, OFF for free due to Gemini cost)
+- [ ] `src/skills/plagiarism.ts`: always run Copyscape + Gemini grounded in parallel
+      via `Promise.all`
+- [ ] Merge function (new, `src/skills/plagiarism-merge.ts`):
+      - `similarityPct` = combined (max of CS aggregate vs Gemini estimate when they
+        disagree; when they agree use the average)
+      - `matchedUrls` = union, deduplicated by hostname
+      - `sentences[]` = per-sentence attribution (prefer Gemini's per-sentence output,
+        supplement with Copyscape span mapping)
+- [ ] Extend `PlagiarismResult` type — single merged output. `_debug.perEngine` is
+      internal telemetry only (NOT exposed in UI)
+- [ ] Dashboard: single plagiarism card — one similarity %, one URL list, one
+      flagged-sentence list. **No "secondary findings" subsection.**
+- [ ] CLI output: one verdict line. No "consulted secondary" banner.
 
-Fixes the "Copyscape misses near-verbatim from non-Wikipedia sources" case from POC 1.
+Fixes the "Copyscape misses near-verbatim from non-Wikipedia sources" case from POC 1
+without exposing the user to two disagreeing engines.
 
 Rollout: standard flag → internal → beta → default after 30 days validation.
 
-#### Phase 3.2 — AI Detection: Copyscape + GPT-5.4 secondary (NOT Gemini)
+#### Phase 3.2 — AI Detection: combine Copyscape + GPT-5.4 (NOT Gemini)
 
 Changes:
-- [ ] New flag: `--ai-detection-hybrid` / `aiDetection.hybrid: true`
-- [ ] Always fire GPT-5.4 secondary when flag is on (cheap, $0.0025/call)
-- [ ] 4-state verdict in `AiDetectorResult`:
-      `verdict: "both_ai" | "primary_ai_only" | "secondary_ai_only" | "both_human"`
-- [ ] UI copy per state (see DECISION-MATRIX.md Follow-on B)
-- [ ] Update `src/skills/aidetection.ts` to merge signals
+- [ ] New flag: `--ai-detection-combined` / `aiDetection.combined: true` (default ON
+      for paid tier)
+- [ ] `src/skills/aidetection.ts`: always run Copyscape aicheck + GPT-5.4 in parallel
+- [ ] Merge function: weighted average probability
+      (Copyscape weight 0.55, GPT-5.4 weight 0.45 — proportional to Spearman
+      calibration 0.896 / 0.875)
+- [ ] Single `AiDetectorResult`:
+      - `aiProbability` (integer 0–100, combined weighted score)
+      - `verdict` ("ai" | "human", threshold 50)
+      - `flaggedPassages[]` (union of both engines' identified passages)
+- [ ] **No 4-state verdict surface**. The combined probability already captures
+      ambiguity — high combined = AI, low = human, in-between lets users read the
+      highlighted passages and decide.
+- [ ] UI: one probability number + passages highlighted inline in the article
 
-Use gpt-5.4 (NOT Gemini) as the secondary — per POC 2 supplement, GPT-5.4 is strictly
-better at catching AI-edited content.
+GPT-5.4 chosen over Gemini per POC 2 supplement (80% recall vs 60%, caught 2 more
+AI-edited samples).
 
-Rollout: standard flag pattern.
+Rollout: standard flag pattern. Validation corpus for production rollout must include
+≥ 100 samples spanning GPT/Claude/Gemini/Llama-generated AI text (current POC was
+Claude-only).
 
 ---
 
-### Phase 4 — Premium tiers (parallel with Phase 2-3)
+### Phase 4 — Citations: OpenAlex + Gemini combined (parallel with Phase 2-3)
 
-**Goal:** Product-differentiated premium features that justify a paid tier.
+**Goal:** Paid-tier users get one unified citation list that starts instant (OpenAlex)
+and gets better as Gemini's canonical-paper finds merge in.
 
-#### Phase 4.1 — Citations: Gemini grounded "Deep Citation Search"
+#### Phase 4.1 — Citations: combine OpenAlex + Gemini into one live list
 
-Canonical-source recall is 7× better with Gemini (70% vs 10%). But 60s latency
-requires async.
+Canonical-source recall is 7× better with Gemini (70% vs OpenAlex 10%). Gemini takes
+~60s — async merge into the same citation list, not a separate "premium button."
 
 Changes:
-- [ ] New premium skill: `--deep-citations` flag on article audit
-- [ ] Queues a Gemini grounded job; status: `pending | in_progress | completed | failed`
-      (reuse deep-audit state machine from Plan 2 Gate 3)
-- [ ] UI: "Find canonical source" button on each claim shown with OpenAlex results
-- [ ] Email / push notification on completion
+- [ ] For every paid-tier citation request, fire OpenAlex + Gemini grounded in parallel
+- [ ] OpenAlex returns ~1s, render immediately with a subtle "loading more..." indicator
+- [ ] Gemini returns ~60s, **merge into the same list**. Canonical-paper matches
+      promoted to the top of the list; overlapping OpenAlex entries deduplicated by DOI
+- [ ] State machine for the Gemini side only: `pending | in_progress | completed |
+      failed` (reuse Plan 2 Gate 3 deep-audit pattern)
+- [ ] Optional push/email notification for articles the user navigated away from
 - [ ] Per-job cost telemetry → alert if monthly Gemini cost > budget
+- [ ] Free tier: OpenAlex only. Paid tier: combined.
+- [ ] **No separate "Find canonical source" button.** One list, one experience.
 
 #### Phase 4.2 — ~~Legal: Deep Research premium~~ CANCELLED
 

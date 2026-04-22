@@ -30,9 +30,9 @@ full synthesis.
 
 | API / Skill | Verdict | Evidence strength | Notes |
 |---|---|---|---|
-| Copyscape (plagiarism) | **augment** | 10 articles, 75 sentences, 0 FP | POC 1 |
-| Copyscape (AI detection) | **augment** | 20 samples, complementary failure modes | POC 2 |
-| Semantic Scholar → OpenAlex (citations) | **replace / hybrid** | 10 claims, Gem 70%/10% gold recall | POC 3 |
+| Copyscape (plagiarism) | **combine** with Gemini grounded | 16 articles, 119 sentences, 0 FP | POC 1 |
+| Copyscape (AI detection) | **combine** with GPT-5.4 (not Gemini) | 20 samples, complementary failure modes | POC 2 |
+| Semantic Scholar → OpenAlex (citations) | **replace + combine** with Gemini | 10 claims, Gem 70%/10% canonical recall | POC 3 |
 | LLM (tone/legal/summary/brief/purpose) | **reject Gemini / replace MiniMax with GPT-5.4** | 18 cells × 3 providers + DR | POC 4 |
 
 Verdict options: `keep` / `augment` / `replace` / `reject-as-unsuitable`
@@ -77,7 +77,7 @@ These POCs follow the same design principles as the fact-check research in `poc/
 
 ## POC 1 — Plagiarism (Copyscape vs Gemini grounding)
 
-**Status:** Complete. Verdict: **augment**
+**Status:** Complete. Verdict: **combine** (always run both engines, merge into one output)
 **Initial run:** 2026-04-21 (10 English/Wikipedia articles)
 **Extension run:** 2026-04-22 (+3 Hebrew + 2 non-Wikipedia English + 1 Hebrew original)
 
@@ -130,7 +130,7 @@ Full results: `01-plagiarism/RESULTS.md`
 
 ## POC 2 — AI Detection (Copyscape AI detector vs Gemini)
 
-**Status:** Complete. Verdict: **augment**
+**Status:** Complete. Verdict: **combine** Copyscape + GPT-5.4 (NOT Gemini)
 **Run date:** 2026-04-22
 
 | Metric | Copyscape | Gemini |
@@ -172,7 +172,7 @@ Full results: `02-ai-detection/RESULTS.md`
 
 ## POC 3 — Academic Citations (OpenAlex vs Gemini grounding)
 
-**Status:** Complete. Verdict: **replace** (single-engine) or **augment** (hybrid)
+**Status:** Complete. Verdict: **replace SS→OpenAlex + combine** OpenAlex with Gemini (paid tier)
 **Run date:** 2026-04-22
 **Baseline swapped:** Semantic Scholar → OpenAlex (SS free tier unusable from shared IPs — returned 429 on every call)
 
@@ -279,12 +279,16 @@ newcomer GPT-5.4.
 skills vs MiniMax with no single-dimension regression > 1pt. Comparable or better cost
 on small-output classification tasks.
 
-**Copyscape remains the default for plagiarism and AI detection** — statistical
-classifiers outperform LLMs on their own territory. Augment with Gemini (plagiarism) or
-GPT-5.4 (AI detection) as secondary signals where the primary is weakest.
+**Copyscape combines with LLMs for plagiarism and AI detection.** Statistical classifiers
+are the strongest single signal, but combining them with a semantic LLM pass (Gemini
+for plagiarism, GPT-5.4 for AI detection) into **one unified verdict** closes the
+complementary-failure gaps without exposing the user to disagreeing engines. Architecture
+is "always run both, merge into one answer" — not "primary + optional secondary."
 
 **The Semantic Scholar substitution (OpenAlex) is a forced win.** SS's free tier is
 production-unusable; OpenAlex is a viable drop-in at zero operational friction.
+For paid-tier users, OpenAlex combines with Gemini grounded citations in one list —
+OpenAlex returns instantly, Gemini's canonical-paper finds merge in ~60s later.
 
 **Deep Research's premium tier case is tier-specific.** Justified for fact-check
 (validated). Not justified for policy-checked legal (tested here). Hypothesized for
@@ -301,8 +305,9 @@ global setting. This matches how the codebase is heading with `src/providers/reg
 All concrete recommendations, including Plan 2 follow-on task lists and cost impact,
 are in `DECISION-MATRIX.md`. Summary:
 
-1. **Adopt the 5 "replace" verdicts** behind new feature flags (not default-on)
-2. **Adopt the 2 "augment" verdicts** behind opt-in hybrid flags
+1. **Adopt the "replace" verdicts** behind new feature flags (not default-on)
+2. **Adopt the "combine" verdicts** (plagiarism, AI detection, paid-tier citations)
+   with always-on parallel execution of both engines and merged unified output
 3. **Validate each migration** with ≥ 100 production samples before flipping defaults
 4. **External reviewer sign-off required** before moving to integration
 
