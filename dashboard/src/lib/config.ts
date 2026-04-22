@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from "fs";
 import { homedir } from "os";
-import { join } from "path";
+import { dirname, join } from "path";
 import type { SkillId, SkillProviderConfig } from "./providers";
 
 const CONFIG_DIR = join(homedir(), ".checkapp");
@@ -8,7 +8,8 @@ const LEGACY_DIRS = [
   join(homedir(), ".checkit"),
   join(homedir(), ".article-checker"),
 ];
-const CONFIG_PATH = join(CONFIG_DIR, "config.json");
+// CHECKAPP_CONFIG_PATH lets tests and E2E harnesses redirect to a temp file.
+const CONFIG_PATH = process.env.CHECKAPP_CONFIG_PATH ?? join(CONFIG_DIR, "config.json");
 
 export type FactCheckTier = "basic" | "standard" | "premium";
 
@@ -63,7 +64,7 @@ export function readAppConfig(): AppConfig {
 }
 
 export function writeAppConfig(partial: Partial<AppConfig>): void {
-  mkdirSync(CONFIG_DIR, { recursive: true });
+  mkdirSync(dirname(CONFIG_PATH), { recursive: true });
   const existing = readAppConfig();
   writeFileSync(CONFIG_PATH, JSON.stringify({ ...existing, ...partial }, null, 2));
 }

@@ -5,7 +5,9 @@ import { mkdirSync } from "fs";
 import type { SkillResult } from "./skills/types.ts";
 
 const DB_DIR = join(homedir(), ".checkapp");
-const DB_PATH = join(DB_DIR, "history.db");
+// CHECKAPP_DB_PATH lets tests and E2E harnesses redirect the default DB to a
+// temp file. Callers that pass an explicit path still override this.
+const DB_PATH = process.env.CHECKAPP_DB_PATH ?? join(DB_DIR, "history.db");
 
 export type DB = Database;
 

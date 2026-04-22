@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from "fs";
 import { homedir } from "os";
-import { join } from "path";
+import { dirname, join } from "path";
 import lockfile from "proper-lockfile";
 import type { Threshold } from "./thresholds.ts";
 
@@ -43,7 +43,9 @@ const LEGACY_DIRS = [
   join(homedir(), ".checkit"),
   join(homedir(), ".article-checker"),
 ];
-const CONFIG_FILE = join(CONFIG_DIR, "config.json");
+// CHECKAPP_CONFIG_PATH lets tests and E2E harnesses redirect reads/writes to
+// a temp file without touching the developer's real ~/.checkapp/config.json.
+const CONFIG_FILE = process.env.CHECKAPP_CONFIG_PATH ?? join(CONFIG_DIR, "config.json");
 
 // One-time migration: move legacy config dirs to new location
 // Guarded so this is idempotent and silent in the common case.
@@ -120,7 +122,7 @@ export function readConfig(): Config {
 }
 
 export async function writeConfig(config: Partial<Config>): Promise<void> {
-  mkdirSync(CONFIG_DIR, { recursive: true });
+  mkdirSync(dirname(CONFIG_FILE), { recursive: true });
   // Atomic idempotent bootstrap: exclusive-create succeeds once, subsequent
   // callers get EEXIST and fall through. No TOCTOU between existsSync and write.
   try {
