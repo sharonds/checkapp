@@ -9,6 +9,7 @@ import { getProvider } from "./registry.ts";
 const LEGACY_MAP: Partial<Record<SkillId, { provider: SkillProviderConfig["provider"]; keyOf: (c: Config) => string | undefined }>> = {
   "fact-check": { provider: "exa-search", keyOf: (c) => c.exaApiKey },
   plagiarism: { provider: "copyscape", keyOf: (c) => c.copyscapeKey || undefined },
+  academic: { provider: "openalex", keyOf: (c) => c.openalexMailto },
 };
 
 const GEMINI_FACT_CHECK_PROVIDERS = new Set<SkillProviderConfig["provider"]>([
