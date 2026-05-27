@@ -30,7 +30,7 @@ export function extractTabId(url: string): string | undefined {
     const parsed = new URL(url);
     const tab = parsed.searchParams.get("tab");
     if (!tab) return undefined;
-    if (!/^[a-zA-Z0-9.\-]{1,64}$/.test(tab)) return undefined;
+    if (!/^[a-zA-Z0-9.-]{1,64}$/.test(tab)) return undefined;
     return tab;
   } catch {
     return undefined;
