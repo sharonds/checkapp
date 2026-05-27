@@ -62,6 +62,7 @@ describe("checkAiDetectorGemini", () => {
     const result = await checkAiDetectorGemini("text", configNoKey);
     expect(result.error).toMatch(/Gemini API key/i);
     expect(result.aiPct).toBe(0);
+    expect(result.verdict).toBe("human");
   });
 
   test("returns error result when Gemini response is not valid JSON", async () => {
@@ -73,12 +74,22 @@ describe("checkAiDetectorGemini", () => {
     } as Response);
     const result = await checkAiDetectorGemini("text", geminiConfig);
     expect(result.error).toMatch(/parse/i);
+    expect(result.verdict).toBe("human");
   });
 
   test("returns error result on HTTP failure", async () => {
     globalThis.fetch = async () => ({ ok: false, status: 429 } as Response);
     const result = await checkAiDetectorGemini("text", geminiConfig);
     expect(result.error).toMatch(/429/);
+    expect(result.verdict).toBe("human");
+  });
+
+  test("returns error result on network failure", async () => {
+    globalThis.fetch = async () => { throw new Error("ECONNREFUSED"); };
+    const result = await checkAiDetectorGemini("text", geminiConfig);
+    expect(result.error).toMatch(/network error/i);
+    expect(result.aiPct).toBe(0);
+    expect(result.verdict).toBe("human");
   });
 });
 
