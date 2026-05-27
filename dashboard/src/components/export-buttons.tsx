@@ -38,16 +38,16 @@ export function generateMarkdown(props: ExportButtonsProps): string {
   lines.push(`**Date:** ${formatDateTime(props.createdAt)}`);
   lines.push(`**Score:** ${formatScore(props.score)} (${String(props.verdict ?? "").toUpperCase()})`);
   lines.push(`**Word Count:** ${formatNumber(props.wordCount)}`);
-  lines.push(`**Total Cost:** $${props.totalCost.toFixed(4)}`);
+  lines.push(`**Total Cost:** ${formatCurrency(props.totalCost)}`);
   lines.push("");
 
   for (const r of props.results) {
     lines.push(`## ${r.name}`);
     lines.push("");
-    lines.push(`- **Score:** ${r.score}/100 (${r.verdict})`);
+    lines.push(`- **Score:** ${formatScore(r.score)} (${r.verdict})`);
     if (r.provider) lines.push(`- **Provider:** ${r.provider}`);
     lines.push(`- **Summary:** ${r.summary}`);
-    lines.push(`- **Cost:** $${r.costUsd.toFixed(4)}`);
+    lines.push(`- **Cost:** ${formatCurrency(r.costUsd)}`);
 
     const issues = r.findings.filter(
       (f) => f.severity === "warn" || f.severity === "error" || (f.sources?.length ?? 0) > 0
@@ -106,10 +106,10 @@ export function generateHtml(props: ExportButtonsProps): string {
       <section>
         <h2>${escapeHtml(r.name)}</h2>
         <ul>
-          <li><strong>Score:</strong> ${escapeHtml(String(r.score))}/100 (${escapeHtml(r.verdict)})</li>
+          <li><strong>Score:</strong> ${escapeHtml(formatScore(r.score))} (${escapeHtml(r.verdict)})</li>
           ${r.provider ? `<li><strong>Provider:</strong> ${escapeHtml(r.provider)}</li>` : ""}
           <li><strong>Summary:</strong> ${escapeHtml(r.summary)}</li>
-          <li><strong>Cost:</strong> $${escapeHtml(r.costUsd.toFixed(4))}</li>
+          <li><strong>Cost:</strong> ${escapeHtml(formatCurrency(r.costUsd))}</li>
         </ul>
         ${findings}
       </section>`;
@@ -139,7 +139,7 @@ export function generateHtml(props: ExportButtonsProps): string {
 <p><strong>Date:</strong> ${escapeHtml(formatDateTime(props.createdAt))}</p>
 <p><strong>Score:</strong> ${escapeHtml(formatScore(props.score))} (${escapeHtml(String(props.verdict ?? "").toUpperCase())})</p>
 <p><strong>Word Count:</strong> ${escapeHtml(formatNumber(props.wordCount))}</p>
-<p><strong>Total Cost:</strong> $${escapeHtml(props.totalCost.toFixed(4))}</p>
+<p><strong>Total Cost:</strong> ${escapeHtml(formatCurrency(props.totalCost))}</p>
 ${sections}
 </body>
 </html>`;
@@ -154,8 +154,12 @@ function escapeHtml(value: unknown): string {
     .replace(/'/g, "&#39;");
 }
 
-function formatScore(score: number | null): string {
-  return score === null ? "N/A" : `${score}/100`;
+function formatScore(score: unknown): string {
+  return typeof score === "number" && Number.isFinite(score) ? `${score}/100` : "N/A";
+}
+
+function formatCurrency(value: unknown): string {
+  return typeof value === "number" && Number.isFinite(value) ? `$${value.toFixed(4)}` : "N/A";
 }
 
 function escapeMarkdownLabel(value: string): string {

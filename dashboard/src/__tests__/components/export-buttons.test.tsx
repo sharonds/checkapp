@@ -79,15 +79,19 @@ describe("dashboard report exports", () => {
     expect(html).toContain("<strong>Score:</strong> N/A (SKIPPED)");
   });
 
-  test("HTML export tolerates tampered non-string fields", () => {
-    const html = generateHtml({
+  test("exports tolerate tampered text and numeric fields", () => {
+    const tampered = {
       ...baseReport,
       source: null as unknown as string,
+      wordCount: null as unknown as number,
+      totalCost: null as unknown as number,
       verdict: null as unknown as string,
       results: [{
         ...baseReport.results[0],
         name: 123 as unknown as string,
+        score: null as unknown as number,
         summary: null as unknown as string,
+        costUsd: null as unknown as number,
         findings: [{
           ...baseReport.results[0].findings[0],
           text: null as unknown as string,
@@ -96,9 +100,16 @@ describe("dashboard report exports", () => {
           sources: [{ title: null as unknown as string, url: "https://example.com" }],
         }],
       }],
-    });
+    };
 
+    const html = generateHtml(tampered);
+    const md = generateMarkdown(tampered);
     expect(html).toContain("Article Check Report");
     expect(html).toContain('href="https://example.com/"');
+    expect(html).toContain("<strong>Total Cost:</strong> N/A");
+    expect(html).toContain("<strong>Cost:</strong> N/A");
+    expect(md).toContain("**Total Cost:** N/A");
+    expect(md).toContain("- **Cost:** N/A");
+    expect(md).toContain("- **Score:** N/A (warn)");
   });
 });

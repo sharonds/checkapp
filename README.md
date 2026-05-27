@@ -144,7 +144,7 @@ Report: checkapp-report.html
 ────────────────────────────────────────────────
 ```
 
-**HTML report:** Each skill gets a card with a circular score indicator, engine badge, and a list of findings. The report links to all engines used (Copyscape, Exa AI, MiniMax) and includes an MIT disclaimer.
+**HTML report:** Each skill gets a card with a circular score indicator, engine badge, and a list of findings. The report links to all engines used (Copyscape, Gemini, Exa AI, MiniMax) and includes an MIT disclaimer.
 
 ---
 

@@ -56,7 +56,7 @@ CheckApp supports four LLM providers for AI-powered skills (fact check, tone, le
 | MiniMax (default) | `MINIMAX_API_KEY` | Cheapest, Anthropic-compatible API |
 | Anthropic Claude | `ANTHROPIC_API_KEY` | Fallback if MiniMax not set |
 | OpenRouter | `OPENROUTER_API_KEY` | One key for 200+ models (GPT-4o, Llama, Mistral, etc.) |
-| Gemini | `GEMINI_API_KEY` | Used for Gemini Grounded tiers and available as an LLM provider |
+| Gemini | `GEMINI_API_KEY` | Used for Gemini grounded fact-check, Gemini Grounded Plagiarism, Gemini AI Detection when explicitly selected, and available as an LLM provider |
 
 Set the provider via `LLM_PROVIDER` env var or the Settings page in the dashboard.
 

@@ -98,7 +98,7 @@ describe("PlagiarismSkill Copyscape results", () => {
     let calls = 0;
     globalThis.fetch = async (url: string | URL) => {
       calls++;
-      if (String(url).includes("copyscape.com")) {
+      if (hostnameIs(url, "copyscape.com")) {
         return {
           ok: true,
           text: async () => "<error>Insufficient credits.</error>",
@@ -182,3 +182,12 @@ describe("PlagiarismSkill Copyscape results", () => {
     expect(result.summary).not.toContain("grounded similarity");
   });
 });
+
+function hostnameIs(input: string | URL, expectedHostname: string): boolean {
+  try {
+    const url = input instanceof URL ? input : new URL(String(input));
+    return url.hostname === expectedHostname || url.hostname === `www.${expectedHostname}`;
+  } catch {
+    return false;
+  }
+}

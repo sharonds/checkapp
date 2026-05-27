@@ -210,8 +210,8 @@ function prepareFactCheckFetch(scenario: Scenario): void {
   const claims = scenario.claims ?? [];
   let groundedCursor = 0;
   globalThis.fetch = async (input) => {
-    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    if (url.includes("api.minimax.io")) {
+    const url = requestUrl(input);
+    if (hostnameIs(url, "api.minimax.io")) {
       return new Response(JSON.stringify({
         id: `msg_${scenario.id}`,
         type: "message",
@@ -229,7 +229,7 @@ function prepareFactCheckFetch(scenario: Scenario): void {
       });
     }
 
-    if (url.includes("generativelanguage.googleapis.com")) {
+    if (hostnameIs(url, "generativelanguage.googleapis.com")) {
       const claim = claims[Math.min(groundedCursor, Math.max(0, claims.length - 1))];
       groundedCursor++;
       if (!claim) {
@@ -249,7 +249,7 @@ function prepareFactCheckFetch(scenario: Scenario): void {
           groundingMetadata: {
             webSearchQueries: [claim.claim],
             groundingChunks: claim.sources.map((source) => ({
-              web: { uri: source, title: source.includes("openai.com") ? "OpenAI GPT-4 research" : "Grounded source" },
+              web: { uri: source, title: hostnameIs(source, "openai.com") ? "OpenAI GPT-4 research" : "Grounded source" },
             })),
             groundingSupports: claim.sources.map((_, index) => ({
               groundingChunkIndices: [index],
@@ -270,6 +270,21 @@ function prepareFactCheckFetch(scenario: Scenario): void {
 
     return new Response("Unexpected validation request", { status: 500 });
   };
+}
+
+function requestUrl(input: RequestInfo | URL): string {
+  if (typeof input === "string") return input;
+  if (input instanceof URL) return input.href;
+  return input.url;
+}
+
+function hostnameIs(input: string | URL, expectedHostname: string): boolean {
+  try {
+    const url = input instanceof URL ? input : new URL(input);
+    return url.hostname === expectedHostname;
+  } catch {
+    return false;
+  }
 }
 
 function preparePlagiarismFetch(scenario: Scenario): void {
