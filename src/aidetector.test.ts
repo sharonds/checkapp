@@ -18,7 +18,7 @@ describe("checkAiDetectorGemini", () => {
   beforeEach(() => { originalFetch = globalThis.fetch; });
   afterEach(() => { globalThis.fetch = originalFetch; });
 
-  test("calls the configured Gemini 3.1 Pro Preview model endpoint", async () => {
+  test("calls the configured Gemini 3 Pro Preview model endpoint", async () => {
     const calls: string[] = [];
     let requestBody: { generationConfig?: { maxOutputTokens?: number; responseMimeType?: string } } | undefined;
     globalThis.fetch = async (url: string | URL, init?: RequestInit) => {
@@ -32,7 +32,7 @@ describe("checkAiDetectorGemini", () => {
       } as Response;
     };
     await checkAiDetectorGemini("Some article text.", geminiConfig);
-    expect(calls[0]).toContain("/models/gemini-3.1-pro-preview:generateContent");
+    expect(calls[0]).toContain("/models/gemini-3-pro-preview:generateContent");
     expect(requestBody?.generationConfig?.maxOutputTokens).toBe(2048);
     expect(requestBody?.generationConfig?.responseMimeType).toBe("application/json");
   });

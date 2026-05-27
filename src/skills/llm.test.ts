@@ -42,7 +42,7 @@ describe("getLlmClient", () => {
   it("uses gemini when key set and provider is gemini", () => {
     const c = getLlmClient({ ...baseConfig, geminiApiKey: "gk", llmProvider: "gemini" });
     expect(c!.provider).toBe("gemini");
-    expect(c!.model).toBe("gemini-3.1-pro-preview");
+    expect(c!.model).toBe("gemini-3-pro-preview");
   });
 
   it("uses the capability layer model selection for gemini", () => {
@@ -114,7 +114,7 @@ describe("getLlmClient", () => {
     const result = await c!.call("prompt text", 16);
     expect(result).toBe("visible output");
     expect(capturedUrl).toBe(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=gk",
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent?key=gk",
     );
     expect(capturedBody).toMatchObject({
       contents: [{ parts: [{ text: "prompt text" }] }],

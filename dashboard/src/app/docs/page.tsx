@@ -91,9 +91,9 @@ function GettingStarted() {
             are grammar-checked a second time.
           </li>
           <li>
-            <strong>Academic Citations</strong> (Semantic Scholar) merges DOIs
-            onto fact-check findings with scientific/medical/financial claim
-            types. Free, no API key.
+            <strong>Academic Citations</strong> (OpenAlex by default,
+            Semantic Scholar legacy) merges DOIs onto fact-check findings with
+            scientific/medical/financial claim types. Free, no API key.
           </li>
           <li>
             <strong>Self-Plagiarism</strong> (Cloudflare Vectorize) flags
@@ -158,7 +158,7 @@ function SkillsReference() {
       name: "Fact Check",
       engine: "Exa + LLM / Gemini Grounded",
       cost: "~$0.04 / ~$0.16",
-      desc: "Basic extracts factual claims, searches evidence via Exa, and uses the configured LLM to assess support. Standard uses Gemini 3.1 Pro with Google Search grounding. Claims without returned source URLs are treated as unverified, not verified.",
+      desc: "Basic extracts factual claims, searches evidence via Exa, and uses the configured LLM to assess support. Standard uses Gemini 3 Pro Preview with Google Search grounding. Claims without returned source URLs are treated as unverified, not verified.",
     },
     {
       name: "Tone of Voice",
@@ -198,7 +198,7 @@ function SkillsReference() {
     },
     {
       name: "Academic Citations",
-      engine: "Semantic Scholar",
+      engine: "OpenAlex / Semantic Scholar",
       cost: "Free",
       desc: "Phase 7. Searches peer-reviewed papers for claims flagged as scientific/medical/financial by fact-check. Merges DOIs and abstract snippets directly onto the matching fact-check finding as `citations[]`. Free, no API key required.",
     },
@@ -334,8 +334,8 @@ function ApiKeysSetup() {
       <SubHeading>MiniMax</SubHeading>
       <Prose>
         <p>
-          Required for Fact Check, Tone of Voice, Legal Risk, and Content
-          Summary.
+          Required only when MiniMax is the configured LLM for Basic Fact Check,
+          Tone of Voice, Legal Risk, Content Summary, Brief Matching, or Content Purpose.
         </p>
       </Prose>
       <ol className="mt-1 space-y-1 text-sm text-muted-foreground list-decimal pl-5">
@@ -499,7 +499,7 @@ function Faq() {
     },
     {
       q: "Is my article text sent to third parties?",
-      a: "Yes, when using external skills. Copyscape receives article text for plagiarism and AI detection. Gemini receives article text for Gemini AI detection, Gemini Grounded Plagiarism, and Gemini-backed fact-check tiers when selected. Exa AI receives extracted claims for evidence search. MiniMax receives text for tone, legal, fact-check, and summary analysis. All communication is over HTTPS.",
+      a: "Yes, when using external skills. Copyscape receives article text for plagiarism and AI detection. Gemini receives article text for Gemini AI detection, Gemini Grounded Plagiarism, and Gemini-backed fact-check tiers when selected. Exa AI receives extracted claims for evidence search. The configured LLM provider, such as MiniMax, Anthropic, OpenRouter, or Gemini, receives text for tone, legal, fact-check, summary, brief, and purpose analysis when those skills are enabled. All communication is over HTTPS.",
     },
     {
       q: "Can I use it offline?",

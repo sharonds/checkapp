@@ -112,7 +112,7 @@ describe("generateMarkdownReport", () => {
       }],
     });
 
-    expect(md).toContain("**Provider:** Gemini 3.1 Pro + Google Search");
+    expect(md).toContain("**Provider:** Gemini 3 Pro Preview + Google Search");
     expect(md).toContain("Source: [Evidence](https://example.com/evidence)");
   });
 

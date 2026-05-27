@@ -2,8 +2,9 @@ import type { Config } from "./config.ts";
 import type { CopyscapeMatch, CopyscapeResult } from "./copyscape.ts";
 
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
-const DEFAULT_MODEL = "gemini-3.1-pro-preview";
+const DEFAULT_MODEL = "gemini-3-pro-preview";
 const ESTIMATED_COST_USD = 0.04;
+const GEMINI_MODEL_RE = /^[a-zA-Z0-9._-]{1,80}$/;
 
 type Confidence = "high" | "medium" | "low";
 type MatchType = "exact" | "near_exact" | "paraphrase" | "uncertain";
@@ -40,11 +41,18 @@ interface GeminiGenerateResponse {
   candidates?: GeminiCandidate[];
 }
 
+interface NormalizedMatchResult {
+  matches: CopyscapeMatch[];
+  ungroundedMatches: number;
+  groundedMatches: number;
+}
+
 export interface GeminiGroundedPlagiarismResult extends CopyscapeResult {
   confidence: Confidence;
   searchQueries: string[];
   groundedSourceUrls: string[];
   costUsd: number;
+  groundingMode?: "grounded" | "mixed" | "ungrounded";
 }
 
 const RESPONSE_SCHEMA = {
@@ -125,6 +133,9 @@ export async function checkPlagiarismGeminiGrounded(
   }
 
   const model = providerConfig?.extra?.model || DEFAULT_MODEL;
+  if (!isValidGeminiModel(model)) {
+    return skipped("Gemini grounded plagiarism model is invalid — use a Gemini model id such as gemini-3-pro-preview.");
+  }
   const url = `${GEMINI_BASE}/models/${model}:generateContent`;
 
   let response: Response;
@@ -172,50 +183,70 @@ export async function checkPlagiarismGeminiGrounded(
     return skipped(`Gemini grounded plagiarism: could not parse response — ${rawText.slice(0, 120)}`);
   }
 
-  const matches = normalizeMatches(parsed.matches ?? [], groundedSourceUrls);
-  const similarityPct = matches.length === 0
-    ? 0
-    : clampPct(Number(parsed.overallSimilarityPct) || maxSimilarity(matches));
-  const verdict = matches.length === 0 ? "publish" : normalizeVerdict(parsed.verdict, similarityPct);
+  const normalized = normalizeMatches(parsed.matches ?? [], groundedSourceUrls);
+  const matches = normalized.matches;
+  const articleWords = countWords(text);
+  const matchedWords = estimateTotalMatchedWords(matches, articleWords);
+  const similarityPct = matches.length === 0 ? 0 : similarityFromMatchedWords(matchedWords, articleWords);
+  const verdict = matches.length === 0
+    ? "publish"
+    : normalizeVerdict(similarityPct, normalized.ungroundedMatches);
+  const confidence = normalized.ungroundedMatches > 0
+    ? capConfidence(normalizeConfidence(parsed.confidence), "medium")
+    : normalizeConfidence(parsed.confidence);
 
   return {
     totalMatches: matches.length,
-    totalWords: 0,
-    matchedWords: estimateMatchedWords(text, similarityPct),
+    totalWords: articleWords,
+    matchedWords,
     similarityPct,
     matches,
     verdict,
-    confidence: normalizeConfidence(parsed.confidence),
+    confidence,
     searchQueries,
     groundedSourceUrls,
     costUsd: ESTIMATED_COST_USD,
+    groundingMode: normalized.ungroundedMatches > 0 && normalized.groundedMatches === 0
+      ? "ungrounded"
+      : normalized.ungroundedMatches > 0
+        ? "mixed"
+        : "grounded",
   };
 }
 
-function normalizeMatches(matches: GeminiPlagiarismMatch[], groundedUrls: string[]): CopyscapeMatch[] {
-  return matches
+function normalizeMatches(matches: GeminiPlagiarismMatch[], groundedUrls: string[]): NormalizedMatchResult {
+  let ungroundedMatches = 0;
+  let groundedMatches = 0;
+  const normalized = matches
     .filter((m) => m && typeof m.sourceUrl === "string" && typeof m.matchedArticleText === "string")
     .filter((m) => isHttpUrl(m.sourceUrl))
-    .filter((m) => groundedUrls.some((url) => sameUrl(url, m.sourceUrl)))
     .map((m) => {
       const grounded = groundedUrls.some((url) => sameUrl(url, m.sourceUrl));
+      if (grounded) groundedMatches++;
+      else ungroundedMatches++;
       const confidence = grounded
         ? normalizeConfidence(m.confidence)
         : hasTextOverlap(m.matchedArticleText, m.matchedSourceText, m.similarityPct)
           ? capConfidence(normalizeConfidence(m.confidence), "medium")
           : "low";
       const matchType = normalizeMatchType(m.matchType);
+      const groundingNote = grounded
+        ? "Grounded source match."
+        : "Gemini reported this match without Google grounding metadata; review manually.";
       return {
         url: m.sourceUrl,
         title: m.sourceTitle || m.sourceUrl,
         wordsMatched: countWords(m.matchedArticleText),
         snippet: [
-          `[${confidence} confidence · ${matchType.replace("_", "-")}] ${m.explanation || "Grounded source match."}`,
+          `[${confidence} confidence · ${matchType.replace("_", "-")}] ${m.explanation || groundingNote}`,
+          grounded ? "" : groundingNote,
           m.matchedSourceText ? `Source: ${m.matchedSourceText}` : "",
           `Article: ${m.matchedArticleText}`,
         ].filter(Boolean).join("\n"),
       };
     });
+
+  return { matches: normalized, ungroundedMatches, groundedMatches };
 }
 
 function extractGroundedUrls(candidate: GeminiCandidate | undefined): string[] {
@@ -258,8 +289,8 @@ function skipped(error: string): GeminiGroundedPlagiarismResult {
   };
 }
 
-function normalizeVerdict(verdict: unknown, similarityPct: number): GeminiGroundedPlagiarismResult["verdict"] {
-  if (verdict === "publish" || verdict === "review" || verdict === "rewrite") return verdict;
+function normalizeVerdict(similarityPct: number, ungroundedMatches: number): GeminiGroundedPlagiarismResult["verdict"] {
+  if (ungroundedMatches > 0) return "review";
   if (similarityPct >= 26) return "rewrite";
   if (similarityPct >= 16) return "review";
   return "publish";
@@ -334,14 +365,20 @@ function clampPct(value: number): number {
   return Math.min(100, Math.max(0, Math.round(value)));
 }
 
-function maxSimilarity(matches: CopyscapeMatch[]): number {
-  return matches.reduce((max, match) => Math.max(max, match.wordsMatched > 0 ? 16 : 0), 0);
+function similarityFromMatchedWords(matchedWords: number, articleWords: number): number {
+  if (articleWords <= 0) return 0;
+  return clampPct((matchedWords / articleWords) * 100);
 }
 
-function estimateMatchedWords(text: string, similarityPct: number): number {
-  return Math.round(countWords(text) * (similarityPct / 100));
+function estimateTotalMatchedWords(matches: CopyscapeMatch[], articleWords: number): number {
+  const matchedWords = matches.reduce((sum, match) => sum + Math.max(0, match.wordsMatched), 0);
+  return articleWords > 0 ? Math.min(matchedWords, articleWords) : matchedWords;
 }
 
 function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function isValidGeminiModel(model: unknown): model is string {
+  return typeof model === "string" && GEMINI_MODEL_RE.test(model);
 }

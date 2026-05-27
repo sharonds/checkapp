@@ -41,7 +41,7 @@ describe("SkillCard", () => {
     };
 
     const { getByText, queryByText } = render(<SkillCard result={result} />);
-    expect(getByText("Gemini 3.1 Pro Preview (multilingual)")).toBeDefined();
+    expect(getByText("Gemini 3 Pro Preview (multilingual)")).toBeDefined();
     expect(queryByText("Copyscape")).toBeNull();
   });
 
@@ -58,7 +58,7 @@ describe("SkillCard", () => {
     };
 
     const { getByText, queryByText } = render(<SkillCard result={result} />);
-    expect(getByText("Gemini 3.1 Pro + Google Search")).toBeDefined();
+    expect(getByText("Gemini 3 Pro Preview + Google Search")).toBeDefined();
     expect(queryByText("gemini-grounded")).toBeNull();
   });
 });

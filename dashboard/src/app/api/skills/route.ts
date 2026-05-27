@@ -1,6 +1,6 @@
 import { jsonWithCors } from "@/lib/cors";
 import { readAppConfig, writeAppConfig, getApiKeyStatus } from "@/lib/config";
-import { guardLocalMutation } from "@/lib/guard-local";
+import { guardLocalMutation, guardLocalReadOnly } from "@/lib/guard-local";
 import type { SkillId, SkillProviderConfig } from "@/lib/providers";
 import { NextRequest } from "next/server";
 
@@ -18,13 +18,17 @@ const SKILL_META: SkillMeta[] = [
   { id: "aiDetection", name: "AI Detection", engine: "Copyscape / Gemini", supportedProviders: ["copyscape", "gemini"] },
   { id: "seo", name: "SEO Analysis", engine: "Offline", supportedProviders: [] },
   { id: "factCheck", name: "Fact Check", engine: "Exa AI + LLM / Gemini Grounded", supportedProviders: ["exa", "gemini"] },
-  { id: "tone", name: "Tone of Voice", engine: "LLM", supportedProviders: ["minimax", "anthropic", "openrouter"] },
-  { id: "legal", name: "Legal Risk", engine: "LLM", supportedProviders: ["minimax", "anthropic", "openrouter"] },
-  { id: "summary", name: "Content Summary", engine: "LLM", supportedProviders: ["minimax", "anthropic", "openrouter"] },
+  { id: "tone", name: "Tone of Voice", engine: "LLM", supportedProviders: ["minimax", "anthropic", "openrouter", "gemini"] },
+  { id: "legal", name: "Legal Risk", engine: "LLM", supportedProviders: ["minimax", "anthropic", "openrouter", "gemini"] },
+  { id: "summary", name: "Content Summary", engine: "LLM", supportedProviders: ["minimax", "anthropic", "openrouter", "gemini"] },
 ];
 
 function standardFactCheckSelected(config: Record<string, unknown>): boolean {
   return config.factCheckTierFlag === true && config.factCheckTier === "standard";
+}
+
+function geminiPlagiarismFallbackSelected(provider: SkillProviderConfig | undefined): boolean {
+  return provider?.extra?.fallbackProvider === "gemini-grounded-plagiarism";
 }
 
 function hasAnyLlmKey(apiKeys: ApiKeyStatus): boolean {
@@ -43,6 +47,7 @@ function requiredProviders(
 
   if (skill.id === "plagiarism") {
     const selected = providers.plagiarism;
+    if (geminiPlagiarismFallbackSelected(selected)) return ["copyscape", "gemini"];
     return selected?.provider === "gemini-grounded-plagiarism" ? ["gemini"] : ["copyscape"];
   }
 
@@ -106,10 +111,17 @@ function missingProviders(
     return required.some((provider) => apiKeys[provider] === true) ? [] : required;
   }
 
+  if (skill.id === "plagiarism" && geminiPlagiarismFallbackSelected(providers.plagiarism)) {
+    const geminiReady = hasProviderKey("gemini", apiKeys, skill, providers);
+    return geminiReady ? [] : ["gemini"];
+  }
+
   return required.filter((provider) => !hasProviderKey(provider, apiKeys, skill, providers));
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const blocked = guardLocalReadOnly(req);
+  if (blocked) return blocked;
   try {
     const config = readAppConfig() as Record<string, unknown>;
     const skills = (config.skills ?? {}) as Record<string, boolean>;

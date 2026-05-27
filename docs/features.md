@@ -5,16 +5,16 @@
 | Skill | Engine | Cost/check | Default |
 |-------|--------|-----------|---------|
 | Plagiarism Check | Copyscape / Gemini Grounded Plagiarism | ~$0.09 / ~$0.04 estimate | Enabled |
-| AI Detection | Copyscape (English) / Gemini 3.1 Pro Preview (multilingual) | ~$0.03 / ~$0.01 estimate | Enabled |
+| AI Detection | Copyscape (English) / Gemini 3 Pro Preview (multilingual) | ~$0.03 / ~$0.01 estimate | Enabled |
 | SEO Analysis | Offline | Free | Enabled |
 | Fact Check | Tiered: Basic = Exa + LLM; Standard = Gemini + Google Search; Deep Audit = Gemini Deep Research | varies | Basic is default; Standard is opt-in; Deep Audit is async |
-| Tone of Voice | MiniMax/Claude | ~$0.002 | Requires API keys + tone guide |
-| Legal Risk | MiniMax/Claude | ~$0.002 | Requires API keys |
-| Content Summary | MiniMax/Claude | ~$0.002 | Requires API keys |
-| Brief Matching | MiniMax/Claude | ~$0.002 | Requires API keys + brief context |
-| Content Purpose | MiniMax/Claude | ~$0.002 | Requires API keys |
+| Tone of Voice | Configured LLM | ~$0.002 | Requires API keys + tone guide |
+| Legal Risk | Configured LLM | ~$0.002 | Requires API keys |
+| Content Summary | Configured LLM | ~$0.002 | Requires API keys |
+| Brief Matching | Configured LLM | ~$0.002 | Requires API keys + brief context |
+| Content Purpose | Configured LLM | ~$0.002 | Requires API keys |
 | Grammar & Style | LanguageTool (default) / Sapling / LLM-fallback | Free / $0.0008/100w / LLM | Disabled by default — enable in Settings; LT free tier works without any API key |
-| Academic Citations | Semantic Scholar | Free (100 req/5min) | Disabled by default — augments fact-check findings when enabled; no key required |
+| Academic Citations | OpenAlex (default) / Semantic Scholar (legacy) | Free | Disabled by default — augments fact-check findings when enabled; no key required |
 | Self-Plagiarism | Cloudflare Vectorize / Pinecone / Upstash | ~$0.0002/article | Disabled by default — requires one-time `checkapp index <dir>`, `OPENROUTER_API_KEY`, and provider config |
 
 All enabled skills run in parallel. Skills with missing API keys skip gracefully.
@@ -26,12 +26,12 @@ CheckApp's fact-check skill is tiered:
 | Tier | Engine | Cost per article | Typical time | Notes |
 |------|--------|------|------|-------|
 | Basic (default) | Exa + LLM | $0.04 | ~15s | Requires Exa plus an LLM key for claim extraction/assessment |
-| Standard (opt-in) | Gemini 3.1 Pro + Google Search grounding | $0.16 | ~45s | Requires Gemini. Enable with `factCheckTierFlag=true` and `factCheckTier="standard"`, or set `providers["fact-check"].provider = "gemini-grounded"`. |
+| Standard (opt-in) | Gemini 3 Pro Preview + Google Search grounding | $0.16 | ~45s | Requires Gemini. Enable with `factCheckTierFlag=true` and `factCheckTier="standard"`, or set `providers["fact-check"].provider = "gemini-grounded"`. |
 | Deep Audit (async) | Gemini Deep Research | $1.50 | 5-15 min | Premium async audit workflow. The normal sync check still runs Basic unless Standard is selected. Start from the dashboard or `deep_audit_article` MCP tool. |
 
 Standard stays off by default until the feature flag is enabled. The benchmark that informed Standard is directional rather than definitive; see the [research repo](https://github.com/sharonds/checkapp-fact-check-research) and [LIMITATIONS.md](https://github.com/sharonds/checkapp-fact-check-research/blob/main/LIMITATIONS.md) for scope and constraints.
 
-Confidence limits: Gemini grounded fact-check is strongest for concrete claims with returned source URLs. If no source URL is attached, supported claims are downgraded to unverified. Gemini grounded plagiarism only counts matches whose URLs appear in grounding metadata; exact Hebrew/English public copying has higher confidence than paraphrased or translated plagiarism.
+Confidence limits: Gemini grounded fact-check is strongest for concrete claims with returned source URLs. If no source URL is attached, supported claims are downgraded to unverified. Gemini grounded plagiarism treats grounded URLs as strongest evidence; plausible ungrounded JSON matches are reduced-confidence review findings, not a clean pass. Exact Hebrew/English public copying has higher confidence than paraphrased or translated plagiarism.
 
 ### Phase 7 — Research-Backed Editor (shipped 2026-04)
 
@@ -41,7 +41,7 @@ Phase 7 extends findings with evidence + rewrite + citation. Findings now carry 
 |------------------|---------|
 | Sources per fact-check finding | Exa highlights (url, title, quote, publishedDate) returned on every `fact-check` finding |
 | Rewrite per grammar finding | LanguageTool or LLM-fallback produces a corrected sentence; LLM rewrites get a second grammar pass |
-| Academic enrichment | Semantic Scholar DOIs merged onto fact-check findings whose `claimType` is scientific/medical/financial |
+| Academic enrichment | OpenAlex (default) or Semantic Scholar (legacy) DOIs merged onto fact-check findings whose `claimType` is scientific/medical/financial |
 | Deep fact-check | `--deep-fact-check` flag swaps the provider to Exa Deep Reasoning for multi-hop claims |
 | Claim drill-down | Dashboard `/check` page shows sources + citations + rewrite inline per finding |
 | Cost estimator | `checkapp --estimate-cost` or the Run Check page shows per-skill estimate before any API call |
@@ -49,13 +49,14 @@ Phase 7 extends findings with evidence + rewrite + citation. Findings now carry 
 
 ### LLM Providers
 
-CheckApp supports three LLM providers for AI-powered skills (fact check, tone, legal, summary, brief):
+CheckApp supports four LLM providers for AI-powered skills (fact check, tone, legal, summary, brief, purpose):
 
 | Provider | Env var | Notes |
 |----------|---------|-------|
 | MiniMax (default) | `MINIMAX_API_KEY` | Cheapest, Anthropic-compatible API |
 | Anthropic Claude | `ANTHROPIC_API_KEY` | Fallback if MiniMax not set |
 | OpenRouter | `OPENROUTER_API_KEY` | One key for 200+ models (GPT-4o, Llama, Mistral, etc.) |
+| Gemini | `GEMINI_API_KEY` | Used for Gemini Grounded tiers and available as an LLM provider |
 
 Set the provider via `LLM_PROVIDER` env var or the Settings page in the dashboard.
 

@@ -20,10 +20,6 @@ function getVerdict(score: number): "pass" | "warn" | "fail" {
   return "fail";
 }
 
-function resolveVerdict(normalizedVerdict: Verdict, score: number): Verdict {
-  return normalizedVerdict;
-}
-
 export default async function ReportDetailPage({
   params,
 }: {
@@ -70,7 +66,7 @@ export default async function ReportDetailPage({
           skillId: n.skillId || "unknown",
           name: n.name || "Unknown Skill",
           score: n.score,
-          verdict: resolveVerdict(n.verdict, n.score),
+          verdict: n.verdict,
           summary: n.summary,
           findings: n.findings,
           costUsd: n.costUsd,
@@ -142,9 +138,9 @@ export default async function ReportDetailPage({
 
             {/* Export buttons */}
             <ExportButtons
-              source={check.source}
-              score={avgScore}
-              verdict={verdict}
+          source={check.source}
+          score={allSkipped ? null : avgScore}
+          verdict={verdict}
               wordCount={check.wordCount}
               totalCost={check.totalCost}
               createdAt={check.createdAt}

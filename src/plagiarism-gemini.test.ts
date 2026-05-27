@@ -49,7 +49,7 @@ describe("checkPlagiarismGeminiGrounded", () => {
 
     const result = await checkPlagiarismGeminiGrounded("Copied sentence from source.", config);
 
-    expect(requestUrl).toContain("/models/gemini-3.1-pro-preview:generateContent");
+    expect(requestUrl).toContain("/models/gemini-3-pro-preview:generateContent");
     expect(requestKey).toBe("gemini-key");
     expect(requestBody.tools).toEqual([{ google_search: {} }, { url_context: {} }]);
     expect(requestBody.generationConfig.maxOutputTokens).toBe(8192);
@@ -62,7 +62,7 @@ describe("checkPlagiarismGeminiGrounded", () => {
     expect(result.matches[0].snippet).toContain("[high confidence");
   });
 
-  test("drops ungrounded high-confidence matches", async () => {
+  test("keeps ungrounded Gemini matches as reduced-confidence review findings", async () => {
     globalThis.fetch = async () => ({
       ok: true,
       json: async () => ({
@@ -88,12 +88,15 @@ describe("checkPlagiarismGeminiGrounded", () => {
 
     const result = await checkPlagiarismGeminiGrounded("Copied sentence.", config);
 
-    expect(result.matches).toHaveLength(0);
-    expect(result.similarityPct).toBe(0);
-    expect(result.verdict).toBe("publish");
+    expect(result.matches).toHaveLength(1);
+    expect(result.similarityPct).toBe(100);
+    expect(result.verdict).toBe("review");
+    expect(result.confidence).toBe("medium");
+    expect(result.matches[0].snippet).toContain("without Google grounding metadata");
+    expect(result.matches[0].snippet).toContain("[low confidence");
   });
 
-  test("requires grounding even when source-text overlap exists", async () => {
+  test("caps ungrounded source-text overlap at medium confidence", async () => {
     globalThis.fetch = async () => ({
       ok: true,
       json: async () => ({
@@ -120,40 +123,48 @@ describe("checkPlagiarismGeminiGrounded", () => {
 
     const result = await checkPlagiarismGeminiGrounded("Copied sentence from a public source.", config);
 
-    expect(result.matches).toHaveLength(0);
-    expect(result.similarityPct).toBe(0);
-    expect(result.verdict).toBe("publish");
+    expect(result.matches).toHaveLength(1);
+    expect(result.similarityPct).toBe(100);
+    expect(result.verdict).toBe("review");
+    expect(result.confidence).toBe("medium");
+    expect(result.matches[0].snippet).toContain("[medium confidence");
   });
 
-  test("requires grounding even for high-similarity token overlap", async () => {
+  test("does not hardcode 16 percent similarity for short grounded matches", async () => {
     globalThis.fetch = async () => ({
       ok: true,
       json: async () => ({
         candidates: [{
           content: { parts: [{ text: JSON.stringify({
-            overallSimilarityPct: 31,
-            verdict: "rewrite",
+            overallSimilarityPct: 16,
+            verdict: "review",
             confidence: "high",
             matches: [{
               sourceUrl: "https://example.com/source",
               sourceTitle: "Source",
-              matchedArticleText: "Super-Pharm is an Israeli multinational pharmacy chain. It also operates in Poland.",
-              matchedSourceText: "Super-Pharm (Hebrew: סופר-פארם) is an Israeli multinational pharmacy chain. It also operates in Poland.",
-              similarityPct: 92,
-              matchType: "near_exact",
+              matchedArticleText: "short match",
+              matchedSourceText: "short match",
+              similarityPct: 95,
+              matchType: "exact",
               confidence: "high",
-              explanation: "Near-exact copied sentence.",
+              explanation: "Short exact copied phrase.",
             }],
           }) }] },
-          groundingMetadata: { groundingChunks: [] },
+          groundingMetadata: {
+            groundingChunks: [{ web: { uri: "https://example.com/source", title: "Source" } }],
+          },
         }],
       }),
     } as Response);
 
-    const result = await checkPlagiarismGeminiGrounded("Super-Pharm is an Israeli multinational pharmacy chain.", config);
+    const result = await checkPlagiarismGeminiGrounded(
+      "short match plus enough original words to keep computed similarity safely below the sixteen percent review threshold for this test case",
+      config
+    );
 
-    expect(result.matches).toHaveLength(0);
-    expect(result.similarityPct).toBe(0);
+    expect(result.matches).toHaveLength(1);
+    expect(result.matchedWords).toBe(2);
+    expect(result.similarityPct).toBeLessThan(16);
     expect(result.verdict).toBe("publish");
   });
 
@@ -194,6 +205,35 @@ describe("checkPlagiarismGeminiGrounded", () => {
 
     expect(result.verdict).toBe("skipped");
     expect(result.error).toMatch(/Gemini API key/i);
+  });
+
+  test("returns skipped for unsafe configured model names", async () => {
+    const result = await checkPlagiarismGeminiGrounded("text", {
+      ...config,
+      providers: {
+        plagiarism: {
+          provider: "gemini-grounded-plagiarism",
+          extra: { model: "gemini-3-pro-preview?key=leak" },
+        },
+      },
+    });
+
+    expect(result.verdict).toBe("skipped");
+    expect(result.error).toMatch(/model is invalid/i);
+  });
+
+  test("returns skipped for non-2xx Gemini responses", async () => {
+    globalThis.fetch = async () => ({
+      ok: false,
+      status: 404,
+      text: async () => "model not found",
+    } as Response);
+
+    const result = await checkPlagiarismGeminiGrounded("Copied sentence.", config);
+
+    expect(result.verdict).toBe("skipped");
+    expect(result.error).toContain("HTTP 404");
+    expect(result.costUsd).toBe(0);
   });
 });
 

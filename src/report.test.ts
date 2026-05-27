@@ -128,7 +128,7 @@ test("Gemini grounded fact-check report shows provider and source evidence", () 
     }],
   });
 
-  expect(html).toContain("Gemini 3.1 Pro + Google Search");
+  expect(html).toContain("Gemini 3 Pro Preview + Google Search");
   expect(html).toContain("Google Gemini");
   expect(html).toContain("https://example.com/evidence");
   expect(html).toContain("Evidence");
@@ -156,7 +156,7 @@ test("passing Gemini grounded fact-check report shows verified info source evide
     }],
   });
 
-  expect(html).toContain("Gemini 3.1 Pro + Google Search");
+  expect(html).toContain("Gemini 3 Pro Preview + Google Search");
   expect(html).toContain("https://example.com/evidence");
   expect(html).toContain("Evidence");
 });

@@ -81,7 +81,7 @@ describe("PlagiarismSkill Copyscape results", () => {
       }),
     } as Response);
 
-    const result = await new PlagiarismSkill().run("Copied sentence from source.", {
+    const result = await new PlagiarismSkill().run("Copied sentence from source plus enough original surrounding editorial context to keep overlap in moderate review range today.", {
       ...config,
       geminiApiKey: "gemini-key",
       providers: { plagiarism: { provider: "gemini-grounded-plagiarism" } },
@@ -130,5 +130,55 @@ describe("PlagiarismSkill Copyscape results", () => {
     expect(result.provider).toBe("gemini-grounded-plagiarism");
     expect(result.verdict).toBe("pass");
     expect(result.summary).toContain("after Copyscape skipped");
+    expect(result.summary).toContain("article content was sent to Google Gemini");
+  });
+
+  test("mentions Gemini fallback configuration when Copyscape skips without fallback", async () => {
+    globalThis.fetch = async () => ({
+      ok: true,
+      text: async () => "<error>Insufficient credits.</error>",
+    } as Response);
+
+    const result = await new PlagiarismSkill().run("Article text", config);
+
+    expect(result.verdict).toBe("skipped");
+    expect(result.summary).toContain("fallbackProvider");
+    expect(result.summary).toContain("gemini-grounded-plagiarism");
+  });
+
+  test("labels ungrounded Gemini evidence as reduced confidence, not grounded", async () => {
+    globalThis.fetch = async () => ({
+      ok: true,
+      json: async () => ({
+        candidates: [{
+          content: { parts: [{ text: JSON.stringify({
+            overallSimilarityPct: 80,
+            verdict: "rewrite",
+            confidence: "high",
+            matches: [{
+              sourceUrl: "https://example.com/source",
+              sourceTitle: "Source",
+              matchedArticleText: "Copied sentence from source.",
+              matchedSourceText: "Copied sentence from source.",
+              similarityPct: 90,
+              matchType: "exact",
+              confidence: "high",
+              explanation: "Exact copied sentence.",
+            }],
+          }) }] },
+          groundingMetadata: { groundingChunks: [] },
+        }],
+      }),
+    } as Response);
+
+    const result = await new PlagiarismSkill().run("Copied sentence from source.", {
+      ...config,
+      geminiApiKey: "gemini-key",
+      providers: { plagiarism: { provider: "gemini-grounded-plagiarism" } },
+    });
+
+    expect(result.verdict).toBe("warn");
+    expect(result.summary).toContain("reduced-confidence Gemini similarity");
+    expect(result.summary).not.toContain("grounded similarity");
   });
 });

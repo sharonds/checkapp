@@ -16,7 +16,7 @@
       "provider": "gemini-grounded",
       "verdict": "pass",
       "minSources": 1,
-      "reportContains": ["Gemini 3.1 Pro + Google Search", "OpenAI", "GPT-4"]
+      "reportContains": ["Gemini 3 Pro Preview + Google Search", "OpenAI", "GPT-4"]
     }
   },
   {
@@ -36,7 +36,7 @@
       "provider": "gemini-grounded",
       "verdict": "fail",
       "minSources": 1,
-      "reportContains": ["Unsupported", "Gemini 3.1 Pro + Google Search"]
+      "reportContains": ["Unsupported", "Gemini 3 Pro Preview + Google Search"]
     }
   },
   {
@@ -76,7 +76,7 @@
       "provider": "gemini-grounded",
       "verdict": "pass",
       "minSources": 1,
-      "reportContains": ["Gemini 3.1 Pro + Google Search", "1978"]
+      "reportContains": ["Gemini 3 Pro Preview + Google Search", "1978"]
     }
   },
   {
@@ -211,7 +211,7 @@
       "provider": "gemini-grounded",
       "verdict": "pass",
       "minSources": 1,
-      "reportContains": ["Gemini 3.1 Pro + Google Search", "1978"]
+      "reportContains": ["Gemini 3 Pro Preview + Google Search", "1978"]
     }
   }
 ]

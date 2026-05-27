@@ -41,7 +41,7 @@ const PROVIDER_LABEL: Record<string, ProviderMeta> = {
   "gemini-ai-detection": { label: "Gemini AI Detection", color: "#4285f4", href: "https://ai.google.dev", processor: "Google Gemini" },
   "gemini-grounded-plagiarism": { label: "Gemini Grounded Plagiarism", color: "#4285f4", href: "https://ai.google.dev", processor: "Google Gemini" },
   gemini: { label: "Gemini", color: "#4285f4", href: "https://ai.google.dev", processor: "Google Gemini" },
-  "gemini-grounded": { label: "Gemini 3.1 Pro + Google Search", color: "#4285f4", href: "https://ai.google.dev", processor: "Google Gemini" },
+  "gemini-grounded": { label: "Gemini 3 Pro Preview + Google Search", color: "#4285f4", href: "https://ai.google.dev", processor: "Google Gemini" },
   "gemini-deep-research": { label: "Gemini Deep Research", color: "#4285f4", href: "https://ai.google.dev", processor: "Google Gemini" },
   "exa-search": { label: "Exa AI", color: "#7c3aed", href: "https://exa.ai", processor: "Exa AI" },
   "exa-deep-reasoning": { label: "Exa AI", color: "#7c3aed", href: "https://exa.ai", processor: "Exa AI" },
@@ -113,7 +113,7 @@ function skillCard(r: SkillResult): string {
             const safeUrl = safeReportUrl(s.url);
             const label = escapeHtml(s.title || s.url);
             return safeUrl
-              ? `<a href="${escapeHtml(safeUrl)}" style="color:#2563eb;text-decoration:none">${label}</a>`
+              ? `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:none">${label}</a>`
               : label;
           }).join(", ")}</div>` : ""}
         </li>`).join("")}
@@ -213,10 +213,10 @@ export function generateReport(record: Omit<CheckRecord, "id" | "createdAt"> & {
   const now = record.createdAt ?? new Date().toISOString().replace("T", " ").slice(0, 16);
   const providers = usedProviders(record.results);
   const providerLinks = providers.map((p) =>
-    `<a class="engine-link" href="${p.href}" style="color:${p.color};border-color:${p.color}44;background:${p.color}08">${escapeHtml(p.label)}</a>`
+    `<a class="engine-link" href="${p.href}" target="_blank" rel="noopener noreferrer" style="color:${p.color};border-color:${p.color}44;background:${p.color}08">${escapeHtml(p.label)}</a>`
   ).join("");
   const footerProviderLinks = providers.map((p) =>
-    `<a class="footer-link" href="${p.href}">${escapeHtml(p.label)}</a>`
+    `<a class="footer-link" href="${p.href}" target="_blank" rel="noopener noreferrer">${escapeHtml(p.label)}</a>`
   ).join("");
   const providerNames = providers.map((p) => p.processor).join(", ");
   const providerDisclaimer = providerNames

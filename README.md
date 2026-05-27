@@ -41,7 +41,7 @@ See [docs/security.md](docs/security.md) for the BYOK-alpha threat model.
 | Skill | Engine | Cost/check | Enabled by default |
 |-------|--------|-----------|-------------------|
 | **Plagiarism** | Copyscape · Gemini Grounded Plagiarism | ~$0.09 / ~$0.04 estimate | ✅ |
-| **AI Detection** | Copyscape (English) · Gemini 3.1 Pro Preview (multilingual) | ~$0.03 / ~$0.01 estimate | ✅ |
+| **AI Detection** | Copyscape (English) · Gemini 3 Pro Preview (multilingual) | ~$0.03 / ~$0.01 estimate | ✅ |
 | **SEO** | Offline (no API) | free | ✅ |
 | **Grammar & Style** | LanguageTool + LLM fallback | free tier / ~$0.002 | ❌ disabled by default (enable in Settings; LanguageTool free tier works without any API key) |
 | **Academic Citations** | OpenAlex (default) / Semantic Scholar (legacy) | free | ❌ disabled by default (augments fact-check findings when enabled; OpenAlex/SS both free) |
@@ -74,7 +74,7 @@ Standard is opt-in and stays off by default until Gate 2 passes. Basic remains t
 | Tier | Engine | Cost per article | Typical time | Notes |
 |------|--------|------|------|-------|
 | Basic (default) | Exa + LLM | $0.04 | ~15s | Requires Exa plus an LLM key for claim extraction/assessment |
-| Standard (opt-in) | Gemini 3.1 Pro + Google Search grounding | $0.16 | ~45s | Requires Gemini. Enable with `factCheckTierFlag=true` and `factCheckTier="standard"`, or set `providers["fact-check"].provider = "gemini-grounded"`. |
+| Standard (opt-in) | Gemini 3 Pro Preview + Google Search grounding | $0.16 | ~45s | Requires Gemini. Enable with `factCheckTierFlag=true` and `factCheckTier="standard"`, or set `providers["fact-check"].provider = "gemini-grounded"`. |
 | Deep Audit (async) | Gemini Deep Research | $1.50 | 5–15 min | Premium async audit workflow. The normal sync check still runs Basic unless Standard is selected. Initiate via dashboard button or `deep_audit_article` MCP tool. |
 
 Research basis: the Standard tier was selected based on an [internal benchmark on a 20-claim synthetic corpus](https://github.com/sharonds/checkapp-fact-check-research). That benchmark is directional, not definitive - see its [LIMITATIONS.md](https://github.com/sharonds/checkapp-fact-check-research/blob/main/LIMITATIONS.md) before relying on the results for your own decisions.
@@ -83,7 +83,7 @@ Research basis: the Standard tier was selected based on an [internal benchmark o
 
 CheckApp reports evidence confidence, not certainty. Gemini grounded fact-check has the strongest signal on concrete dates, statistics, named entities, and claims where Google Search returns source URLs. If Gemini or Exa marks a claim as supported but no source URL is attached, CheckApp downgrades that claim to unverified. “No issues found” does not prove the article is accurate or original across the whole web.
 
-Gemini grounded plagiarism is stricter than a general similarity prompt: matched URLs must appear in Gemini grounding metadata before they count as grounded matches. Exact public-source English and Hebrew copying is the highest-confidence path we validate. Translated or paraphrased plagiarism is lower confidence and should still receive human review.
+Gemini grounded plagiarism is stricter than a general similarity prompt: matched URLs that appear in Gemini grounding metadata are treated as grounded matches. If Gemini returns plausible match JSON without grounding metadata, CheckApp reports a reduced-confidence review finding instead of a clean pass. Exact public-source English and Hebrew copying is the highest-confidence path we validate. Translated or paraphrased plagiarism is lower confidence and should still receive human review.
 
 ---
 
@@ -93,10 +93,10 @@ Gemini grounded plagiarism is stricter than a general similarity prompt: matched
 |---------|---------|
 | **Pluggable skills** | Enable/disable any skill via config. Add custom skills by implementing one TypeScript interface. |
 | **Plagiarism check** | Checks against Copyscape's indexed web data by default, or Gemini Grounded Plagiarism when selected. Returns 0–100% similarity + matched sources. |
-| **AI detection** | Copyscape AI detector. Returns 0–100% probability per sentence and an overall verdict. |
+| **AI detection** | Copyscape AI detector by default, or Gemini 3 Pro Preview when explicitly configured for multilingual checks. Returns 0–100% probability per sentence and an overall verdict. |
 | **SEO analysis** | Offline. Checks word count (800–2500 ideal), H1/H2 headings, average sentence length, Flesch-Kincaid readability. |
-| **Fact check** | Extracts 4 specific claims → searches each with Exa AI → Claude assesses evidence → per-claim supported/unsupported verdict with citation recommendations. |
-| **Tone of voice** | Loads your brand voice guide (`.md` file), sends article + guide to Claude, returns violations with quotes and rewrite suggestions in your brand voice. |
+| **Fact check** | Basic extracts specific claims, searches each with Exa AI, and uses the configured LLM to assess evidence. Standard uses Gemini 3 Pro Preview with Google Search grounding. |
+| **Tone of voice** | Loads your brand voice guide (`.md` file), sends article + guide to the configured LLM, returns violations with quotes and rewrite suggestions in your brand voice. |
 | **Legal risk** | Scans for unsubstantiated health claims, defamation, false promises, GDPR risks, price misrepresentation. Findings include actionable "Fix:" suggestions. |
 | **Content summary** | Analyzes topic, main argument, target audience, and tone (informational/persuasive/conversational/technical/promotional). |
 | **SEO keyword detection** | Extracts the top keyword and checks whether it appears in the first paragraph. |
@@ -247,7 +247,7 @@ CheckApp supports two AI detection providers:
 | Provider | Languages | Cost | When used |
 |----------|-----------|------|-----------|
 | Copyscape AI | English only | ~$0.03/check | Default |
-| Gemini 3.1 Pro Preview | All languages incl. Hebrew | ~$0.01/check in-app estimate | Explicitly configured (required for non-English) |
+| Gemini 3 Pro Preview | All languages incl. Hebrew | ~$0.01/check in-app estimate | Explicitly configured (required for non-English) |
 
 Copyscape only supports English. For non-English articles, set Gemini as the ai-detection provider in `~/.checkapp/config.json` and provide either `GEMINI_API_KEY`, `geminiApiKey`, or a provider-scoped `apiKey`:
 ```json
@@ -555,12 +555,12 @@ Approximate cost per 800-word article check with all skills enabled:
 | Plagiarism | Copyscape / Gemini Grounded Plagiarism | ~$0.09 / ~$0.04 estimate |
 | AI Detection | Copyscape / Gemini | ~$0.03 / ~$0.01 estimate |
 | SEO | Offline | free |
-| Fact Check | Exa + MiniMax/Claude | ~$0.03 |
-| Tone of Voice | MiniMax/Claude | ~$0.002 |
-| Legal Risk | MiniMax/Claude | ~$0.002 |
-| Content Summary | MiniMax/Claude | ~$0.002 |
-| Brief Matching | MiniMax/Claude | ~$0.002 |
-| Content Purpose | MiniMax/Claude | ~$0.002 |
+| Fact Check | Basic: Exa + configured LLM; Standard: Gemini Grounded | ~$0.04 / ~$0.16 |
+| Tone of Voice | Configured LLM | ~$0.002 |
+| Legal Risk | Configured LLM | ~$0.002 |
+| Content Summary | Configured LLM | ~$0.002 |
+| Brief Matching | Configured LLM | ~$0.002 |
+| Content Purpose | Configured LLM | ~$0.002 |
 | Passage evidence (optional) | Parallel AI | ~$0.003 |
 | **Total — all skills** | | **~$0.22** |
 

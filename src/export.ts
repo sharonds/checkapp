@@ -11,7 +11,7 @@ const PROVIDER_LABEL: Record<string, string> = {
   copyscape: "Copyscape",
   "gemini-ai-detection": "Gemini AI Detection",
   "gemini-grounded-plagiarism": "Gemini Grounded Plagiarism",
-  "gemini-grounded": "Gemini 3.1 Pro + Google Search",
+  "gemini-grounded": "Gemini 3 Pro Preview + Google Search",
   "gemini-deep-research": "Gemini Deep Research",
   "exa-search": "Exa Search",
   "exa-deep-reasoning": "Exa Deep Reasoning",

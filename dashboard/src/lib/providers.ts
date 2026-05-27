@@ -37,7 +37,7 @@ export const PROVIDER_REGISTRY: Partial<Record<SkillId, ProviderMetadata[]>> = {
   "fact-check": [
     { id: "exa-search", label: "Exa Search", speed: "fast", costPerCheckUsd: 0.008, costLabel: "$0.008/check", depth: "standard", freeTier: false, requiresKey: true },
     { id: "exa-deep-reasoning", label: "Exa Deep Reasoning", speed: "slow", costPerCheckUsd: 0.025, costLabel: "$0.025/check", depth: "deep", freeTier: false, requiresKey: true },
-    { id: "gemini-grounded", label: "Gemini 3.1 Pro + Google Search", speed: "medium", costPerCheckUsd: 0.04, costLabel: "$0.04/claim", depth: "standard", freeTier: false, requiresKey: true },
+    { id: "gemini-grounded", label: "Gemini 3 Pro Preview + Google Search", speed: "medium", costPerCheckUsd: 0.04, costLabel: "$0.04/claim", depth: "standard", freeTier: false, requiresKey: true },
     { id: "gemini-deep-research", label: "Gemini Deep Research (Premium Audit)", speed: "slow", costPerCheckUsd: 0.375, costLabel: "$0.375/claim", depth: "deep", freeTier: false, requiresKey: true },
     { id: "parallel-task", label: "Parallel Task", speed: "slow", costPerCheckUsd: 0.03, costLabel: "$0.03/check", depth: "deep", freeTier: true, requiresKey: true },
   ],
@@ -74,7 +74,7 @@ export const PROVIDER_REGISTRY: Partial<Record<SkillId, ProviderMetadata[]>> = {
     },
     {
       id: "gemini-ai-detection",
-      label: "Gemini 3.1 Pro Preview (multilingual)",
+      label: "Gemini 3 Pro Preview (multilingual)",
       speed: "slow",
       costPerCheckUsd: 0.01,
       costLabel: "~$0.01/check estimate",
