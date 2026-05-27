@@ -20,15 +20,16 @@ export class AiDetectionSkill implements Skill {
       const result = await checkAiDetector(text, config);
 
       if (result.error) {
+        const isCredits = result.error.includes("credits insufficient");
         return {
           skillId: this.id,
           name: this.name,
           score: 0,
-          verdict: "fail",
-          summary: "Skill failed — see error",
+          verdict: isCredits ? "skipped" : "fail",
+          summary: isCredits ? result.error : "Skill failed — see error",
           findings: [],
           costUsd: 0,
-          error: result.error,
+          error: isCredits ? undefined : result.error,
         };
       }
 
@@ -51,17 +52,15 @@ export class AiDetectionSkill implements Skill {
     } catch (err) {
       const msg = (err as Error).message;
 
-      // Copyscape throws for English-only errors — intercept and handle gracefully
+      // Copyscape throws for English-only errors — skip; user must explicitly set
+      // providers["ai-detection"].provider = "gemini-ai-detection" for multilingual.
       if (msg.includes(ENGLISH_ONLY_SIGNAL)) {
-        if (config.geminiApiKey) {
-          return this.#runGemini(text, config, true);
-        }
         return {
           skillId: this.id,
           name: this.name,
           score: 0,
           verdict: "skipped",
-          summary: "AI detection skipped — Copyscape does not support non-English text. Add GEMINI_API_KEY to enable multilingual detection.",
+          summary: "AI detection skipped — Copyscape does not support non-English text. Set ai-detection provider to gemini-ai-detection in config to enable multilingual detection.",
           findings: [],
           costUsd: 0,
         };
@@ -107,7 +106,7 @@ export class AiDetectionSkill implements Skill {
         ? "Skill failed — see error"
         : `${result.aiPct}% AI probability — ${result.verdict} (Gemini)`,
       findings,
-      costUsd: 0.01,
+      costUsd: result.error ? 0 : 0.01,
       error: result.error,
     };
   }

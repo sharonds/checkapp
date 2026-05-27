@@ -208,7 +208,8 @@ async function main() {
           const icon = r.verdict === "pass" ? "PASS" : r.verdict === "warn" ? "WARN" : "FAIL";
           console.log(`  ${icon}  ${r.name}: ${r.score}/100 — ${r.summary}`);
         }
-        const overall = Math.round(result.results.reduce((s, r) => s + r.score, 0) / (result.results.length || 1));
+        const scoringResults = result.results.filter((r) => r.verdict !== "skipped");
+        const overall = Math.round(scoringResults.reduce((s, r) => s + r.score, 0) / (scoringResults.length || 1));
         const hasFail = result.results.some(r => r.verdict === "fail");
         console.log(`\nOverall: ${overall}/100 ${hasFail ? "FAILED" : "PASSED"}`);
       }
@@ -284,8 +285,9 @@ async function main() {
 
     console.log(`\nLast ${rows.length} checks:\n`);
     for (const row of rows) {
-      const overall = row.results.length > 0
-        ? Math.round(row.results.reduce((s, r) => s + r.score, 0) / row.results.length)
+      const rowScoringResults = row.results.filter((r) => r.verdict !== "skipped");
+      const overall = rowScoringResults.length > 0
+        ? Math.round(rowScoringResults.reduce((s, r) => s + r.score, 0) / rowScoringResults.length)
         : 0;
       const verdict = row.results.some(r => r.verdict === "fail") ? "❌"
         : row.results.some(r => r.verdict === "warn") ? "⚠️ " : "✅";

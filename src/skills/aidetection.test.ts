@@ -39,28 +39,17 @@ describe("AiDetectionSkill routing", () => {
     expect(result.error).toBeUndefined();
   });
 
-  test("auto-falls back to Gemini when Copyscape returns English-only error", async () => {
-    const calls: string[] = [];
-    globalThis.fetch = async (url: string | URL) => {
-      const u = String(url);
-      calls.push(u);
-      if (u.includes("copyscape.com")) {
-        return {
-          ok: true,
-          text: async () => "<error>The AI checker currently only works with English text.</error>",
-        } as Response;
-      }
-      return {
-        ok: true,
-        json: async () => ({
-          candidates: [{ content: { parts: [{ text: JSON.stringify({ aiScore: 0.2, segments: [] }) }] } }]
-        }),
-      } as Response;
-    };
+  test("returns skipped verdict when Copyscape returns English-only error, even with Gemini key set", async () => {
+    globalThis.fetch = async () => ({
+      ok: true,
+      text: async () => "<error>The AI checker currently only works with English text.</error>",
+    } as Response);
+    // geminiApiKey is set on baseConfig — auto-fallback must NOT happen without explicit provider config
     const skill = new AiDetectionSkill();
     const result = await skill.run("Hebrew text כאן.", baseConfig);
-    expect(calls.some((u) => u.includes("generativelanguage"))).toBe(true);
-    expect(result.findings.some((f) => f.text.toLowerCase().includes("gemini"))).toBe(true);
+    expect(result.verdict).toBe("skipped");
+    expect(result.score).toBe(0);
+    expect(result.summary).toMatch(/gemini-ai-detection/i);
     expect(result.error).toBeUndefined();
   });
 

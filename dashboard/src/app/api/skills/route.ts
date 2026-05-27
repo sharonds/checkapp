@@ -5,7 +5,7 @@ import { NextRequest } from "next/server";
 
 const SKILL_META = [
   { id: "plagiarism", name: "Plagiarism Check", engine: "Copyscape", supportedProviders: ["copyscape"] },
-  { id: "aiDetection", name: "AI Detection", engine: "Copyscape", supportedProviders: ["copyscape"] },
+  { id: "aiDetection", name: "AI Detection", engine: "Copyscape / Gemini", supportedProviders: ["copyscape", "gemini"] },
   { id: "seo", name: "SEO Analysis", engine: "Offline", supportedProviders: [] },
   { id: "factCheck", name: "Fact Check", engine: "Exa AI + MiniMax", supportedProviders: ["exa"] },
   { id: "tone", name: "Tone of Voice", engine: "LLM", supportedProviders: ["minimax", "anthropic", "openrouter"] },

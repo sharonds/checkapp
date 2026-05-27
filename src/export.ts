@@ -7,8 +7,9 @@ const VERDICT_ICON: Record<string, string> = { pass: "✅", warn: "⚠️", fail
 const SEVERITY_ICON: Record<string, string> = { info: "ℹ️", warn: "⚠️", error: "❌" };
 
 export function generateMarkdownReport(record: Omit<CheckRecord, "id" | "createdAt"> & { createdAt?: string }): string {
-  const overallScore = record.results.length > 0
-    ? Math.round(record.results.reduce((s, r) => s + r.score, 0) / record.results.length)
+  const scoringResults = record.results.filter((r) => r.verdict !== "skipped");
+  const overallScore = scoringResults.length > 0
+    ? Math.round(scoringResults.reduce((s, r) => s + r.score, 0) / scoringResults.length)
     : 0;
   const overallVerdict = record.results.some(r => r.verdict === "fail") ? "fail"
     : record.results.some(r => r.verdict === "warn") ? "warn" : "pass";

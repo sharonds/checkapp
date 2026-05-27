@@ -74,7 +74,7 @@ export async function checkAiDetectorGemini(
   text: string,
   config: Config
 ): Promise<AiDetectorResult> {
-  const apiKey = config.geminiApiKey;
+  const apiKey = config.providers?.["ai-detection"]?.apiKey ?? config.geminiApiKey;
   if (!apiKey) {
     return {
       aiScore: 0,
