@@ -37,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Standard fact-check tier now consistently runs Gemini grounded fact-check even if the saved fact-check provider is still Exa, dashboard readiness asks for Gemini in that mode, and HTML/Markdown reports show the Gemini grounded provider and source evidence.
 - AI detection returns `"skipped"` (excluded from overall score) for non-English content when Copyscape is the active provider, instead of hard-failing with score 0. Configure `gemini-ai-detection` as the provider to handle non-English articles.
 - Copyscape insufficient-credits error now maps to `"skipped"` verdict (billing issue) rather than `"fail"` (content quality failure).
 - `"skipped"` results are now excluded from overall score averaging in HTML report, Markdown export, and CLI summary.

@@ -82,10 +82,12 @@ describe("FactCheckGroundedSkill", () => {
             groundingChunks: [
               { web: { uri: "https://www.government.nl/topics/smoking", title: "Government.nl Smoking Policy" } },
               { web: { uri: "https://www.who.int/europe/news-room/fact-sheets/item/tobacco", title: "WHO Europe Tobacco" } },
+              { web: { uri: "javascript:alert(1)", title: "Unsafe" } },
             ],
             groundingSupports: [
               { groundingChunkIndices: [0], segment: { text: "The smoking ban came into force in 2008." } },
               { groundingChunkIndices: [1], segment: { text: "Smoke-free hospitality laws were expanded in 2008." } },
+              { groundingChunkIndices: [2], segment: { text: "Unsafe URL must be ignored." } },
             ],
           },
         }],
@@ -139,5 +141,48 @@ describe("FactCheckGroundedSkill", () => {
       delete process.env.CHECKAPP_AUDIT_EVENTS_PATH;
       rmSync(tempDir, { recursive: true, force: true });
     }
+  });
+
+  test("standard tier uses Gemini grounded even when saved fact-check provider is Exa", async () => {
+    mockFetch(urlRouter({
+      "api.minimax.io": async () => jsonResponse({
+        id: "msg_extract_grounded",
+        type: "message",
+        role: "assistant",
+        model: "MiniMax-M2.7",
+        content: [{
+          type: "text",
+          text: JSON.stringify(["OpenAI announced GPT-4 in March 2023."]),
+        }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 10, output_tokens: 10 },
+      }),
+      "generativelanguage.googleapis.com": async () => jsonResponse({
+        candidates: [{
+          content: {
+            parts: [
+              { text: "{\"supported\":true,\"note\":\"Grounded sources support the claim.\"}" },
+            ],
+          },
+          groundingMetadata: {
+            webSearchQueries: ["OpenAI GPT-4 March 2023"],
+            groundingChunks: [
+              { web: { uri: "https://openai.com/index/gpt-4-research/", title: "GPT-4 research" } },
+            ],
+          },
+        }],
+      }),
+    }));
+
+    const result = await new FactCheckGroundedSkill().run("OpenAI announced GPT-4 in March 2023.", {
+      ...baseConfig,
+      factCheckTierFlag: true,
+      factCheckTier: "standard",
+      providers: { "fact-check": { provider: "exa-search", apiKey: "exa-key" } },
+    });
+
+    expect(result.provider).toBe("gemini-grounded");
+    expect(result.verdict).toBe("pass");
+    expect(result.summary).toContain("via gemini-grounded");
   });
 });

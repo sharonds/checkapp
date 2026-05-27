@@ -194,6 +194,59 @@ describe("/api/skills", () => {
     expect(skill.missingProviders).toEqual([]);
   });
 
+  test("Fact Check standard tier requires Gemini instead of Exa", async () => {
+    mockReadAppConfig.mockReturnValue({
+      skills: { factCheck: true },
+      factCheckTierFlag: true,
+      factCheckTier: "standard",
+      providers: {
+        "fact-check": { provider: "exa-search", apiKey: "EXA_KEY_SHOULD_NOT_MATTER" },
+      },
+    });
+    mockGetApiKeyStatus.mockReturnValue({
+      anthropic: false,
+      minimax: false,
+      openrouter: false,
+      copyscape: false,
+      exa: true,
+      gemini: false,
+    });
+
+    const res = await GET();
+    const json = await res.json();
+    const skill = json.find((s: any) => s.id === "factCheck");
+
+    expect(skill.engine).toBe("Exa AI + LLM / Gemini Grounded");
+    expect(skill.ready).toBe(false);
+    expect(skill.supportedProviders).toEqual(["gemini"]);
+    expect(skill.missingProviders).toEqual(["gemini"]);
+  });
+
+  test("Fact Check standard tier is ready with Gemini key", async () => {
+    mockReadAppConfig.mockReturnValue({
+      skills: { factCheck: true },
+      factCheckTierFlag: true,
+      factCheckTier: "standard",
+      providers: {},
+    });
+    mockGetApiKeyStatus.mockReturnValue({
+      anthropic: false,
+      minimax: false,
+      openrouter: false,
+      copyscape: false,
+      exa: false,
+      gemini: true,
+    });
+
+    const res = await GET();
+    const json = await res.json();
+    const skill = json.find((s: any) => s.id === "factCheck");
+
+    expect(skill.ready).toBe(true);
+    expect(skill.supportedProviders).toEqual(["gemini"]);
+    expect(skill.missingProviders).toEqual([]);
+  });
+
   test("POST toggles skill enabled state", async () => {
     const req = new NextRequest(new URL("http://localhost/api/skills"), {
       method: "POST",

@@ -91,6 +91,31 @@ describe("generateMarkdownReport", () => {
     expect(md).toContain("Source: [Source](https://example.com/source)");
   });
 
+  it("includes Gemini grounded fact-check provider and source links", () => {
+    const md = generateMarkdownReport({
+      source: "test.md",
+      wordCount: 500,
+      totalCostUsd: 0.16,
+      results: [{
+        skillId: "fact-check-grounded",
+        name: "Fact Check (Grounded)",
+        score: 100,
+        verdict: "pass" as const,
+        summary: "1 claims checked — 0 unsupported, 0 unverified (via gemini-grounded)",
+        findings: [{
+          severity: "warn" as const,
+          text: "Unverified (medium confidence): \"Claim\" — Needs more evidence",
+          sources: [{ url: "https://example.com/evidence", title: "Evidence" }],
+        }],
+        costUsd: 0.04,
+        provider: "gemini-grounded",
+      }],
+    });
+
+    expect(md).toContain("**Provider:** Gemini 3.1 Pro + Google Search");
+    expect(md).toContain("Source: [Evidence](https://example.com/evidence)");
+  });
+
   it("all-skipped markdown report is marked skipped with N/A score", () => {
     const md = generateMarkdownReport({
       source: "test.md",

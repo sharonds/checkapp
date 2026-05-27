@@ -6,6 +6,25 @@ import { formatScore, formatSkillScore, summarizeResults } from "./output-summar
 
 const VERDICT_ICON: Record<string, string> = { pass: "✅", warn: "⚠️", fail: "❌", skipped: "–" };
 const SEVERITY_ICON: Record<string, string> = { info: "ℹ️", warn: "⚠️", error: "❌" };
+const PROVIDER_LABEL: Record<string, string> = {
+  copyscape: "Copyscape",
+  "gemini-ai-detection": "Gemini AI Detection",
+  "gemini-grounded-plagiarism": "Gemini Grounded Plagiarism",
+  "gemini-grounded": "Gemini 3.1 Pro + Google Search",
+  "gemini-deep-research": "Gemini Deep Research",
+  "exa-search": "Exa Search",
+  "exa-deep-reasoning": "Exa Deep Reasoning",
+  minimax: "MiniMax",
+  anthropic: "Anthropic",
+  openrouter: "OpenRouter",
+  languagetool: "LanguageTool",
+  "languagetool-selfhosted": "LanguageTool self-hosted",
+  "semantic-scholar": "Semantic Scholar",
+  openalex: "OpenAlex",
+  "cloudflare-vectorize": "Cloudflare Vectorize",
+  pinecone: "Pinecone",
+  "upstash-vector": "Upstash Vector",
+};
 
 export function generateMarkdownReport(record: Omit<CheckRecord, "id" | "createdAt"> & { createdAt?: string }): string {
   const overall = summarizeResults(record.results);
@@ -21,6 +40,7 @@ export function generateMarkdownReport(record: Omit<CheckRecord, "id" | "created
 
   for (const r of record.results) {
     md += `## ${VERDICT_ICON[r.verdict] ?? ""} ${r.name} — ${formatSkillScore(r)} ${r.verdict.toUpperCase()}\n\n`;
+    if (r.provider) md += `**Provider:** ${PROVIDER_LABEL[r.provider] ?? r.provider}\n\n`;
     md += `${r.summary}\n\n`;
     const visible = r.findings.filter(f => f.severity === "warn" || f.severity === "error");
     if (visible.length > 0) {

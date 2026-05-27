@@ -66,7 +66,19 @@ export class FactCheckGroundedSkill implements Skill {
   readonly name = "Fact Check (Grounded)";
 
   async run(text: string, config: Config): Promise<SkillResult> {
+    const standardTierSelected = config.factCheckTierFlag === true && config.factCheckTier === "standard";
     const resolved = resolveProvider(config, "fact-check");
+    if (standardTierSelected && resolved?.provider !== "gemini-grounded") {
+      if (!config.geminiApiKey) {
+        return skippedResult(this, "gemini-grounded API key missing");
+      }
+      return this.#runGrounded(text, config, {
+        provider: "gemini-grounded",
+        apiKey: config.geminiApiKey,
+        metadata: getProvider("fact-check", "gemini-grounded"),
+      });
+    }
+
     if (!resolved) {
       if (!config.geminiApiKey) {
         return skippedResult(this, "gemini-grounded API key missing");
@@ -459,7 +471,7 @@ function extractGroundingSources(metadata?: GeminiGroundingMetadata): Source[] {
   const sources: Source[] = [];
   metadata.groundingChunks.forEach((chunk, index) => {
     const url = chunk.web?.uri;
-    if (!url) return;
+    if (!url || !isHttpUrl(url)) return;
     sources.push({
       url,
       title: chunk.web?.title,
@@ -485,6 +497,15 @@ function dedupeSources(sources: Source[]): Source[] {
     });
   }
   return [...byUrl.values()];
+}
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 function sleep(ms: number): Promise<void> {

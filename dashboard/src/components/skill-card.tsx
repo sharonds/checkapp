@@ -40,8 +40,9 @@ export interface SkillResult {
 }
 
 export function SkillCard({ result }: { result: SkillResult }) {
+  const providerSkillId = result.skillId === "fact-check-grounded" ? "fact-check" : result.skillId;
   const engine = result.provider
-    ? getProvider(result.skillId as SkillId, result.provider)?.label ?? result.provider
+    ? getProvider(providerSkillId as SkillId, result.provider)?.label ?? result.provider
     : ENGINE_MAP[result.skillId] ?? "Unknown";
   const visibleFindings = result.findings.filter(
     (f) => f.severity === "info" || f.severity === "warn" || f.severity === "error"

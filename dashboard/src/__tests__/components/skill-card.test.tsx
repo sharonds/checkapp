@@ -44,4 +44,21 @@ describe("SkillCard", () => {
     expect(getByText("Gemini 3.1 Pro Preview (multilingual)")).toBeDefined();
     expect(queryByText("Copyscape")).toBeNull();
   });
+
+  it("renders Gemini grounded label for standard fact-check results", () => {
+    const result: SkillResult = {
+      skillId: "fact-check-grounded",
+      name: "Fact Check (Grounded)",
+      verdict: "pass",
+      score: 100,
+      summary: "1 claims checked",
+      costUsd: 0.04,
+      provider: "gemini-grounded",
+      findings: [],
+    };
+
+    const { getByText, queryByText } = render(<SkillCard result={result} />);
+    expect(getByText("Gemini 3.1 Pro + Google Search")).toBeDefined();
+    expect(queryByText("gemini-grounded")).toBeNull();
+  });
 });

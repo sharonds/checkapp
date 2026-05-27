@@ -106,6 +106,34 @@ test("Gemini grounded plagiarism report shows provider and source evidence", () 
   expect(html).toContain("Source");
 });
 
+test("Gemini grounded fact-check report shows provider and source evidence", () => {
+  const html = generateReport({
+    source: "article.md",
+    wordCount: 800,
+    totalCostUsd: 0.16,
+    results: [{
+      skillId: "fact-check-grounded",
+      name: "Fact Check (Grounded)",
+      score: 90,
+      verdict: "warn",
+      summary: "1 claims checked — 0 unsupported, 1 unverified (via gemini-grounded)",
+      findings: [{
+        severity: "warn",
+        text: "Unverified (medium confidence): \"Claim\" — Needs more evidence",
+        sources: [{ url: "https://example.com/evidence", title: "Evidence" }],
+        confidence: "medium",
+      }],
+      costUsd: 0.04,
+      provider: "gemini-grounded",
+    }],
+  });
+
+  expect(html).toContain("Gemini Grounded");
+  expect(html).toContain("Google Gemini");
+  expect(html).toContain("https://example.com/evidence");
+  expect(html).toContain("Evidence");
+});
+
 test("SEO-only report does not disclose third-party processors", () => {
   const html = generateReport({
     source: "article.md",
