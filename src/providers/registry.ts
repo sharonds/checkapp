@@ -39,11 +39,11 @@ export const PROVIDER_REGISTRY: Partial<Record<SkillId, ProviderMetadata[]>> = {
       requiresKey: true,
     },
     {
-      id: "gemini",
+      id: "gemini-ai-detection",
       label: "Gemini 3.1 Pro (multilingual)",
       speed: "medium",
       costPerCheckUsd: 0.01,
-      costLabel: "~$0.01/check",
+      costLabel: "$0.01/check",
       depth: "standard",
       freeTier: false,
       requiresKey: true,
