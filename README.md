@@ -41,7 +41,7 @@ See [docs/security.md](docs/security.md) for the BYOK-alpha threat model.
 | Skill | Engine | Cost/check | Enabled by default |
 |-------|--------|-----------|-------------------|
 | **Plagiarism** | Copyscape | ~$0.09 | ✅ |
-| **AI Detection** | Copyscape | ~$0.03 | ✅ |
+| **AI Detection** | Copyscape (English) · Gemini 2.0 Flash (multilingual) | ~$0.03 / ~$0.01 | ✅ |
 | **SEO** | Offline (no API) | free | ✅ |
 | **Grammar & Style** | LanguageTool + LLM fallback | free tier / ~$0.002 | ❌ disabled by default (enable in Settings; LanguageTool free tier works without any API key) |
 | **Academic Citations** | OpenAlex (default) / Semantic Scholar (legacy) | free | ❌ disabled by default (augments fact-check findings when enabled; OpenAlex/SS both free) |
@@ -99,7 +99,7 @@ Research basis: the Standard tier was selected based on an [internal benchmark o
 | **Configurable thresholds** | Custom pass/warn/fail score cutoffs per skill via `config.json`. |
 | **HTML report** | Self-contained, no-dependency HTML file. Score bars, verdict badges, per-finding citations. Opens in browser automatically. |
 | **SQLite history** | Every check is saved to `~/.checkapp/history.db`. Query with `--history`. |
-| **Google Doc support** | Paste a publicly-shared Google Doc URL. No Google auth required. |
+| **Google Doc support** | Paste a publicly-shared Google Doc URL including `?tab=t.xxx` for specific tabs. No Google auth required. |
 | **Local file support** | Pass a `.md` or `.txt` file path. Works offline for the fetch step. |
 | **Single binary** | No Node.js, Bun, or runtime required. |
 | **Web dashboard** | Local Next.js UI — overview stats, report browser, run checks, manage skills and settings, in-app docs. Start with `checkapp --ui`. |
@@ -203,6 +203,18 @@ Top match: ynet.co.il/articles/0,7340,L-4870486,00.html  76 words
 | 0 – 29% | ✍️ **HUMAN** | Content reads as human-written. |
 | 30 – 69% | 🔍 **MIXED** | Contains AI-like passages. Review highlighted sentences. |
 | 70%+ | 🤖 **AI-GENERATED** | High probability of AI authorship. Rewrite or disclose. |
+
+CheckApp supports two AI detection providers:
+
+| Provider | Languages | Cost | When used |
+|----------|-----------|------|-----------|
+| Copyscape AI | English only | ~$0.03/check | Default |
+| Gemini 2.0 Flash | All languages incl. Hebrew | ~$0.01/check | Auto-fallback for non-English · or set explicitly |
+
+When Copyscape returns an English-only error, CheckApp automatically retries with Gemini if `GEMINI_API_KEY` is set. To force Gemini for all checks, add to `~/.checkapp/config.json`:
+```json
+{ "providers": { "ai-detection": { "provider": "gemini-ai-detection" } } }
+```
 
 ### SEO (score out of 100)
 

@@ -29,6 +29,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Gemini 2.0 Flash AI detection provider** — multilingual AI detection via Gemini. Auto-activates when Copyscape returns an English-only error and `GEMINI_API_KEY` is set. Can be forced as default via `providers["ai-detection"].provider = "gemini-ai-detection"` in config. Cost ~$0.01/check vs $0.03 for Copyscape.
+- **Google Docs tab support** — `?tab=t.xxx` URLs now fetch the correct tab instead of always returning the first tab. Tab IDs are allowlist-validated (alphanumeric + dots + hyphens, max 64 chars). No Google auth required.
+
+### Fixed
+
+- AI detection no longer hard-fails with score 0 for non-English articles — falls back to Gemini (if `GEMINI_API_KEY` set) or returns `"skipped"` verdict which is excluded from the overall score.
+
 ### Changed
 
 - **Dependency majors**
