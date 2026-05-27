@@ -73,7 +73,8 @@ export function selectFactCheckSkill(
   hooks?: RunCheckHooks,
 ): { skill: Skill; selection: FactCheckSelection } {
   const flagOn = config.factCheckTierFlag === true;
-  const effectiveTier = flagOn ? (config.factCheckTier ?? "basic") : "basic";
+  const explicitGeminiGrounded = config.providers?.["fact-check"]?.provider === "gemini-grounded";
+  const effectiveTier = explicitGeminiGrounded ? "standard" : flagOn ? (config.factCheckTier ?? "basic") : "basic";
   const selection: FactCheckSelection = {
     flagOn,
     requestedTier: config.factCheckTier,

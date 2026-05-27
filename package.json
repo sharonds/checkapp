@@ -46,11 +46,12 @@
     "test:dashboard": "cd dashboard && bunx vitest run",
     "test:e2e:browser": "bun test tests/e2e/browser/*.test.ts",
     "test:e2e:live": "bun test tests/e2e/live/*.test.ts",
+    "test:gemini-grounded:scenarios": "bun run scripts/validate-gemini-grounded-scenarios.ts",
     "test:all": "bun run test && bun run test:dashboard",
     "check:registry": "bun run scripts/check-registry-parity.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.90.0",
+    "@anthropic-ai/sdk": "^0.99.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "exa-js": "^2.11.0",
     "ink": "^7",
@@ -65,5 +66,12 @@
     "@types/proper-lockfile": "^4.1.4",
     "@types/react": "^19.2",
     "bun-types": "latest"
+  },
+  "overrides": {
+    "fast-uri": "3.1.2",
+    "hono": "4.12.23",
+    "ip-address": "10.2.0",
+    "qs": "6.15.2",
+    "ws": "8.21.0"
   }
 }

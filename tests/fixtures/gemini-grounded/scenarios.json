@@ -1,0 +1,217 @@
+[
+  {
+    "id": "en-fact-supported",
+    "kind": "fact-check",
+    "language": "en",
+    "article": "articles/en-fact-supported.md",
+    "claims": [
+      {
+        "claim": "OpenAI announced GPT-4 in March 2023.",
+        "supported": true,
+        "note": "OpenAI's public GPT-4 materials support the March 2023 announcement date.",
+        "sources": ["https://openai.com/index/gpt-4-research/"]
+      }
+    ],
+    "expect": {
+      "provider": "gemini-grounded",
+      "verdict": "pass",
+      "minSources": 1,
+      "reportContains": ["Gemini 3 Pro Preview + Google Search", "OpenAI", "GPT-4"]
+    }
+  },
+  {
+    "id": "en-fact-false",
+    "kind": "fact-check",
+    "language": "en",
+    "article": "articles/en-fact-false.md",
+    "claims": [
+      {
+        "claim": "OpenAI announced GPT-4 in March 2021.",
+        "supported": false,
+        "note": "Grounded sources place the GPT-4 announcement in March 2023, not March 2021.",
+        "sources": ["https://openai.com/index/gpt-4-research/"]
+      }
+    ],
+    "expect": {
+      "provider": "gemini-grounded",
+      "verdict": "fail",
+      "minSources": 1,
+      "reportContains": ["Unsupported", "Gemini 3 Pro Preview + Google Search"]
+    }
+  },
+  {
+    "id": "en-fact-ambiguous",
+    "kind": "fact-check",
+    "language": "en",
+    "article": "articles/en-fact-ambiguous.md",
+    "claims": [
+      {
+        "claim": "Super-Pharm offers the best pharmacy shopping experience in Israel.",
+        "supported": null,
+        "note": "The claim is subjective and cannot be verified as a factual statement from grounded sources.",
+        "sources": []
+      }
+    ],
+    "expect": {
+      "provider": "gemini-grounded",
+      "verdict": "pass",
+      "minSources": 0,
+      "reportContains": ["Unverified", "best pharmacy"]
+    }
+  },
+  {
+    "id": "he-fact-supported",
+    "kind": "fact-check",
+    "language": "he",
+    "article": "articles/he-fact-supported.md",
+    "claims": [
+      {
+        "claim": "סופר-פארם נוסדה בישראל בשנת 1978.",
+        "supported": true,
+        "note": "מקורות ציבוריים תומכים בכך שסופר-פארם נוסדה בשנת 1978.",
+        "sources": ["https://www.ynet.co.il/articles/0,7340,L-4066088,00.html"]
+      }
+    ],
+    "expect": {
+      "provider": "gemini-grounded",
+      "verdict": "pass",
+      "minSources": 1,
+      "reportContains": ["Gemini 3 Pro Preview + Google Search", "1978"]
+    }
+  },
+  {
+    "id": "he-fact-false",
+    "kind": "fact-check",
+    "language": "he",
+    "article": "articles/he-fact-false.md",
+    "claims": [
+      {
+        "claim": "סופר-פארם נוסדה בישראל בשנת 1968.",
+        "supported": false,
+        "note": "המקורות מציינים את שנת 1978 ולא את 1968.",
+        "sources": ["https://www.ynet.co.il/articles/0,7340,L-4066088,00.html"]
+      }
+    ],
+    "expect": {
+      "provider": "gemini-grounded",
+      "verdict": "fail",
+      "minSources": 1,
+      "reportContains": ["Unsupported", "1968"]
+    }
+  },
+  {
+    "id": "en-plagiarism-exact",
+    "kind": "plagiarism",
+    "language": "en",
+    "article": "articles/en-plagiarism-exact.md",
+    "plagiarismResponse": {
+      "overallSimilarityPct": 74,
+      "verdict": "rewrite",
+      "confidence": "high",
+      "matches": [
+        {
+          "sourceUrl": "https://en.wikipedia.org/wiki/Super-Pharm",
+          "sourceTitle": "Super-Pharm - Wikipedia",
+          "matchedArticleText": "Super-Pharm is an Israeli multinational pharmacy chain. It also operates in Poland.",
+          "matchedSourceText": "Super-Pharm is an Israeli multinational pharmacy chain. It also operates in Poland.",
+          "similarityPct": 96,
+          "matchType": "exact",
+          "confidence": "high",
+          "explanation": "Exact copied public-source sentence."
+        }
+      ]
+    },
+    "expect": {
+      "provider": "gemini-grounded-plagiarism",
+      "verdict": "fail",
+      "minSources": 1,
+      "reportContains": ["Gemini Grounded Plagiarism", "high confidence", "Wikipedia"]
+    }
+  },
+  {
+    "id": "en-plagiarism-original",
+    "kind": "plagiarism",
+    "language": "en",
+    "article": "articles/en-plagiarism-original.md",
+    "plagiarismResponse": {
+      "overallSimilarityPct": 0,
+      "verdict": "publish",
+      "confidence": "low",
+      "matches": []
+    },
+    "expect": {
+      "provider": "gemini-grounded-plagiarism",
+      "verdict": "pass",
+      "minSources": 0,
+      "reportContains": ["0% grounded similarity", "Gemini Grounded Plagiarism"]
+    }
+  },
+  {
+    "id": "he-plagiarism-exact",
+    "kind": "plagiarism",
+    "language": "he",
+    "article": "articles/he-plagiarism-exact.md",
+    "plagiarismResponse": {
+      "overallSimilarityPct": 42,
+      "verdict": "rewrite",
+      "confidence": "medium",
+      "matches": [
+        {
+          "sourceUrl": "https://www.ynet.co.il/articles/0,7340,L-4066088,00.html",
+          "sourceTitle": "הערך המוסף של סופר-פארם ללקוחות - ynet",
+          "matchedArticleText": "סופר-פארם נוסדה בשנת 1978 על ידי משפחת קופלר.",
+          "matchedSourceText": "סופר-פארם נוסדה בשנת 1978 על ידי משפחת קופלר.",
+          "similarityPct": 92,
+          "matchType": "exact",
+          "confidence": "medium",
+          "explanation": "Exact Hebrew public-source sentence."
+        }
+      ]
+    },
+    "expect": {
+      "provider": "gemini-grounded-plagiarism",
+      "verdict": "fail",
+      "minSources": 1,
+      "reportContains": ["Gemini Grounded Plagiarism", "ynet", "medium confidence"]
+    }
+  },
+  {
+    "id": "he-plagiarism-paraphrase",
+    "kind": "plagiarism",
+    "language": "he",
+    "article": "articles/he-plagiarism-paraphrase.md",
+    "plagiarismResponse": {
+      "overallSimilarityPct": 12,
+      "verdict": "publish",
+      "confidence": "low",
+      "matches": []
+    },
+    "expect": {
+      "provider": "gemini-grounded-plagiarism",
+      "verdict": "pass",
+      "minSources": 0,
+      "reportContains": ["0 source", "Gemini Grounded Plagiarism"]
+    },
+    "confidenceNote": "Expected miss/low-confidence area: translated or paraphrased Hebrew plagiarism is not treated as reliably detected."
+  },
+  {
+    "id": "mixed-he-en",
+    "kind": "fact-check",
+    "language": "mixed",
+    "article": "articles/mixed-he-en.md",
+    "claims": [
+      {
+        "claim": "Super-Pharm was founded in Israel in 1978.",
+        "supported": true,
+        "note": "Grounded sources support the 1978 founding date.",
+        "sources": ["https://www.ynet.co.il/articles/0,7340,L-4066088,00.html"]
+      }
+    ],
+    "expect": {
+      "provider": "gemini-grounded",
+      "verdict": "pass",
+      "minSources": 1,
+      "reportContains": ["Gemini 3 Pro Preview + Google Search", "1978"]
+    }
+  }
+]

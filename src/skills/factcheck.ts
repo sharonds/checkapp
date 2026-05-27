@@ -30,7 +30,6 @@ export function formatCitation(url: string): string {
 }
 
 export function claimConfidence(sourceCount: number, supported: boolean | null): "high" | "medium" | "low" {
-  if (supported === false) return "low";
   if (supported === null) return "low";
   if (sourceCount >= 3) return "high";
   if (sourceCount >= 1) return "medium";
@@ -184,8 +183,6 @@ Reply with JSON:
     const sourceCountMap = new Map(claimResults.map(cr => [cr.claim, cr.results.length]));
 
     for (const { claim, supported, note, claimType } of assessments) {
-      const sourceCount = sourceCountMap.get(claim) ?? 0;
-      const confidence = claimConfidence(sourceCount, supported);
       const sources = claimResults.find(cr => cr.claim === claim)?.results ?? [];
       const sourceList = sources.slice(0, 3).map((r) => ({
         url: r.url,
@@ -193,11 +190,18 @@ Reply with JSON:
         publishedDate: r.publishedDate ?? undefined,
         quote: (r.highlights ?? [])[0],
       }));
+      const sourceCount = sourceList.length;
+      const effectiveSupported = sourceCount === 0 && supported === true ? null : supported;
+      const confidence = claimConfidence(sourceCount, effectiveSupported);
       const base = { sources: sourceList, confidence, claimType };
-      if (supported === false) {
+      if (effectiveSupported === false) {
         findings.push({ severity: "error", text: `Unsupported (${confidence} confidence): "${claim}" — ${note}`, ...base });
-      } else if (supported === null) {
-        findings.push({ severity: "warn", text: `Unverified (${confidence} confidence): "${claim}" — ${note}`, ...base });
+      } else if (effectiveSupported === null) {
+        findings.push({
+          severity: "warn",
+          text: `Unverified (${confidence} confidence): "${claim}" — ${sourceCount === 0 ? "No evidence source URL was returned." : note}`,
+          ...base,
+        });
       } else {
         const citations = sources.slice(0, 2).map(r => formatCitation(r.url)).join(", ");
         findings.push({

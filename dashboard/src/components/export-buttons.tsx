@@ -2,19 +2,27 @@
 
 import { Download } from "lucide-react";
 import { formatDateTime, formatNumber } from "@/lib/format";
+import { sanitizeHttpReportUrl } from "../../../shared/report-url";
 
 interface SkillResult {
   name: string;
   score: number;
   verdict: string;
   summary: string;
-  findings: Array<{ severity: string; text: string; quote?: string }>;
+  provider?: string;
+  findings: Array<{
+    severity: string;
+    text: string;
+    quote?: string;
+    confidence?: string;
+    sources?: Array<{ url: string; title?: string }>;
+  }>;
   costUsd: number;
 }
 
 interface ExportButtonsProps {
   source: string;
-  score: number;
+  score: number | null;
   verdict: string;
   wordCount: number;
   totalCost: number;
@@ -22,26 +30,27 @@ interface ExportButtonsProps {
   results: SkillResult[];
 }
 
-function generateMarkdown(props: ExportButtonsProps): string {
+export function generateMarkdown(props: ExportButtonsProps): string {
   const lines: string[] = [];
   lines.push(`# Article Check Report`);
   lines.push("");
   lines.push(`**Source:** ${props.source}`);
   lines.push(`**Date:** ${formatDateTime(props.createdAt)}`);
-  lines.push(`**Score:** ${props.score}/100 (${props.verdict.toUpperCase()})`);
+  lines.push(`**Score:** ${formatScore(props.score)} (${String(props.verdict ?? "").toUpperCase()})`);
   lines.push(`**Word Count:** ${formatNumber(props.wordCount)}`);
-  lines.push(`**Total Cost:** $${props.totalCost.toFixed(4)}`);
+  lines.push(`**Total Cost:** ${formatCurrency(props.totalCost)}`);
   lines.push("");
 
   for (const r of props.results) {
     lines.push(`## ${r.name}`);
     lines.push("");
-    lines.push(`- **Score:** ${r.score}/100 (${r.verdict})`);
+    lines.push(`- **Score:** ${formatScore(r.score)} (${r.verdict})`);
+    if (r.provider) lines.push(`- **Provider:** ${r.provider}`);
     lines.push(`- **Summary:** ${r.summary}`);
-    lines.push(`- **Cost:** $${r.costUsd.toFixed(4)}`);
+    lines.push(`- **Cost:** ${formatCurrency(r.costUsd)}`);
 
     const issues = r.findings.filter(
-      (f) => f.severity === "warn" || f.severity === "error"
+      (f) => f.severity === "warn" || f.severity === "error" || (f.sources?.length ?? 0) > 0
     );
     if (issues.length > 0) {
       lines.push("");
@@ -54,6 +63,14 @@ function generateMarkdown(props: ExportButtonsProps): string {
         if (f.quote) {
           lines.push(`  > ${f.quote}`);
         }
+        if (f.confidence) {
+          lines.push(`  Confidence: ${f.confidence}`);
+        }
+        for (const source of f.sources?.slice(0, 3) ?? []) {
+          const safeUrl = sanitizeHttpReportUrl(source.url);
+          const label = escapeMarkdownLabel(source.title ?? source.url);
+          lines.push(safeUrl ? `  Source: [${label}](${safeUrl})` : `  Source: ${label}`);
+        }
       }
     }
     lines.push("");
@@ -62,37 +79,91 @@ function generateMarkdown(props: ExportButtonsProps): string {
   return lines.join("\n");
 }
 
-function generateHtml(props: ExportButtonsProps): string {
-  const md = generateMarkdown(props);
-  // Simple markdown-to-HTML conversion for export
-  const html = md
-    .replace(/^### (.+)$/gm, "<h3>$1</h3>")
-    .replace(/^## (.+)$/gm, "<h2>$1</h2>")
-    .replace(/^# (.+)$/gm, "<h1>$1</h1>")
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/^- (.+)$/gm, "<li>$1</li>")
-    .replace(/^  > (.+)$/gm, "<blockquote>$1</blockquote>")
-    .replace(/\n\n/g, "\n<br/>\n");
+export function generateHtml(props: ExportButtonsProps): string {
+  const sections = props.results.map((r) => {
+    const issues = r.findings.filter(
+      (f) => f.severity === "warn" || f.severity === "error" || (f.sources?.length ?? 0) > 0
+    );
+    const findings = issues.length === 0 ? "" : `
+      <h3>Findings</h3>
+      <ul>
+        ${issues.map((f) => `
+          <li>
+            <strong>${f.severity === "error" ? "[ERROR]" : "[WARN]"}</strong> ${escapeHtml(f.text)}
+            ${f.quote ? `<blockquote>${escapeHtml(f.quote)}</blockquote>` : ""}
+            ${f.confidence ? `<div>Confidence: ${escapeHtml(f.confidence)}</div>` : ""}
+            ${(f.sources?.slice(0, 3) ?? []).map((source) => {
+              const safeUrl = sanitizeHttpReportUrl(source.url);
+              const label = escapeHtml(source.title ?? source.url);
+              return safeUrl
+                ? `<div>Source: <a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer">${label}</a></div>`
+                : `<div>Source: ${label}</div>`;
+            }).join("")}
+          </li>`).join("")}
+      </ul>`;
+
+    return `
+      <section>
+        <h2>${escapeHtml(r.name)}</h2>
+        <ul>
+          <li><strong>Score:</strong> ${escapeHtml(formatScore(r.score))} (${escapeHtml(r.verdict)})</li>
+          ${r.provider ? `<li><strong>Provider:</strong> ${escapeHtml(r.provider)}</li>` : ""}
+          <li><strong>Summary:</strong> ${escapeHtml(r.summary)}</li>
+          <li><strong>Cost:</strong> ${escapeHtml(formatCurrency(r.costUsd))}</li>
+        </ul>
+        ${findings}
+      </section>`;
+  }).join("");
 
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" dir="auto">
 <head>
 <meta charset="UTF-8">
-<title>Article Check Report — ${props.source}</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<title>Article Check Report — ${escapeHtml(props.source)}</title>
 <style>
   body { font-family: system-ui, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; line-height: 1.6; color: #1a1a1a; }
   h1 { border-bottom: 2px solid #e5e7eb; padding-bottom: 0.5rem; }
   h2 { margin-top: 2rem; color: #374151; }
   h3 { color: #6b7280; }
+  section { margin-top: 2rem; }
   li { margin: 0.25rem 0; }
   blockquote { border-left: 3px solid #d1d5db; padding-left: 1rem; color: #6b7280; font-style: italic; margin: 0.5rem 0; }
   strong { font-weight: 600; }
+  a { color: #2563eb; }
 </style>
 </head>
 <body>
-${html}
+<h1>Article Check Report</h1>
+<p><strong>Source:</strong> ${escapeHtml(props.source)}</p>
+<p><strong>Date:</strong> ${escapeHtml(formatDateTime(props.createdAt))}</p>
+<p><strong>Score:</strong> ${escapeHtml(formatScore(props.score))} (${escapeHtml(String(props.verdict ?? "").toUpperCase())})</p>
+<p><strong>Word Count:</strong> ${escapeHtml(formatNumber(props.wordCount))}</p>
+<p><strong>Total Cost:</strong> ${escapeHtml(formatCurrency(props.totalCost))}</p>
+${sections}
 </body>
 </html>`;
+}
+
+function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function formatScore(score: unknown): string {
+  return typeof score === "number" && Number.isFinite(score) ? `${score}/100` : "N/A";
+}
+
+function formatCurrency(value: unknown): string {
+  return typeof value === "number" && Number.isFinite(value) ? `$${value.toFixed(4)}` : "N/A";
+}
+
+function escapeMarkdownLabel(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/\]/g, "\\]").replace(/\[/g, "\\[");
 }
 
 function downloadFile(content: string, filename: string, mimeType: string) {

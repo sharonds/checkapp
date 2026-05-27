@@ -326,7 +326,7 @@ export default function SettingsPage() {
               />
               <p className="text-sm text-muted-foreground">
                 {factCheckTierFlag
-                  ? `Fact-check routing is enabled. The runtime will use ${factCheckTier === "premium" ? "Deep Audit" : factCheckTier === "standard" ? "Standard" : "Basic"}.`
+                  ? `Fact-check routing is enabled. The runtime will use ${factCheckTier === "premium" ? "Basic sync plus optional async Deep Audit from saved reports" : factCheckTier === "standard" ? "Standard" : "Basic"}.`
                   : "Fact-check routing is disabled. The runtime will use Basic until you opt in."}
               </p>
               {!factCheckTierFlag && typeof config.factCheckTier === "string" && config.factCheckTier !== "basic" && (

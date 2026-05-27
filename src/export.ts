@@ -2,16 +2,33 @@ import type { CheckRecord } from "./db.ts";
 import type { SkillResult } from "./skills/types.ts";
 import { generateReport } from "./report.ts";
 import { writeFileSync } from "fs";
+import { formatScore, formatSkillScore, summarizeResults } from "./output-summary.ts";
+import { escapeMarkdownLabel, safeReportUrl } from "./report-sanitize.ts";
 
-const VERDICT_ICON: Record<string, string> = { pass: "✅", warn: "⚠️", fail: "❌" };
+const VERDICT_ICON: Record<string, string> = { pass: "✅", warn: "⚠️", fail: "❌", skipped: "–" };
 const SEVERITY_ICON: Record<string, string> = { info: "ℹ️", warn: "⚠️", error: "❌" };
+const PROVIDER_LABEL: Record<string, string> = {
+  copyscape: "Copyscape",
+  "gemini-ai-detection": "Gemini AI Detection",
+  "gemini-grounded-plagiarism": "Gemini Grounded Plagiarism",
+  "gemini-grounded": "Gemini 3 Pro Preview + Google Search",
+  "gemini-deep-research": "Gemini Deep Research",
+  "exa-search": "Exa Search",
+  "exa-deep-reasoning": "Exa Deep Reasoning",
+  minimax: "MiniMax",
+  anthropic: "Anthropic",
+  openrouter: "OpenRouter",
+  languagetool: "LanguageTool",
+  "languagetool-selfhosted": "LanguageTool self-hosted",
+  "semantic-scholar": "Semantic Scholar",
+  openalex: "OpenAlex",
+  "cloudflare-vectorize": "Cloudflare Vectorize",
+  pinecone: "Pinecone",
+  "upstash-vector": "Upstash Vector",
+};
 
 export function generateMarkdownReport(record: Omit<CheckRecord, "id" | "createdAt"> & { createdAt?: string }): string {
-  const overallScore = record.results.length > 0
-    ? Math.round(record.results.reduce((s, r) => s + r.score, 0) / record.results.length)
-    : 0;
-  const overallVerdict = record.results.some(r => r.verdict === "fail") ? "fail"
-    : record.results.some(r => r.verdict === "warn") ? "warn" : "pass";
+  const overall = summarizeResults(record.results);
   const now = record.createdAt ?? new Date().toISOString().slice(0, 16);
 
   let md = `# CheckApp Report\n\n`;
@@ -19,17 +36,23 @@ export function generateMarkdownReport(record: Omit<CheckRecord, "id" | "created
   md += `**Words:** ${record.wordCount.toLocaleString()}\n`;
   md += `**Date:** ${now}\n`;
   md += `**API cost:** $${record.totalCostUsd.toFixed(3)}\n`;
-  md += `**Overall:** ${overallScore}/100 ${VERDICT_ICON[overallVerdict] ?? ""} ${overallVerdict.toUpperCase()}\n\n`;
+  md += `**Overall:** ${formatScore(overall.score)} ${VERDICT_ICON[overall.verdict] ?? ""} ${overall.verdict.toUpperCase()}\n\n`;
   md += `---\n\n`;
 
   for (const r of record.results) {
-    md += `## ${VERDICT_ICON[r.verdict] ?? ""} ${r.name} — ${r.score}/100 ${r.verdict.toUpperCase()}\n\n`;
+    md += `## ${VERDICT_ICON[r.verdict] ?? ""} ${r.name} — ${formatSkillScore(r)} ${r.verdict.toUpperCase()}\n\n`;
+    if (r.provider) md += `**Provider:** ${PROVIDER_LABEL[r.provider] ?? r.provider}\n\n`;
     md += `${r.summary}\n\n`;
-    const visible = r.findings.filter(f => f.severity === "warn" || f.severity === "error");
+    const visible = r.findings.filter(f => f.severity === "warn" || f.severity === "error" || (f.sources?.length ?? 0) > 0);
     if (visible.length > 0) {
       for (const f of visible) {
         md += `- ${SEVERITY_ICON[f.severity] ?? ""} ${f.text}\n`;
         if (f.quote) md += `  > "${f.quote.slice(0, 140)}${f.quote.length > 140 ? "…" : ""}"\n`;
+        for (const source of f.sources?.slice(0, 2) ?? []) {
+          const safeUrl = safeReportUrl(source.url);
+          const label = escapeMarkdownLabel(source.title ?? source.url);
+          md += safeUrl ? `  Source: [${label}](${safeUrl})\n` : `  Source: ${label}\n`;
+        }
       }
       md += `\n`;
     }

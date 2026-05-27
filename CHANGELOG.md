@@ -29,6 +29,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Gemini Grounded Plagiarism provider** — selectable plagiarism provider using Gemini 3 Pro Preview with Google Search grounding, URL context, structured output, and source-confidence evidence. Copyscape remains the default; users can explicitly select Gemini or configure `providers.plagiarism.extra.fallbackProvider = "gemini-grounded-plagiarism"` for Copyscape skipped states.
+- **Gemini 3 Pro Preview AI detection provider** — multilingual AI detection via Gemini. Set as default via `providers["ai-detection"].provider = "gemini-ai-detection"` in `~/.checkapp/config.json` and provide `GEMINI_API_KEY`, `geminiApiKey`, or `providers["ai-detection"].apiKey`. CheckApp records an in-app estimate of about $0.01/check; Copyscape remains the default at about $0.03/check.
+- **Google Docs tab support** — `?tab=t.xxx` URLs now fetch the correct tab instead of always returning the first tab. Tab IDs are allowlist-validated (alphanumeric + dots + hyphens, max 64 chars). No Google auth required.
+
+### Fixed
+
+- Standard fact-check tier now consistently runs Gemini grounded fact-check even if the saved fact-check provider is still Exa, dashboard readiness asks for Gemini in that mode, and HTML/Markdown reports show the Gemini grounded provider and source evidence.
+- Dashboard saved reports now preserve stored fail/warn/pass verdicts instead of recomputing them from score, so a single unsupported fact-check claim with a 75 score still renders as fail.
+- Gemini grounded fact-check and Basic Exa fact-check now downgrade `supported: true` assessments to unverified when no source URL is attached.
+- Gemini grounded plagiarism now counts only source URLs present in Gemini grounding metadata; ungrounded or unsafe URLs no longer affect similarity or verdict.
+- Report exports now include verified info-level source evidence, sanitize unsafe source URLs, and disclose providers in generated Markdown/HTML.
+- AI detection returns `"skipped"` (excluded from overall score) for non-English content when Copyscape is the active provider, instead of hard-failing with score 0. Configure `gemini-ai-detection` as the provider to handle non-English articles.
+- Copyscape insufficient-credits error now maps to `"skipped"` verdict (billing issue) rather than `"fail"` (content quality failure).
+- `"skipped"` results are now excluded from overall score averaging in HTML report, Markdown export, and CLI summary.
+
+### Security
+
+- Dashboard `next` upgraded 16.2.4 → 16.2.6 (patches 13 CVEs: middleware bypass, cache poisoning, DoS via connection exhaustion, CSP nonce leak, SSRF via WebSocket upgrade).
+- CLI `@anthropic-ai/sdk` upgraded ^0.90 → ^0.99 (patches insecure default file permissions in local filesystem memory tool).
+
 ### Changed
 
 - **Dependency majors**

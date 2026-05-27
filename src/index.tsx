@@ -6,6 +6,7 @@ import { openDb, queryRecent } from "./db.ts";
 import { runBatch } from "./batch.ts";
 import { resolveProvider } from "./providers/resolve.ts";
 import type { Finding } from "./skills/types.ts";
+import { formatCiOverallStatus, formatCiVerdict, formatScore, formatSkillScore, shouldCiExitNonZero, summarizeResults } from "./output-summary.ts";
 
 const args = process.argv.slice(2);
 const forceSetup = args.includes("--setup");
@@ -205,16 +206,14 @@ async function main() {
         console.log(`\nCheckApp — ${result.source}`);
         console.log(`Words: ${result.wordCount} | Cost: $${result.totalCostUsd.toFixed(3)}\n`);
         for (const r of result.results) {
-          const icon = r.verdict === "pass" ? "PASS" : r.verdict === "warn" ? "WARN" : "FAIL";
-          console.log(`  ${icon}  ${r.name}: ${r.score}/100 — ${r.summary}`);
+          const icon = formatCiVerdict(r.verdict);
+          console.log(`  ${icon}  ${r.name}: ${formatSkillScore(r)} — ${r.summary}`);
         }
-        const overall = Math.round(result.results.reduce((s, r) => s + r.score, 0) / (result.results.length || 1));
-        const hasFail = result.results.some(r => r.verdict === "fail");
-        console.log(`\nOverall: ${overall}/100 ${hasFail ? "FAILED" : "PASSED"}`);
+        const overall = summarizeResults(result.results);
+        console.log(`\nOverall: ${formatScore(overall.score)} ${formatCiOverallStatus(overall)}`);
       }
 
-      const hasFail = result.results.some(r => r.verdict === "fail");
-      process.exit(hasFail ? 1 : 0);
+      process.exit(shouldCiExitNonZero(summarizeResults(result.results)) ? 1 : 0);
     } catch (err) {
       console.error("Check failed:", err instanceof Error ? err.message : err);
       process.exit(2);
@@ -284,12 +283,10 @@ async function main() {
 
     console.log(`\nLast ${rows.length} checks:\n`);
     for (const row of rows) {
-      const overall = row.results.length > 0
-        ? Math.round(row.results.reduce((s, r) => s + r.score, 0) / row.results.length)
-        : 0;
-      const verdict = row.results.some(r => r.verdict === "fail") ? "❌"
-        : row.results.some(r => r.verdict === "warn") ? "⚠️ " : "✅";
-      console.log(`  ${verdict}  ${row.createdAt}  ${row.source}  (${overall}/100, $${row.totalCostUsd.toFixed(3)})`);
+      const overall = summarizeResults(row.results);
+      const verdict = overall.verdict === "fail" ? "❌"
+        : overall.verdict === "warn" ? "⚠️ " : overall.verdict === "skipped" ? "–" : "✅";
+      console.log(`  ${verdict}  ${row.createdAt}  ${row.source}  (${formatScore(overall.score)}, $${row.totalCostUsd.toFixed(3)})`);
     }
     console.log("");
     process.exit(0);

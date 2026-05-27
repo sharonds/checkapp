@@ -11,6 +11,7 @@ import { ScoreRing } from "./score-ring";
 import { VerdictBadge } from "./verdict-badge";
 import { ClaimDrillDown } from "./ClaimDrillDown";
 import type { Finding } from "@/lib/normalize";
+import { getProvider, type SkillId } from "@/lib/providers";
 
 const ENGINE_MAP: Record<string, string> = {
   plagiarism: "Copyscape",
@@ -35,10 +36,14 @@ export interface SkillResult {
   summary: string;
   findings: Finding[];
   costUsd: number;
+  provider?: string;
 }
 
 export function SkillCard({ result }: { result: SkillResult }) {
-  const engine = ENGINE_MAP[result.skillId] ?? "Unknown";
+  const providerSkillId = result.skillId === "fact-check-grounded" ? "fact-check" : result.skillId;
+  const engine = result.provider
+    ? getProvider(providerSkillId as SkillId, result.provider)?.label ?? result.provider
+    : ENGINE_MAP[result.skillId] ?? "Unknown";
   const visibleFindings = result.findings.filter(
     (f) => f.severity === "info" || f.severity === "warn" || f.severity === "error"
   );

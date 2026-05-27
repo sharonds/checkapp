@@ -37,7 +37,7 @@ All three tiers covered as of 2026-04-22:
 | Test | Wall time | Cost | Provider |
 |---|---|---|---|
 | `basic-live.test.ts` | ~50s | ~$0.05 | Exa + MiniMax |
-| `standard-live.test.ts` | ~140s | ~$0.20 | Gemini 3.1 Pro + Google Search |
+| `standard-live.test.ts` | ~140s | ~$0.20 | Gemini 3 Pro Preview + Google Search |
 | `premium-live.test.ts` | 5–15 min | ~$1.50 | Gemini Deep Research |
 
 Total ~$1.75 and ~20 min for a full live run. Keep runs rare.

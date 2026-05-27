@@ -20,14 +20,6 @@ function getVerdict(score: number): "pass" | "warn" | "fail" {
   return "fail";
 }
 
-function resolveVerdict(normalizedVerdict: Verdict, score: number): Verdict {
-  // Preserve 'skipped' from the stored skill result — it's the neutral
-  // 'not configured / not applicable' state and must not be recomputed
-  // from a zero score (which would render as FAIL).
-  if (normalizedVerdict === "skipped") return "skipped";
-  return getVerdict(score);
-}
-
 export default async function ReportDetailPage({
   params,
 }: {
@@ -74,10 +66,11 @@ export default async function ReportDetailPage({
           skillId: n.skillId || "unknown",
           name: n.name || "Unknown Skill",
           score: n.score,
-          verdict: resolveVerdict(n.verdict, n.score),
+          verdict: n.verdict,
           summary: n.summary,
           findings: n.findings,
           costUsd: n.costUsd,
+          provider: n.provider,
         };
       });
     }
@@ -95,8 +88,13 @@ export default async function ReportDetailPage({
     scores.length > 0
       ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
       : 0;
-  // If every skill was skipped, don't show FAIL — show 'skipped' as the overall state.
-  const verdict: Verdict = allSkipped ? "skipped" : getVerdict(avgScore);
+  const verdict: Verdict = allSkipped
+    ? "skipped"
+    : scoredResults.some((r) => r.verdict === "fail")
+      ? "fail"
+      : scoredResults.some((r) => r.verdict === "warn")
+        ? "warn"
+        : getVerdict(avgScore);
 
   const dateStr = formatDateTime(check.createdAt);
 
@@ -140,9 +138,9 @@ export default async function ReportDetailPage({
 
             {/* Export buttons */}
             <ExportButtons
-              source={check.source}
-              score={avgScore}
-              verdict={verdict}
+          source={check.source}
+          score={allSkipped ? null : avgScore}
+          verdict={verdict}
               wordCount={check.wordCount}
               totalCost={check.totalCost}
               createdAt={check.createdAt}

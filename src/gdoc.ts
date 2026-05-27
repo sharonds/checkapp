@@ -1,16 +1,5 @@
-/**
- * Fetches plain text from a Google Doc or reads a local file.
- *
- * Google Docs: works automatically when the doc is shared publicly.
- * Local files: pass an absolute path (/path/to/file.md), relative path
- * (./file.md, ../file.md), or any path ending in .md or .txt.
- */
 import { readFile } from "fs/promises";
 
-/**
- * Returns true when the argument looks like a local file path rather than
- * a Google Doc URL or raw Doc ID.
- */
 export function isLocalPath(input: string): boolean {
   const lower = input.toLowerCase();
   return (
@@ -23,17 +12,9 @@ export function isLocalPath(input: string): boolean {
 }
 
 export function extractDocId(url: string): string {
-  // Handles formats:
-  //   https://docs.google.com/document/d/DOC_ID/edit
-  //   https://docs.google.com/document/d/DOC_ID/view
-  //   https://docs.google.com/document/d/DOC_ID
-  //   DOC_ID (raw ID passed directly)
   const match = url.match(/\/document\/d\/([a-zA-Z0-9_-]+)/);
   if (match) return match[1];
-
-  // If no URL pattern matched, treat the whole string as a raw Doc ID
   if (/^[a-zA-Z0-9_-]{20,}$/.test(url)) return url;
-
   throw new Error(
     `Could not extract a Google Doc ID from: "${url}"\n` +
       `Make sure you paste the full URL, e.g.:\n` +
@@ -41,8 +22,39 @@ export function extractDocId(url: string): string {
   );
 }
 
+// Returns the tab ID (e.g. "t.rqhjvmdg4l1h") when present and safe,
+// undefined otherwise. Only alphanumeric chars, dots, and hyphens are allowed.
+export function extractTabId(url: string): string | undefined {
+  try {
+    const parsed = new URL(url);
+    const tab = parsed.searchParams.get("tab");
+    if (!tab) return undefined;
+    if (!/^[a-zA-Z0-9.-]{1,64}$/.test(tab)) return undefined;
+    return tab;
+  } catch {
+    return undefined;
+  }
+}
+
+function getRequestedTabId(input: string): string | undefined {
+  try {
+    const parsed = new URL(input);
+    const tab = parsed.searchParams.get("tab");
+    if (!tab) return undefined;
+    const safeTab = extractTabId(input);
+    if (!safeTab) {
+      throw new Error(
+        "Invalid Google Docs tab ID. Expected 1-64 characters using only letters, numbers, dots, and hyphens."
+      );
+    }
+    return safeTab;
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("Invalid Google Docs tab ID")) throw err;
+    return undefined;
+  }
+}
+
 export async function fetchGoogleDoc(input: string): Promise<string> {
-  // Check if input is a local file path
   if (isLocalPath(input)) {
     try {
       const raw = await readFile(input, "utf-8");
@@ -54,13 +66,17 @@ export async function fetchGoogleDoc(input: string): Promise<string> {
     }
   }
 
-  // Otherwise, treat as Google Doc URL or ID
   const docId = extractDocId(input);
-  const exportUrl = `https://docs.google.com/document/d/${docId}/export?format=txt`;
+  const tabId = getRequestedTabId(input);
 
-  const response = await fetch(exportUrl, {
+  const exportUrl = new URL(
+    `https://docs.google.com/document/d/${docId}/export`
+  );
+  exportUrl.searchParams.set("format", "txt");
+  if (tabId) exportUrl.searchParams.set("tab", tabId);
+
+  const response = await fetch(exportUrl.toString(), {
     headers: {
-      // Mimic a browser request so Google doesn't redirect to a login page
       "User-Agent":
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
     },
@@ -81,7 +97,6 @@ export async function fetchGoogleDoc(input: string): Promise<string> {
 
   const text = await response.text();
 
-  // Detect Google login redirect page (returned as 200 with HTML)
   if (text.trim().startsWith("<!DOCTYPE") || text.trim().startsWith("<html")) {
     throw new Error(
       `The document is private and requires login.\n\n` +
@@ -95,9 +110,9 @@ export async function fetchGoogleDoc(input: string): Promise<string> {
 
 function cleanText(raw: string): string {
   return raw
-    .replace(/\r\n/g, "\n") // normalise line endings
+    .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n")
-    .replace(/\n{3,}/g, "\n\n") // collapse excessive blank lines
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
 

@@ -13,7 +13,7 @@ export interface CopyscapeResult {
   matchedWords: number;
   similarityPct: number;
   matches: CopyscapeMatch[];
-  verdict: "publish" | "review" | "rewrite";
+  verdict: "publish" | "review" | "rewrite" | "skipped";
   error?: string;
 }
 
@@ -63,7 +63,7 @@ function parseResponse(xml: string): CopyscapeResult {
         matchedWords: 0,
         similarityPct: 0,
         matches: [],
-        verdict: "publish",
+        verdict: "skipped",
         error: `Copyscape credits insufficient. Top up at copyscape.com → My Account.`,
       };
     }

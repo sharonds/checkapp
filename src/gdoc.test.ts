@@ -1,6 +1,6 @@
 import { test, expect, describe } from "bun:test";
 import { writeFileSync, unlinkSync } from "fs";
-import { isLocalPath, fetchGoogleDoc } from "./gdoc.ts";
+import { isLocalPath, fetchGoogleDoc, extractTabId } from "./gdoc.ts";
 
 describe("isLocalPath", () => {
   test("absolute path is local", () => {
@@ -41,6 +41,44 @@ describe("isLocalPath", () => {
     expect(isLocalPath("1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms")).toBe(
       false
     );
+  });
+});
+
+describe("extractTabId", () => {
+  test("extracts tab ID from full edit URL", () => {
+    expect(
+      extractTabId("https://docs.google.com/document/d/ABC123/edit?tab=t.rqhjvmdg4l1h")
+    ).toBe("t.rqhjvmdg4l1h");
+  });
+
+  test("extracts tab ID when other params precede it", () => {
+    expect(
+      extractTabId("https://docs.google.com/document/d/ABC123/edit?usp=sharing&tab=t.uc7dsy1o4jzm")
+    ).toBe("t.uc7dsy1o4jzm");
+  });
+
+  test("returns undefined when no tab param", () => {
+    expect(
+      extractTabId("https://docs.google.com/document/d/ABC123/edit")
+    ).toBeUndefined();
+  });
+
+  test("returns undefined for local file path", () => {
+    expect(extractTabId("./article.md")).toBeUndefined();
+  });
+
+  test("rejects tab ID with path-traversal characters", () => {
+    expect(
+      extractTabId("https://docs.google.com/document/d/ABC123/edit?tab=../evil")
+    ).toBeUndefined();
+  });
+});
+
+describe("fetchGoogleDoc tab validation", () => {
+  test("throws instead of falling back to the default tab when tab param is invalid", async () => {
+    await expect(
+      fetchGoogleDoc("https://docs.google.com/document/d/ABC12345678901234567890/edit?tab=../evil")
+    ).rejects.toThrow("Invalid Google Docs tab ID");
   });
 });
 

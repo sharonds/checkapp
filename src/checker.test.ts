@@ -110,6 +110,12 @@ describe("runCheckHeadless", () => {
       config.skills.factCheck = true;
       config.factCheckTierFlag = true;
       config.factCheckTier = "standard";
+      config.exaApiKey = undefined;
+      config.geminiApiKey = undefined;
+      config.minimaxApiKey = undefined;
+      config.anthropicApiKey = undefined;
+      config.openrouterApiKey = undefined;
+      config.providers = undefined;
 
       await runCheckHeadless("telemetry-source", {
         text: "Claim without supporting context.",
@@ -174,6 +180,22 @@ describe("fact-check tier routing", () => {
     config.skills.factCheck = true;
     config.factCheckTierFlag = true;
     config.factCheckTier = "standard";
+
+    const selection = selectFactCheckSkill(config).selection;
+    const skills = buildSkills(config);
+
+    expect(selection.effectiveTier).toBe("standard");
+    expect(selection.selectedImplementation).toBe("grounded");
+    expect(selection.selectedSkillId).toBe("fact-check-grounded");
+    expect(skills.map((skill) => skill.id)).toContain("fact-check-grounded");
+    expect(skills.map((skill) => skill.id)).not.toContain("fact-check");
+  });
+
+  it("routes explicit gemini-grounded provider to grounded fact-check even when tier flag is off", () => {
+    const config = buildBaseConfig();
+    config.skills.factCheck = true;
+    config.factCheckTierFlag = false;
+    config.providers = { "fact-check": { provider: "gemini-grounded", apiKey: "gemini-key" } };
 
     const selection = selectFactCheckSkill(config).selection;
     const skills = buildSkills(config);

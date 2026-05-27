@@ -9,6 +9,7 @@ import { generateReport } from "./report.ts";
 import { writeFileSync } from "fs";
 import type { SkillResult } from "./skills/types.ts";
 import { exportReport } from "./export.ts";
+import { formatScore, formatSkillScore, summarizeResults } from "./output-summary.ts";
 
 type Phase =
   | { name: "reading" }
@@ -27,11 +28,7 @@ function Report({ results, words, reportPath, totalCostUsd }: {
   reportPath: string;
   totalCostUsd: number;
 }) {
-  const scored = results.filter(r => r.verdict !== "skipped");
-  const overallVerdict = scored.some(r => r.verdict === "fail") ? "fail"
-    : scored.some(r => r.verdict === "warn") ? "warn" : "pass";
-  const overallScore = scored.length === 0 ? 0
-    : Math.round(scored.reduce((s, r) => s + r.score, 0) / scored.length);
+  const overall = summarizeResults(results);
 
   return (
     <Box flexDirection="column" paddingY={1}>
@@ -44,13 +41,13 @@ function Report({ results, words, reportPath, totalCostUsd }: {
             <Text color={VERDICT_COLOR[r.verdict]}>{VERDICT_ICON[r.verdict]}</Text>
             <Text bold>{r.name}:</Text>
             <Text>{r.summary}</Text>
-            <Text dimColor>({r.score}/100)</Text>
+            <Text dimColor>({formatSkillScore(r)})</Text>
           </Box>
         ))}
       </Box>
       <Text dimColor>{DIVIDER}</Text>
-      <Text color={VERDICT_COLOR[overallVerdict]} bold>
-        Overall: {overallScore}/100
+      <Text color={VERDICT_COLOR[overall.verdict]} bold>
+        Overall: {formatScore(overall.score)}
       </Text>
       <Text dimColor>Report: {reportPath}</Text>
       <Text dimColor>{DIVIDER}</Text>

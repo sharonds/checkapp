@@ -27,4 +27,38 @@ describe("SkillCard", () => {
     expect(infoFinding?.textContent).toContain("hint");
     expect(warnFinding?.textContent).toContain("issue");
   });
+
+  it("renders the stored provider label when available", () => {
+    const result: SkillResult = {
+      skillId: "ai-detection",
+      name: "AI Detection",
+      verdict: "pass",
+      score: 95,
+      summary: "5% AI probability",
+      costUsd: 0.01,
+      provider: "gemini-ai-detection",
+      findings: [],
+    };
+
+    const { getByText, queryByText } = render(<SkillCard result={result} />);
+    expect(getByText("Gemini 3 Pro Preview (multilingual)")).toBeDefined();
+    expect(queryByText("Copyscape")).toBeNull();
+  });
+
+  it("renders Gemini grounded label for standard fact-check results", () => {
+    const result: SkillResult = {
+      skillId: "fact-check-grounded",
+      name: "Fact Check (Grounded)",
+      verdict: "pass",
+      score: 100,
+      summary: "1 claims checked",
+      costUsd: 0.04,
+      provider: "gemini-grounded",
+      findings: [],
+    };
+
+    const { getByText, queryByText } = render(<SkillCard result={result} />);
+    expect(getByText("Gemini 3 Pro Preview + Google Search")).toBeDefined();
+    expect(queryByText("gemini-grounded")).toBeNull();
+  });
 });

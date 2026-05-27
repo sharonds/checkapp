@@ -1,5 +1,6 @@
 import type { Config } from "../config.ts";
 import { createGeminiCapability } from "../providers/gemini-capability.ts";
+import { getProvider } from "../providers/registry.ts";
 import { resolveProvider } from "../providers/resolve.ts";
 import { emitGroundedCallEvent } from "../telemetry/audit-events.ts";
 import { getLlmClient, parseJsonResponse, LLM_MODEL } from "./llm.ts";
@@ -65,18 +66,60 @@ export class FactCheckGroundedSkill implements Skill {
   readonly name = "Fact Check (Grounded)";
 
   async run(text: string, config: Config): Promise<SkillResult> {
+    const standardTierSelected = config.factCheckTierFlag === true && config.factCheckTier === "standard";
     const resolved = resolveProvider(config, "fact-check");
+    if (standardTierSelected && resolved?.provider !== "gemini-grounded") {
+      if (!config.geminiApiKey) {
+        return skippedResult(this, "gemini-grounded API key missing");
+      }
+      return this.#runGrounded(text, config, {
+        provider: "gemini-grounded",
+        apiKey: config.geminiApiKey,
+        metadata: getProvider("fact-check", "gemini-grounded"),
+      });
+    }
+
     if (!resolved) {
-      return skippedResult(this, "no fact-check provider configured");
+      if (!config.geminiApiKey) {
+        return skippedResult(this, "gemini-grounded API key missing");
+      }
+      return this.#runGrounded(text, config, {
+        provider: "gemini-grounded",
+        apiKey: config.geminiApiKey,
+        metadata: getProvider("fact-check", "gemini-grounded"),
+      });
     }
     if (resolved.provider !== "gemini-grounded") {
-      return skippedResult(this, `${resolved.provider} not implemented for grounded fact-check`);
+      if (config.providers?.["fact-check"]?.provider) {
+        return skippedResult(this, `${resolved.provider} not implemented for grounded fact-check`);
+      }
+      if (!config.geminiApiKey) {
+        return skippedResult(this, "gemini-grounded API key missing");
+      }
+      return this.#runGrounded(text, config, {
+        provider: "gemini-grounded",
+        apiKey: config.geminiApiKey,
+        metadata: getProvider("fact-check", "gemini-grounded"),
+      });
     }
     if (!resolved.apiKey) {
       return skippedResult(this, "gemini-grounded API key missing");
     }
 
-    const llm = getLlmClient(config);
+    return this.#runGrounded(text, config, resolved);
+  }
+
+  async #runGrounded(
+    text: string,
+    config: Config,
+    resolved: NonNullable<ReturnType<typeof resolveProvider>>,
+  ): Promise<SkillResult> {
+    const apiKey = resolved.apiKey;
+    if (!apiKey) {
+      return skippedResult(this, "gemini-grounded API key missing");
+    }
+
+    const llm = getLlmClient({ ...config, geminiApiKey: config.geminiApiKey ?? apiKey });
     if (!llm) {
       return skippedResult(this, "no LLM key configured for claim extraction");
     }
@@ -104,25 +147,26 @@ export class FactCheckGroundedSkill implements Skill {
 
     const groundedResults: GroundedClaimResult[] = [];
     for (const claim of claims.slice(0, 4)) {
-      const grounded = await assessClaimGrounded(claim, resolved.apiKey, perClaimCost);
+      const grounded = await assessClaimGrounded(claim, apiKey, perClaimCost);
       costUsd += perClaimCost;
       groundedResults.push({ claim, ...grounded });
     }
 
     for (const { claim, assessment, sources, webSearchQueries } of groundedResults) {
-      const confidence = claimConfidence(sources.length, assessment.supported);
+      const supported = sources.length === 0 && assessment.supported === true ? null : assessment.supported;
+      const confidence = claimConfidence(sources.length, supported);
       const queryHint = webSearchQueries.length > 0 ? ` Search: ${webSearchQueries.slice(0, 2).join(" | ")}` : "";
       const base = { sources, confidence, claimType: "general" as ClaimType };
-      if (assessment.supported === false) {
+      if (supported === false) {
         findings.push({
           severity: "error",
           text: `Unsupported (${confidence} confidence): "${claim}" — ${assessment.note}${queryHint}`,
           ...base,
         });
-      } else if (assessment.supported === null) {
+      } else if (supported === null) {
         findings.push({
           severity: "warn",
-          text: `Unverified (${confidence} confidence): "${claim}" — ${assessment.note}${queryHint}`,
+          text: `Unverified (${confidence} confidence): "${claim}" — ${sources.length === 0 ? "No grounded source URL was returned." : assessment.note}${queryHint}`,
           ...base,
         });
       } else {
@@ -428,7 +472,7 @@ function extractGroundingSources(metadata?: GeminiGroundingMetadata): Source[] {
   const sources: Source[] = [];
   metadata.groundingChunks.forEach((chunk, index) => {
     const url = chunk.web?.uri;
-    if (!url) return;
+    if (!url || !isHttpUrl(url)) return;
     sources.push({
       url,
       title: chunk.web?.title,
@@ -454,6 +498,15 @@ function dedupeSources(sources: Source[]): Source[] {
     });
   }
   return [...byUrl.values()];
+}
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 function sleep(ms: number): Promise<void> {

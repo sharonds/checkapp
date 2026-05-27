@@ -10,3 +10,6 @@ docs/superpowers/
 .remember/
 *.html
 *.png
+.DS_Store
+poc-replacement/
+*-review-report.md

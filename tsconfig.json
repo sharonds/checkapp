@@ -9,5 +9,5 @@
     "strict": true,
     "types": ["bun-types", "@types/react"]
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*", "shared/**/*"]
 }

@@ -82,10 +82,12 @@ describe("FactCheckGroundedSkill", () => {
             groundingChunks: [
               { web: { uri: "https://www.government.nl/topics/smoking", title: "Government.nl Smoking Policy" } },
               { web: { uri: "https://www.who.int/europe/news-room/fact-sheets/item/tobacco", title: "WHO Europe Tobacco" } },
+              { web: { uri: "javascript:alert(1)", title: "Unsafe" } },
             ],
             groundingSupports: [
               { groundingChunkIndices: [0], segment: { text: "The smoking ban came into force in 2008." } },
               { groundingChunkIndices: [1], segment: { text: "Smoke-free hospitality laws were expanded in 2008." } },
+              { groundingChunkIndices: [2], segment: { text: "Unsafe URL must be ignored." } },
             ],
           },
         }],
@@ -127,7 +129,7 @@ describe("FactCheckGroundedSkill", () => {
       expect(groundedEvent).toBeDefined();
       expect(groundedEvent.payload).toMatchObject({
         provider: "gemini-grounded",
-        model: "gemini-3.1-pro-preview",
+        model: "gemini-3-pro-preview",
         httpStatus: 200,
         costUsd: 0.04,
         inputTokens: 111,
@@ -139,5 +141,133 @@ describe("FactCheckGroundedSkill", () => {
       delete process.env.CHECKAPP_AUDIT_EVENTS_PATH;
       rmSync(tempDir, { recursive: true, force: true });
     }
+  });
+
+  test("standard tier uses Gemini grounded even when saved fact-check provider is Exa", async () => {
+    mockFetch(urlRouter({
+      "api.minimax.io": async () => jsonResponse({
+        id: "msg_extract_grounded",
+        type: "message",
+        role: "assistant",
+        model: "MiniMax-M2.7",
+        content: [{
+          type: "text",
+          text: JSON.stringify(["OpenAI announced GPT-4 in March 2023."]),
+        }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 10, output_tokens: 10 },
+      }),
+      "generativelanguage.googleapis.com": async () => jsonResponse({
+        candidates: [{
+          content: {
+            parts: [
+              { text: "{\"supported\":true,\"note\":\"Grounded sources support the claim.\"}" },
+            ],
+          },
+          groundingMetadata: {
+            webSearchQueries: ["OpenAI GPT-4 March 2023"],
+            groundingChunks: [
+              { web: { uri: "https://openai.com/index/gpt-4-research/", title: "GPT-4 research" } },
+            ],
+          },
+        }],
+      }),
+    }));
+
+    const result = await new FactCheckGroundedSkill().run("OpenAI announced GPT-4 in March 2023.", {
+      ...baseConfig,
+      factCheckTierFlag: true,
+      factCheckTier: "standard",
+      providers: { "fact-check": { provider: "exa-search", apiKey: "exa-key" } },
+    });
+
+    expect(result.provider).toBe("gemini-grounded");
+    expect(result.verdict).toBe("pass");
+    expect(result.summary).toContain("via gemini-grounded");
+  });
+
+  test("uses provider-scoped Gemini key for both grounding and claim extraction", async () => {
+    let sawGeminiRequest = false;
+    mockFetch(urlRouter({
+      "generativelanguage.googleapis.com": async (req) => {
+        sawGeminiRequest = true;
+        expect(req.url).toContain("provider-gemini-key");
+        const body = await req.json() as any;
+        const prompt = body.contents?.[0]?.parts?.[0]?.text ?? "";
+        if (prompt.includes("Extract the 4 most specific")) {
+          return jsonResponse({
+            candidates: [{
+              content: {
+                parts: [
+                  { text: JSON.stringify(["OpenAI announced GPT-4 in March 2023."]) },
+                ],
+              },
+            }],
+          });
+        }
+        return jsonResponse({
+          candidates: [{
+            content: {
+              parts: [
+                { text: JSON.stringify({ supported: true, note: "Grounded sources support the claim." }) },
+              ],
+            },
+            groundingMetadata: {
+              webSearchQueries: ["OpenAI GPT-4 March 2023"],
+              groundingChunks: [
+                { web: { uri: "https://openai.com/index/gpt-4-research/", title: "GPT-4 research" } },
+              ],
+            },
+          }],
+        });
+      },
+    }));
+
+    const result = await new FactCheckGroundedSkill().run("OpenAI announced GPT-4 in March 2023.", {
+      ...baseConfig,
+      geminiApiKey: undefined,
+      minimaxApiKey: undefined,
+      providers: { "fact-check": { provider: "gemini-grounded", apiKey: "provider-gemini-key" } },
+    });
+
+    expect(sawGeminiRequest).toBe(true);
+    expect(result.provider).toBe("gemini-grounded");
+    expect(result.verdict).toBe("pass");
+  });
+
+  test("downgrades supported=true to unverified when no grounded source URL is returned", async () => {
+    mockFetch(urlRouter({
+      "api.minimax.io": async () => jsonResponse({
+        id: "msg_extract_grounded",
+        type: "message",
+        role: "assistant",
+        model: "MiniMax-M2.7",
+        content: [{
+          type: "text",
+          text: JSON.stringify(["A source-free claim is verified."]),
+        }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 10, output_tokens: 10 },
+      }),
+      "generativelanguage.googleapis.com": async () => jsonResponse({
+        candidates: [{
+          content: {
+            parts: [
+              { text: "{\"supported\":true,\"note\":\"The model says yes but provides no source.\"}" },
+            ],
+          },
+          groundingMetadata: {
+            webSearchQueries: ["source-free claim"],
+            groundingChunks: [],
+          },
+        }],
+      }),
+    }));
+
+    const result = await new FactCheckGroundedSkill().run("A source-free claim is verified.", baseConfig);
+
+    expect(result.verdict).toBe("pass");
+    expect(result.findings[0].severity).toBe("warn");
+    expect(result.findings[0].text).toContain("No grounded source URL was returned");
   });
 });
