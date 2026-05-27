@@ -35,7 +35,7 @@ describe("AiDetectionSkill routing", () => {
     };
     const skill = new AiDetectionSkill();
     const result = await skill.run("Some article.", config);
-    expect(calls.some((u) => u.includes("generativelanguage.googleapis.com"))).toBe(true);
+    expect(calls.some((u) => new URL(u).hostname === "generativelanguage.googleapis.com")).toBe(true);
     expect(result.error).toBeUndefined();
   });
 
@@ -77,7 +77,7 @@ describe("AiDetectionSkill routing", () => {
     };
     const skill = new AiDetectionSkill();
     await skill.run("English text.", baseConfig);
-    expect(calls.some((u) => u.includes("copyscape.com"))).toBe(true);
+    expect(calls.some((u) => new URL(u).hostname === "www.copyscape.com")).toBe(true);
   });
 });
 

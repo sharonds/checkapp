@@ -60,7 +60,7 @@ export class AiDetectionSkill implements Skill {
           name: this.name,
           score: 0,
           verdict: "skipped",
-          summary: "AI detection skipped — Copyscape does not support non-English text. Set ai-detection provider to gemini-ai-detection in config to enable multilingual detection.",
+          summary: "AI detection skipped — Copyscape does not support non-English text. To enable multilingual detection, set GEMINI_API_KEY (or run checkapp --setup) and configure the ai-detection provider to gemini-ai-detection.",
           findings: [],
           costUsd: 0,
         };

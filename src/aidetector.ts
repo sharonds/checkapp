@@ -111,9 +111,15 @@ export async function checkAiDetectorGemini(
     };
   }
 
-  const data = await response.json() as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-  };
+  let data: { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+  try {
+    data = await response.json() as typeof data;
+  } catch {
+    return {
+      aiScore: 0, aiPct: 0, verdict: "human", topSegments: [],
+      error: "Gemini AI detection: could not parse API response body",
+    };
+  }
 
   const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
 

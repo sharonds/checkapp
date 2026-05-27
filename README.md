@@ -209,9 +209,9 @@ CheckApp supports two AI detection providers:
 | Provider | Languages | Cost | When used |
 |----------|-----------|------|-----------|
 | Copyscape AI | English only | ~$0.03/check | Default |
-| Gemini 2.0 Flash | All languages incl. Hebrew | ~$0.01/check | Auto-fallback for non-English · or set explicitly |
+| Gemini 2.0 Flash | All languages incl. Hebrew | ~$0.01/check | Explicitly configured (required for non-English) |
 
-When Copyscape returns an English-only error, CheckApp automatically retries with Gemini if `GEMINI_API_KEY` is set. To force Gemini for all checks, add to `~/.checkapp/config.json`:
+Copyscape only supports English. For non-English articles, set Gemini as the ai-detection provider in `~/.checkapp/config.json` (or run `checkapp --setup`):
 ```json
 { "providers": { "ai-detection": { "provider": "gemini-ai-detection" } } }
 ```

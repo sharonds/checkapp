@@ -50,7 +50,7 @@
     "check:registry": "bun run scripts/check-registry-parity.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.90.0",
+    "@anthropic-ai/sdk": "^0.99.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "exa-js": "^2.11.0",
     "ink": "^7",
