@@ -31,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- **Gemini 2.0 Flash AI detection provider** — multilingual AI detection via Gemini. Set as default via `providers["ai-detection"].provider = "gemini-ai-detection"` in `~/.checkapp/config.json` (or run `checkapp --setup`). Cost ~$0.01/check vs $0.03 for Copyscape.
+- **Gemini 2.0 Flash AI detection provider** — multilingual AI detection via Gemini. Set as default via `providers["ai-detection"].provider = "gemini-ai-detection"` in `~/.checkapp/config.json` and provide `GEMINI_API_KEY`, `geminiApiKey`, or `providers["ai-detection"].apiKey`. Cost ~$0.01/check vs $0.03 for Copyscape.
 - **Google Docs tab support** — `?tab=t.xxx` URLs now fetch the correct tab instead of always returning the first tab. Tab IDs are allowlist-validated (alphanumeric + dots + hyphens, max 64 chars). No Google auth required.
 
 ### Fixed

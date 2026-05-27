@@ -66,4 +66,35 @@ describe("generateMarkdownReport", () => {
     expect(md).toContain("MIT License");
     expect(md).toContain("github.com/sharonds/checkapp");
   });
+
+  it("all-skipped markdown report is marked skipped with N/A score", () => {
+    const md = generateMarkdownReport({
+      source: "test.md",
+      wordCount: 500,
+      totalCostUsd: 0,
+      results: [{
+        skillId: "ai-detection",
+        name: "AI Detection",
+        score: 0,
+        verdict: "skipped" as const,
+        summary: "AI detection skipped",
+        findings: [],
+        costUsd: 0,
+      }],
+    });
+
+    expect(md).toMatch(/\*\*Overall:\*\* N\/A .* SKIPPED/);
+    expect(md).toContain("AI Detection — 0/100 SKIPPED");
+  });
+
+  it("empty markdown report is marked skipped with N/A score", () => {
+    const md = generateMarkdownReport({
+      source: "test.md",
+      wordCount: 500,
+      totalCostUsd: 0,
+      results: [],
+    });
+
+    expect(md).toMatch(/\*\*Overall:\*\* N\/A .* SKIPPED/);
+  });
 });

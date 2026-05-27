@@ -81,7 +81,7 @@ export async function checkAiDetectorGemini(
       aiPct: 0,
       verdict: "human",
       topSegments: [],
-      error: "Gemini API key not configured — set GEMINI_API_KEY or run checkapp --setup.",
+      error: "Gemini API key not configured — set GEMINI_API_KEY, config.geminiApiKey, or providers['ai-detection'].apiKey.",
     };
   }
 

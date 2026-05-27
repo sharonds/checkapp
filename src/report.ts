@@ -1,22 +1,26 @@
 import type { SkillResult } from "./skills/types.ts";
 import type { CheckRecord } from "./db.ts";
+import { formatScore, summarizeResults } from "./output-summary.ts";
 
 const VERDICT_COLOR: Record<string, string> = {
   pass: "#16a34a",
   warn: "#d97706",
   fail: "#dc2626",
+  skipped: "#6b7280",
 };
 
 const VERDICT_BG: Record<string, string> = {
   pass: "#f0fdf4",
   warn: "#fffbeb",
   fail: "#fef2f2",
+  skipped: "#f9fafb",
 };
 
 const VERDICT_BORDER: Record<string, string> = {
   pass: "#bbf7d0",
   warn: "#fde68a",
   fail: "#fecaca",
+  skipped: "#e5e7eb",
 };
 
 const SEVERITY_ICON: Record<string, string> = {
@@ -24,29 +28,68 @@ const SEVERITY_ICON: Record<string, string> = {
   error: "❌",
 };
 
-const ENGINE_LABEL: Record<string, { label: string; color: string }> = {
-  "plagiarism": { label: "Copyscape", color: "#0078D4" },
-  "ai-detection": { label: "Copyscape", color: "#0078D4" },
-  "seo": { label: "Offline", color: "#6b7280" },
-  "fact-check": { label: "Exa AI", color: "#7c3aed" },
-  "tone": { label: "MiniMax", color: "#0891b2" },
-  "legal": { label: "MiniMax", color: "#0891b2" },
-  "summary": { label: "MiniMax", color: "#0891b2" },
-  "brief": { label: "MiniMax", color: "#0891b2" },
-  "purpose": { label: "MiniMax", color: "#0891b2" },
+interface ProviderMeta {
+  label: string;
+  color: string;
+  href: string;
+  processor: string;
+}
+
+const PROVIDER_LABEL: Record<string, ProviderMeta> = {
+  copyscape: { label: "Copyscape", color: "#0078D4", href: "https://copyscape.com", processor: "Copyscape" },
+  "gemini-ai-detection": { label: "Gemini AI Detection", color: "#4285f4", href: "https://ai.google.dev", processor: "Google Gemini" },
+  gemini: { label: "Gemini", color: "#4285f4", href: "https://ai.google.dev", processor: "Google Gemini" },
+  "gemini-grounded": { label: "Gemini Grounded", color: "#4285f4", href: "https://ai.google.dev", processor: "Google Gemini" },
+  "gemini-deep-research": { label: "Gemini Deep Research", color: "#4285f4", href: "https://ai.google.dev", processor: "Google Gemini" },
+  "exa-search": { label: "Exa AI", color: "#7c3aed", href: "https://exa.ai", processor: "Exa AI" },
+  "exa-deep-reasoning": { label: "Exa AI", color: "#7c3aed", href: "https://exa.ai", processor: "Exa AI" },
+  minimax: { label: "MiniMax", color: "#0891b2", href: "https://platform.minimax.io", processor: "MiniMax" },
+  anthropic: { label: "Anthropic", color: "#6b46c1", href: "https://www.anthropic.com", processor: "Anthropic" },
+  openrouter: { label: "OpenRouter", color: "#111827", href: "https://openrouter.ai", processor: "OpenRouter" },
+  "llm-fallback": { label: "LLM fallback", color: "#0891b2", href: "", processor: "Configured LLM provider" },
+  languagetool: { label: "LanguageTool", color: "#2563eb", href: "https://languagetool.org", processor: "LanguageTool" },
+  "languagetool-selfhosted": { label: "LanguageTool self-hosted", color: "#2563eb", href: "", processor: "Self-hosted LanguageTool" },
+  "semantic-scholar": { label: "Semantic Scholar", color: "#1857b6", href: "https://www.semanticscholar.org", processor: "Semantic Scholar" },
+  openalex: { label: "OpenAlex", color: "#0f766e", href: "https://openalex.org", processor: "OpenAlex" },
+  "cloudflare-vectorize": { label: "Cloudflare Vectorize", color: "#f38020", href: "https://www.cloudflare.com/developer-platform/products/vectorize/", processor: "Cloudflare Vectorize" },
+  pinecone: { label: "Pinecone", color: "#1f7a8c", href: "https://www.pinecone.io", processor: "Pinecone" },
+  "upstash-vector": { label: "Upstash Vector", color: "#00e9a3", href: "https://upstash.com", processor: "Upstash" },
 };
 
-function scoreBar(score: number, verdict: string): string {
+const SKILL_ENGINE_FALLBACK: Record<string, ProviderMeta> = {
+  plagiarism: PROVIDER_LABEL.copyscape,
+  "ai-detection": PROVIDER_LABEL.copyscape,
+  seo: { label: "Offline", color: "#6b7280", href: "", processor: "Offline" },
+  "fact-check": PROVIDER_LABEL["exa-search"],
+};
+
+function scoreBar(score: number | null, verdict: string): string {
   const color = VERDICT_COLOR[verdict] ?? "#6b7280";
+  const width = score === null ? 0 : score;
   return `<div style="background:#e5e7eb;border-radius:4px;height:6px;width:100%;margin-top:10px">
-    <div style="background:${color};border-radius:4px;height:6px;width:${score}%;transition:width 0.3s"></div>
+    <div style="background:${color};border-radius:4px;height:6px;width:${width}%;transition:width 0.3s"></div>
   </div>`;
 }
 
-function engineBadge(skillId: string): string {
-  const eng = ENGINE_LABEL[skillId];
+function badgeMeta(result: SkillResult): ProviderMeta | undefined {
+  return (result.provider ? PROVIDER_LABEL[result.provider] : undefined) ?? SKILL_ENGINE_FALLBACK[result.skillId];
+}
+
+function engineBadge(result: SkillResult): string {
+  const eng = badgeMeta(result);
   if (!eng) return "";
   return `<span style="font-size:11px;font-weight:500;color:${eng.color};background:${eng.color}18;padding:2px 8px;border-radius:10px;border:1px solid ${eng.color}44">${eng.label}</span>`;
+}
+
+function usedProviders(results: SkillResult[]): ProviderMeta[] {
+  const seen = new Map<string, ProviderMeta>();
+  for (const result of results) {
+    if (!result.provider) continue;
+    const meta = PROVIDER_LABEL[result.provider];
+    if (!meta || !meta.href) continue;
+    seen.set(meta.processor, meta);
+  }
+  return [...seen.values()];
 }
 
 function skillCard(r: SkillResult): string {
@@ -71,7 +114,7 @@ function skillCard(r: SkillResult): string {
     <div style="display:flex;justify-content:space-between;align-items:flex-start">
       <div>
         <span style="font-weight:700;font-size:15px;color:#111827">${escapeHtml(r.name)}</span>
-        <span style="margin-left:8px">${engineBadge(r.skillId)}</span>
+        <span style="margin-left:8px">${engineBadge(r)}</span>
       </div>
       <span style="display:flex;align-items:center;gap:10px;flex-shrink:0;margin-left:16px">
         <span style="font-size:22px;font-weight:800;color:${color}">${r.score}</span>
@@ -89,16 +132,22 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-function overallBanner(score: number, verdict: string, wordCount: number, costUsd: number, now: string): string {
+function overallBanner(score: number | null, verdict: string, wordCount: number, costUsd: number, now: string): string {
   const color = VERDICT_COLOR[verdict] ?? "#6b7280";
-  const label = verdict === "pass" ? "✓ Ready to publish" : verdict === "warn" ? "⚠ Needs attention" : "✕ Do not publish";
-  const labelBg = verdict === "pass" ? "#16a34a22" : verdict === "warn" ? "#d9770622" : "#dc262622";
-  const accent = verdict === "pass" ? "#16a34a" : verdict === "warn" ? "#d97706" : "#dc2626";
+  const label = verdict === "skipped"
+    ? "Not assessed"
+    : verdict === "pass" ? "✓ Ready to publish" : verdict === "warn" ? "⚠ Needs attention" : "✕ Do not publish";
+  const labelBg = verdict === "skipped"
+    ? "#6b728022"
+    : verdict === "pass" ? "#16a34a22" : verdict === "warn" ? "#d9770622" : "#dc262622";
+  const accent = verdict === "skipped"
+    ? "#6b7280"
+    : verdict === "pass" ? "#16a34a" : verdict === "warn" ? "#d97706" : "#dc2626";
 
   // Circular score indicator SVG
   const radius = 28;
   const circumference = 2 * Math.PI * radius;
-  const dash = (score / 100) * circumference;
+  const dash = ((score ?? 0) / 100) * circumference;
   const circle = `<svg width="80" height="80" style="transform:rotate(-90deg)">
     <circle cx="40" cy="40" r="${radius}" fill="none" stroke="#ffffff18" stroke-width="5"/>
     <circle cx="40" cy="40" r="${radius}" fill="none" stroke="${accent}" stroke-width="5"
@@ -110,7 +159,7 @@ function overallBanner(score: number, verdict: string, wordCount: number, costUs
       <div style="display:flex;align-items:center;gap:20px">
         <div style="position:relative;width:80px;height:80px;flex-shrink:0">
           ${circle}
-          <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;color:${accent}">${score}</div>
+          <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;color:${accent}">${score === null ? "N/A" : score}</div>
         </div>
         <div>
           <div style="font-size:11px;letter-spacing:0.1em;color:#64748b;text-transform:uppercase;font-weight:600;margin-bottom:4px">CheckApp</div>
@@ -143,21 +192,27 @@ function summaryBlock(result: SkillResult): string {
   return `<div style="background:#ecfeff;border:1px solid #a5f3fc;border-radius:10px;padding:20px;margin-bottom:14px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <span style="font-weight:700;font-size:15px;color:#0e7490">${escapeHtml(result.name)}</span>
-      ${engineBadge(result.skillId)}
+      ${engineBadge(result)}
     </div>
     ${rows}
   </div>`;
 }
 
 export function generateReport(record: Omit<CheckRecord, "id" | "createdAt"> & { createdAt?: string }): string {
-  const scoringResults = record.results.filter((r) => r.verdict !== "skipped");
-  const overallScore = scoringResults.length > 0
-    ? Math.round(scoringResults.reduce((s, r) => s + r.score, 0) / scoringResults.length)
-    : 0;
-  const overallVerdict = record.results.some((r) => r.verdict === "fail") ? "fail"
-    : record.results.some((r) => r.verdict === "warn") ? "warn" : "pass";
+  const overall = summarizeResults(record.results);
 
   const now = record.createdAt ?? new Date().toISOString().replace("T", " ").slice(0, 16);
+  const providers = usedProviders(record.results);
+  const providerLinks = providers.map((p) =>
+    `<a class="engine-link" href="${p.href}" style="color:${p.color};border-color:${p.color}44;background:${p.color}08">${escapeHtml(p.label)}</a>`
+  ).join("");
+  const footerProviderLinks = providers.map((p) =>
+    `<a class="footer-link" href="${p.href}">${escapeHtml(p.label)}</a>`
+  ).join("");
+  const providerNames = providers.map((p) => p.processor).join(", ");
+  const providerDisclaimer = providerNames
+    ? `Results are generated by ${escapeHtml(providerNames)} and may not be complete or accurate.`
+    : "Results are generated by offline checks and may not be complete or accurate.";
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -185,14 +240,12 @@ export function generateReport(record: Omit<CheckRecord, "id" | "createdAt"> & {
 </head>
 <body>
   <div class="container">
-    ${overallBanner(overallScore, overallVerdict, record.wordCount, record.totalCostUsd, now)}
+    ${overallBanner(overall.score, overall.verdict, record.wordCount, record.totalCostUsd, now)}
     <div class="source">${escapeHtml(record.source)}</div>
     ${(() => { const sr = record.results.find((r) => r.skillId === "summary"); return sr ? summaryBlock(sr) : ""; })()}
     <div class="powered-by">
       <span>Powered by</span>
-      <a class="engine-link" href="https://copyscape.com" style="color:#0078D4;border-color:#0078D444;background:#0078D408">Copyscape</a>
-      <a class="engine-link" href="https://exa.ai" style="color:#7c3aed;border-color:#7c3aed44;background:#7c3aed08">Exa AI</a>
-      <a class="engine-link" href="https://platform.minimax.io" style="color:#0891b2;border-color:#0891b244;background:#0891b208">MiniMax</a>
+      ${providerLinks || `<span>Offline checks</span>`}
     </div>
     ${record.results.filter((r) => r.skillId !== "summary").map(skillCard).join("")}
     <div class="footer">
@@ -201,15 +254,13 @@ export function generateReport(record: Omit<CheckRecord, "id" | "createdAt"> & {
         <div class="footer-links">
           <a class="footer-link" href="https://github.com/sharonds/checkapp">GitHub</a>
           <a class="footer-link" href="https://github.com/sharonds/checkapp/blob/main/LICENSE">MIT License</a>
-          <a class="footer-link" href="https://copyscape.com">Copyscape</a>
-          <a class="footer-link" href="https://exa.ai">Exa AI</a>
-          <a class="footer-link" href="https://platform.minimax.io">MiniMax</a>
+          ${footerProviderLinks}
         </div>
       </div>
       <p class="footer-disclaimer">
         This report is provided for informational purposes only under the
         <a href="https://github.com/sharonds/checkapp/blob/main/LICENSE">MIT License</a>.
-        Results are generated by third-party APIs (Copyscape, Exa AI, MiniMax) and may not be complete or accurate.
+        ${providerDisclaimer}
         The authors of CheckApp make no warranties and accept no liability for decisions made based on these results.
         Always apply your own judgement before publishing.
       </p>

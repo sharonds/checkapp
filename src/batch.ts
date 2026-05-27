@@ -6,6 +6,9 @@ import { SkillRegistry } from "./skills/registry.ts";
 import { buildSkills } from "./checker.ts";
 import { openDb, insertCheck, loadAllContexts } from "./db.ts";
 import { generateReport } from "./report.ts";
+import { formatScore, summarizeResults } from "./output-summary.ts";
+import type { OverallSummary } from "./output-summary.ts";
+import type { SkillResult } from "./skills/types.ts";
 
 /**
  * Discover all .md and .txt files in a directory (non-recursive).
@@ -21,10 +24,14 @@ export function discoverArticles(dir: string): string[] {
 
 export interface BatchResult {
   file: string;
-  score: number;
+  score: number | null;
   verdict: string;
   costUsd: number;
   reportPath: string;
+}
+
+export function summarizeBatchResults(results: SkillResult[]): OverallSummary {
+  return summarizeResults(results);
 }
 
 export async function runBatch(dir: string): Promise<BatchResult[]> {
@@ -58,17 +65,7 @@ export async function runBatch(dir: string): Promise<BatchResult[]> {
         verdict: applyThreshold(r.score, r.verdict, configWithContexts.thresholds?.[r.skillId]),
       }));
       const totalCostUsd = skillResults.reduce((sum, r) => sum + r.costUsd, 0);
-      const overallScore =
-        skillResults.length > 0
-          ? Math.round(
-              skillResults.reduce((s, r) => s + r.score, 0) / skillResults.length
-            )
-          : 0;
-      const overallVerdict = skillResults.some((r) => r.verdict === "fail")
-        ? "fail"
-        : skillResults.some((r) => r.verdict === "warn")
-          ? "warn"
-          : "pass";
+      const overall = summarizeBatchResults(skillResults);
 
       // Save to DB
       insertCheck(db, {
@@ -93,8 +90,8 @@ export async function runBatch(dir: string): Promise<BatchResult[]> {
 
       results.push({
         file: basename(file),
-        score: overallScore,
-        verdict: overallVerdict,
+        score: overall.score,
+        verdict: overall.verdict,
         costUsd: totalCostUsd,
         reportPath,
       });
@@ -110,18 +107,19 @@ export async function runBatch(dir: string): Promise<BatchResult[]> {
   console.log(`Batch: ${results.length} articles checked\n`);
   for (const r of results) {
     const icon =
-      r.verdict === "pass" ? "✅" : r.verdict === "warn" ? "⚠️" : "❌";
+      r.verdict === "pass" ? "✅" : r.verdict === "warn" ? "⚠️" : r.verdict === "skipped" ? "–" : "❌";
     const name = r.file.padEnd(30);
     console.log(
-      `  ${name} ${r.score}/100  ${icon} ${r.verdict.toUpperCase()}`
+      `  ${name} ${formatScore(r.score)}  ${icon} ${r.verdict.toUpperCase()}`
     );
   }
-  const avgScore = Math.round(
-    results.reduce((s, r) => s + r.score, 0) / results.length
-  );
+  const scoredResults = results.filter((r) => r.score !== null);
+  const avgScore = scoredResults.length > 0
+    ? Math.round(scoredResults.reduce((s, r) => s + (r.score ?? 0), 0) / scoredResults.length)
+    : null;
   const totalCost = results.reduce((s, r) => s + r.costUsd, 0);
   console.log(
-    `\nAverage: ${avgScore}/100 | API cost: $${totalCost.toFixed(3)}`
+    `\nAverage: ${formatScore(avgScore)} | API cost: $${totalCost.toFixed(3)}`
   );
   console.log(`${"─".repeat(48)}\n`);
 

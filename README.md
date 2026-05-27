@@ -211,9 +211,15 @@ CheckApp supports two AI detection providers:
 | Copyscape AI | English only | ~$0.03/check | Default |
 | Gemini 2.0 Flash | All languages incl. Hebrew | ~$0.01/check | Explicitly configured (required for non-English) |
 
-Copyscape only supports English. For non-English articles, set Gemini as the ai-detection provider in `~/.checkapp/config.json` (or run `checkapp --setup`):
+Copyscape only supports English. For non-English articles, set Gemini as the ai-detection provider in `~/.checkapp/config.json` and provide either `GEMINI_API_KEY`, `geminiApiKey`, or a provider-scoped `apiKey`:
 ```json
-{ "providers": { "ai-detection": { "provider": "gemini-ai-detection" } } }
+{
+  "providers": {
+    "ai-detection": {
+      "provider": "gemini-ai-detection"
+    }
+  }
+}
 ```
 
 ### SEO (score out of 100)
@@ -256,6 +262,9 @@ Create a `.env` file in your working directory:
 # Required — plagiarism + AI detection
 COPYSCAPE_USER=your-copyscape-username
 COPYSCAPE_KEY=your-copyscape-api-key
+
+# Optional — multilingual AI detection when configured as the AI Detection provider
+GEMINI_API_KEY=your-gemini-api-key
 
 # Optional — passage-level evidence (free tier: 16k requests)
 PARALLEL_API_KEY=your-parallel-api-key
@@ -541,7 +550,7 @@ Enable or disable skills via the `skills` section of `~/.checkapp/config.json`, 
 }
 ```
 
-Skills that require unconfigured API keys skip gracefully and show a `warn` verdict with a setup hint rather than failing the check.
+Skills that require unconfigured API keys skip gracefully with a `skipped` verdict. Skipped skills are excluded from score averages; if every enabled skill is skipped, the overall score is reported as `N/A`.
 
 ### Custom Thresholds
 

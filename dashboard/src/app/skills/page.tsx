@@ -15,6 +15,7 @@ interface Skill {
   name: string;
   engine: string;
   supportedProviders: string[];
+  missingProviders: string[];
   enabled: boolean;
   ready: boolean;
 }
@@ -22,6 +23,7 @@ interface Skill {
 const KEY_LABELS: Record<string, string> = {
   copyscape: "COPYSCAPE_USER / COPYSCAPE_KEY",
   exa: "EXA_API_KEY",
+  gemini: "GEMINI_API_KEY",
   minimax: "MINIMAX_API_KEY",
   anthropic: "ANTHROPIC_API_KEY",
   openrouter: "OPENROUTER_API_KEY",
@@ -169,7 +171,7 @@ export default function SkillsPage() {
                               <span className="inline-block h-2 w-2 rounded-full bg-red-500" />
                               <span className="text-xs text-red-600 dark:text-red-400">
                                 Missing:{" "}
-                                {skill.supportedProviders
+                                {(skill.missingProviders ?? skill.supportedProviders)
                                   .map((k) => KEY_LABELS[k] ?? k)
                                   .join(", ")}
                               </span>

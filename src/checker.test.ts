@@ -110,6 +110,12 @@ describe("runCheckHeadless", () => {
       config.skills.factCheck = true;
       config.factCheckTierFlag = true;
       config.factCheckTier = "standard";
+      config.exaApiKey = undefined;
+      config.geminiApiKey = undefined;
+      config.minimaxApiKey = undefined;
+      config.anthropicApiKey = undefined;
+      config.openrouterApiKey = undefined;
+      config.providers = undefined;
 
       await runCheckHeadless("telemetry-source", {
         text: "Claim without supporting context.",

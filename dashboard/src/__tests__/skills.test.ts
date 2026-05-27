@@ -35,6 +35,7 @@ describe("/api/skills", () => {
       openrouter: false,
       copyscape: false,
       exa: false,
+      gemini: false,
     });
   });
 
@@ -62,12 +63,110 @@ describe("/api/skills", () => {
       openrouter: false,
       copyscape: false,
       exa: false,
+      gemini: false,
     });
 
     const res = await GET();
     const json = await res.json();
     const toneSkill = json.find((s: any) => s.id === "tone");
     expect(toneSkill.ready).toBe(false);
+  });
+
+  test("AI Detection is ready with explicit Gemini provider-scoped key", async () => {
+    mockReadAppConfig.mockReturnValue({
+      skills: { aiDetection: true },
+      providers: {
+        "ai-detection": { provider: "gemini-ai-detection", apiKey: "SECRET_KEY_SHOULD_NOT_LEAK" },
+      },
+    });
+    mockGetApiKeyStatus.mockReturnValue({
+      anthropic: false,
+      minimax: false,
+      openrouter: false,
+      copyscape: false,
+      exa: false,
+      gemini: false,
+    });
+
+    const res = await GET();
+    const body = await res.text();
+    const json = JSON.parse(body);
+    const skill = json.find((s: any) => s.id === "aiDetection");
+
+    expect(skill.ready).toBe(true);
+    expect(skill.supportedProviders).toEqual(["gemini"]);
+    expect(skill.missingProviders).toEqual([]);
+    expect(body).not.toContain("SECRET_KEY_SHOULD_NOT_LEAK");
+    expect(body).not.toContain("apiKey");
+  });
+
+  test("AI Detection is ready with explicit Gemini provider and top-level Gemini key", async () => {
+    mockReadAppConfig.mockReturnValue({
+      skills: { aiDetection: true },
+      providers: {
+        "ai-detection": { provider: "gemini-ai-detection" },
+      },
+    });
+    mockGetApiKeyStatus.mockReturnValue({
+      anthropic: false,
+      minimax: false,
+      openrouter: false,
+      copyscape: false,
+      exa: false,
+      gemini: true,
+    });
+
+    const res = await GET();
+    const json = await res.json();
+    const skill = json.find((s: any) => s.id === "aiDetection");
+
+    expect(skill.ready).toBe(true);
+    expect(skill.supportedProviders).toEqual(["gemini"]);
+  });
+
+  test("AI Detection is not ready from Gemini key alone when Copyscape remains selected", async () => {
+    mockReadAppConfig.mockReturnValue({
+      skills: { aiDetection: true },
+      providers: {},
+    });
+    mockGetApiKeyStatus.mockReturnValue({
+      anthropic: false,
+      minimax: false,
+      openrouter: false,
+      copyscape: false,
+      exa: false,
+      gemini: true,
+    });
+
+    const res = await GET();
+    const json = await res.json();
+    const skill = json.find((s: any) => s.id === "aiDetection");
+
+    expect(skill.ready).toBe(false);
+    expect(skill.supportedProviders).toEqual(["copyscape"]);
+    expect(skill.missingProviders).toEqual(["copyscape"]);
+  });
+
+  test("AI Detection is ready from Copyscape credentials when no Gemini provider is selected", async () => {
+    mockReadAppConfig.mockReturnValue({
+      skills: { aiDetection: true },
+      providers: {},
+    });
+    mockGetApiKeyStatus.mockReturnValue({
+      anthropic: false,
+      minimax: false,
+      openrouter: false,
+      copyscape: true,
+      exa: false,
+      gemini: false,
+    });
+
+    const res = await GET();
+    const json = await res.json();
+    const skill = json.find((s: any) => s.id === "aiDetection");
+
+    expect(skill.ready).toBe(true);
+    expect(skill.supportedProviders).toEqual(["copyscape"]);
   });
 
   test("POST toggles skill enabled state", async () => {

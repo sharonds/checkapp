@@ -180,7 +180,7 @@ export const geminiCapability = createGeminiCapability();
 export function primeGeminiCapabilityHealthCheck(
   options?: Pick<GeminiCapabilityOptions, "apiKey" | "baseUrl" | "cacheTtlMs" | "fetch" | "now" | "timeoutMs">,
 ): Promise<GeminiHealth> {
-  return options ? createGeminiCapability(options).checkHealth() : geminiCapability.checkHealth();
+  return createGeminiCapability(options).checkHealth();
 }
 
 export function resetGeminiCapabilityHealthCache(): void {

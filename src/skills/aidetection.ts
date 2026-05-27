@@ -12,10 +12,10 @@ export class AiDetectionSkill implements Skill {
     const providerOverride = config.providers?.["ai-detection"]?.provider;
 
     if (providerOverride === "gemini-ai-detection") {
-      return this.#runGemini(text, config, false);
+      return this.#runGemini(text, config);
     }
 
-    // Default: Copyscape, with auto-fallback to Gemini on English-only error
+    // Default: Copyscape. Gemini is used only when explicitly selected.
     try {
       const result = await checkAiDetector(text, config);
 
@@ -29,6 +29,7 @@ export class AiDetectionSkill implements Skill {
           summary: isCredits ? result.error : "Skill failed — see error",
           findings: [],
           costUsd: 0,
+          provider: "copyscape",
           error: isCredits ? undefined : result.error,
         };
       }
@@ -47,6 +48,7 @@ export class AiDetectionSkill implements Skill {
         summary: `${result.aiPct}% AI probability — ${result.verdict}`,
         findings,
         costUsd: 0.03,
+        provider: "copyscape",
         error: result.error,
       };
     } catch (err) {
@@ -60,9 +62,10 @@ export class AiDetectionSkill implements Skill {
           name: this.name,
           score: 0,
           verdict: "skipped",
-          summary: "AI detection skipped — Copyscape does not support non-English text. To enable multilingual detection, set GEMINI_API_KEY (or run checkapp --setup) and configure the ai-detection provider to gemini-ai-detection.",
+          summary: "AI detection skipped — Copyscape does not support non-English text. To enable multilingual detection, configure providers['ai-detection'].provider as gemini-ai-detection and set GEMINI_API_KEY, config.geminiApiKey, or providers['ai-detection'].apiKey.",
           findings: [],
           costUsd: 0,
+          provider: "copyscape",
         };
       }
 
@@ -74,12 +77,13 @@ export class AiDetectionSkill implements Skill {
         summary: "Skill failed — see error",
         findings: [],
         costUsd: 0,
+        provider: "copyscape",
         error: msg,
       };
     }
   }
 
-  async #runGemini(text: string, config: Config, isAutoFallback: boolean): Promise<SkillResult> {
+  async #runGemini(text: string, config: Config): Promise<SkillResult> {
     const result = await checkAiDetectorGemini(text, config);
 
     const findings: Finding[] = result.topSegments.map((seg) => ({
@@ -87,13 +91,6 @@ export class AiDetectionSkill implements Skill {
       text: `${Math.round(seg.aiScore * 100)}% AI probability`,
       quote: seg.text,
     }));
-
-    if (isAutoFallback && !result.error) {
-      findings.unshift({
-        severity: "warn",
-        text: "Switched to Gemini — Copyscape AI detection does not support non-English text.",
-      });
-    }
 
     return {
       skillId: this.id,
@@ -107,6 +104,7 @@ export class AiDetectionSkill implements Skill {
         : `${result.aiPct}% AI probability — ${result.verdict} (Gemini)`,
       findings,
       costUsd: result.error ? 0 : 0.01,
+      provider: "gemini-ai-detection",
       error: result.error,
     };
   }

@@ -1,5 +1,6 @@
 import type { Config } from "../config.ts";
 import { createGeminiCapability } from "../providers/gemini-capability.ts";
+import { getProvider } from "../providers/registry.ts";
 import { resolveProvider } from "../providers/resolve.ts";
 import { emitGroundedCallEvent } from "../telemetry/audit-events.ts";
 import { getLlmClient, parseJsonResponse, LLM_MODEL } from "./llm.ts";
@@ -67,12 +68,42 @@ export class FactCheckGroundedSkill implements Skill {
   async run(text: string, config: Config): Promise<SkillResult> {
     const resolved = resolveProvider(config, "fact-check");
     if (!resolved) {
-      return skippedResult(this, "no fact-check provider configured");
+      if (!config.geminiApiKey) {
+        return skippedResult(this, "gemini-grounded API key missing");
+      }
+      return this.#runGrounded(text, config, {
+        provider: "gemini-grounded",
+        apiKey: config.geminiApiKey,
+        metadata: getProvider("fact-check", "gemini-grounded"),
+      });
     }
     if (resolved.provider !== "gemini-grounded") {
-      return skippedResult(this, `${resolved.provider} not implemented for grounded fact-check`);
+      if (config.providers?.["fact-check"]?.provider) {
+        return skippedResult(this, `${resolved.provider} not implemented for grounded fact-check`);
+      }
+      if (!config.geminiApiKey) {
+        return skippedResult(this, "gemini-grounded API key missing");
+      }
+      return this.#runGrounded(text, config, {
+        provider: "gemini-grounded",
+        apiKey: config.geminiApiKey,
+        metadata: getProvider("fact-check", "gemini-grounded"),
+      });
     }
     if (!resolved.apiKey) {
+      return skippedResult(this, "gemini-grounded API key missing");
+    }
+
+    return this.#runGrounded(text, config, resolved);
+  }
+
+  async #runGrounded(
+    text: string,
+    config: Config,
+    resolved: NonNullable<ReturnType<typeof resolveProvider>>,
+  ): Promise<SkillResult> {
+    const apiKey = resolved.apiKey;
+    if (!apiKey) {
       return skippedResult(this, "gemini-grounded API key missing");
     }
 
@@ -104,7 +135,7 @@ export class FactCheckGroundedSkill implements Skill {
 
     const groundedResults: GroundedClaimResult[] = [];
     for (const claim of claims.slice(0, 4)) {
-      const grounded = await assessClaimGrounded(claim, resolved.apiKey, perClaimCost);
+      const grounded = await assessClaimGrounded(claim, apiKey, perClaimCost);
       costUsd += perClaimCost;
       groundedResults.push({ claim, ...grounded });
     }

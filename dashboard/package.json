@@ -39,5 +39,13 @@
     "tailwindcss": "^4",
     "typescript": "^6",
     "vitest": "^4.1.4"
+  },
+  "overrides": {
+    "brace-expansion": "5.0.6",
+    "fast-uri": "3.1.2",
+    "hono": "4.12.23",
+    "ip-address": "10.2.0",
+    "postcss": "8.5.15",
+    "qs": "6.15.2"
   }
 }

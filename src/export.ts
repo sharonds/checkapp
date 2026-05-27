@@ -2,17 +2,13 @@ import type { CheckRecord } from "./db.ts";
 import type { SkillResult } from "./skills/types.ts";
 import { generateReport } from "./report.ts";
 import { writeFileSync } from "fs";
+import { formatScore, summarizeResults } from "./output-summary.ts";
 
-const VERDICT_ICON: Record<string, string> = { pass: "✅", warn: "⚠️", fail: "❌" };
+const VERDICT_ICON: Record<string, string> = { pass: "✅", warn: "⚠️", fail: "❌", skipped: "–" };
 const SEVERITY_ICON: Record<string, string> = { info: "ℹ️", warn: "⚠️", error: "❌" };
 
 export function generateMarkdownReport(record: Omit<CheckRecord, "id" | "createdAt"> & { createdAt?: string }): string {
-  const scoringResults = record.results.filter((r) => r.verdict !== "skipped");
-  const overallScore = scoringResults.length > 0
-    ? Math.round(scoringResults.reduce((s, r) => s + r.score, 0) / scoringResults.length)
-    : 0;
-  const overallVerdict = record.results.some(r => r.verdict === "fail") ? "fail"
-    : record.results.some(r => r.verdict === "warn") ? "warn" : "pass";
+  const overall = summarizeResults(record.results);
   const now = record.createdAt ?? new Date().toISOString().slice(0, 16);
 
   let md = `# CheckApp Report\n\n`;
@@ -20,7 +16,7 @@ export function generateMarkdownReport(record: Omit<CheckRecord, "id" | "created
   md += `**Words:** ${record.wordCount.toLocaleString()}\n`;
   md += `**Date:** ${now}\n`;
   md += `**API cost:** $${record.totalCostUsd.toFixed(3)}\n`;
-  md += `**Overall:** ${overallScore}/100 ${VERDICT_ICON[overallVerdict] ?? ""} ${overallVerdict.toUpperCase()}\n\n`;
+  md += `**Overall:** ${formatScore(overall.score)} ${VERDICT_ICON[overall.verdict] ?? ""} ${overall.verdict.toUpperCase()}\n\n`;
   md += `---\n\n`;
 
   for (const r of record.results) {

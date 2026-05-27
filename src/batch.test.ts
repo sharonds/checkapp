@@ -1,5 +1,6 @@
 import { describe, it, expect } from "bun:test";
-import { discoverArticles } from "./batch.ts";
+import { discoverArticles, summarizeBatchResults } from "./batch.ts";
+import type { SkillResult } from "./skills/types.ts";
 
 describe("discoverArticles", () => {
   it("finds .md and .txt files in demo directory", () => {
@@ -22,5 +23,42 @@ describe("discoverArticles", () => {
 
   it("returns empty for a file path (not dir)", () => {
     expect(discoverArticles("package.json")).toEqual([]);
+  });
+});
+
+describe("summarizeBatchResults", () => {
+  const skippedResult: SkillResult = {
+    skillId: "ai-detection",
+    name: "AI Detection",
+    score: 0,
+    verdict: "skipped",
+    summary: "AI detection skipped",
+    findings: [],
+    costUsd: 0,
+  };
+
+  it("returns skipped and N/A score for all-skipped files", () => {
+    expect(summarizeBatchResults([skippedResult])).toEqual({
+      score: null,
+      verdict: "skipped",
+    });
+  });
+
+  it("excludes skipped skill results from batch file scoring", () => {
+    expect(summarizeBatchResults([
+      skippedResult,
+      {
+        skillId: "seo",
+        name: "SEO",
+        score: 84,
+        verdict: "pass",
+        summary: "Good SEO",
+        findings: [],
+        costUsd: 0,
+      },
+    ])).toEqual({
+      score: 84,
+      verdict: "pass",
+    });
   });
 });

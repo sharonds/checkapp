@@ -1,9 +1,19 @@
 import { jsonWithCors } from "@/lib/cors";
 import { readAppConfig, writeAppConfig, getApiKeyStatus } from "@/lib/config";
 import { guardLocalMutation } from "@/lib/guard-local";
+import type { SkillId, SkillProviderConfig } from "@/lib/providers";
 import { NextRequest } from "next/server";
 
-const SKILL_META = [
+type ApiKeyStatus = ReturnType<typeof getApiKeyStatus>;
+type ApiKeyProvider = keyof ApiKeyStatus;
+type SkillMeta = {
+  id: string;
+  name: string;
+  engine: string;
+  supportedProviders: ApiKeyProvider[];
+};
+
+const SKILL_META: SkillMeta[] = [
   { id: "plagiarism", name: "Plagiarism Check", engine: "Copyscape", supportedProviders: ["copyscape"] },
   { id: "aiDetection", name: "AI Detection", engine: "Copyscape / Gemini", supportedProviders: ["copyscape", "gemini"] },
   { id: "seo", name: "SEO Analysis", engine: "Offline", supportedProviders: [] },
@@ -13,27 +23,61 @@ const SKILL_META = [
   { id: "summary", name: "Content Summary", engine: "LLM", supportedProviders: ["minimax", "anthropic", "openrouter"] },
 ];
 
-function isSkillReady(skill: typeof SKILL_META[0], apiKeys: ReturnType<typeof getApiKeyStatus>): boolean {
-  // Skills with no provider requirements are always ready
-  if (skill.supportedProviders.length === 0) return true;
+function requiredProviders(
+  skill: SkillMeta,
+  providers: Partial<Record<SkillId, SkillProviderConfig>>,
+): ApiKeyProvider[] {
+  if (skill.id !== "aiDetection") return skill.supportedProviders;
 
-  // Skills requiring providers: check if any supported provider is configured
-  return skill.supportedProviders.some((provider) => {
-    const key = provider as keyof typeof apiKeys;
-    return apiKeys[key] === true;
-  });
+  const selected = providers["ai-detection"];
+  return selected?.provider === "gemini-ai-detection" ? ["gemini"] : ["copyscape"];
+}
+
+function hasProviderKey(
+  provider: ApiKeyProvider,
+  apiKeys: ApiKeyStatus,
+  skill: SkillMeta,
+  providers: Partial<Record<SkillId, SkillProviderConfig>>,
+): boolean {
+  if (skill.id === "aiDetection" && provider === "gemini") {
+    return Boolean(providers["ai-detection"]?.apiKey) || apiKeys.gemini === true;
+  }
+
+  return apiKeys[provider] === true;
+}
+
+function missingProviders(
+  skill: SkillMeta,
+  apiKeys: ApiKeyStatus,
+  providers: Partial<Record<SkillId, SkillProviderConfig>>,
+): ApiKeyProvider[] {
+  const required = requiredProviders(skill, providers);
+  if (required.length === 0) return [];
+
+  if (skill.id !== "aiDetection") {
+    return required.some((provider) => apiKeys[provider] === true) ? [] : required;
+  }
+
+  return required.filter((provider) => !hasProviderKey(provider, apiKeys, skill, providers));
 }
 
 export async function GET() {
   try {
     const config = readAppConfig() as Record<string, unknown>;
     const skills = (config.skills ?? {}) as Record<string, boolean>;
+    const providers = (config.providers ?? {}) as Partial<Record<SkillId, SkillProviderConfig>>;
     const apiKeys = getApiKeyStatus();
-    const result = SKILL_META.map((s) => ({
-      ...s,
-      enabled: skills[s.id] ?? false,
-      ready: isSkillReady(s, apiKeys),
-    }));
+    const result = SKILL_META.map((s) => {
+      const supportedProviders = requiredProviders(s, providers);
+      const missing = missingProviders(s, apiKeys, providers);
+      return {
+        ...s,
+        supportedProviders,
+        missingProviders: missing,
+        enabled: skills[s.id] ?? false,
+        ready: missing.length === 0,
+      };
+    });
     return jsonWithCors(result);
   } catch (err) {
     return jsonWithCors({ error: "Failed to fetch skills" }, { status: 500 });
