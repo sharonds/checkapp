@@ -19,21 +19,6 @@ export class AiDetectionSkill implements Skill {
     try {
       const result = await checkAiDetector(text, config);
 
-      if (result.error?.includes(ENGLISH_ONLY_SIGNAL)) {
-        if (config.geminiApiKey) {
-          return this.#runGemini(text, config, true);
-        }
-        return {
-          skillId: this.id,
-          name: this.name,
-          score: 0,
-          verdict: "skipped",
-          summary: "AI detection skipped — Copyscape does not support non-English text. Add GEMINI_API_KEY to enable multilingual detection.",
-          findings: [],
-          costUsd: 0,
-        };
-      }
-
       const findings: Finding[] = result.topSegments.map((seg) => ({
         severity: seg.aiScore >= 0.85 ? "error" : "warn",
         text: `${Math.round(seg.aiScore * 100)}% AI probability`,
@@ -91,7 +76,7 @@ export class AiDetectionSkill implements Skill {
       quote: seg.text,
     }));
 
-    if (isAutoFallback) {
+    if (isAutoFallback && !result.error) {
       findings.unshift({
         severity: "warn",
         text: "Switched to Gemini — Copyscape AI detection does not support non-English text.",
