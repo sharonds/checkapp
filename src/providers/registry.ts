@@ -27,6 +27,28 @@ export const PROVIDER_REGISTRY: Partial<Record<SkillId, ProviderMetadata[]>> = {
     { id: "copyscape", label: "Copyscape", speed: "medium", costPerCheckUsd: 0.03, costLabel: "$0.03/check", depth: "standard", freeTier: false, requiresKey: true },
     { id: "originality", label: "Originality.ai", speed: "slow", costPerCheckUsd: 0.01, costLabel: "$0.01/check", depth: "deep", freeTier: false, requiresKey: true },
   ],
+  "ai-detection": [
+    {
+      id: "copyscape",
+      label: "Copyscape AI Detector",
+      speed: "fast",
+      costPerCheckUsd: 0.03,
+      costLabel: "$0.03/check",
+      depth: "standard",
+      freeTier: false,
+      requiresKey: true,
+    },
+    {
+      id: "gemini",
+      label: "Gemini 3.1 Pro (multilingual)",
+      speed: "medium",
+      costPerCheckUsd: 0.01,
+      costLabel: "~$0.01/check",
+      depth: "standard",
+      freeTier: false,
+      requiresKey: true,
+    },
+  ],
 };
 
 export function getProviders(skillId: SkillId): ProviderMetadata[] {
