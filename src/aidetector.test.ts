@@ -1,4 +1,86 @@
-import { test, expect, describe } from "bun:test";
+import { checkAiDetectorGemini } from "./aidetector.ts";
+import type { Config } from "./config.ts";
+import { test, expect, describe, beforeEach, afterEach } from "bun:test";
+
+const geminiConfig: Config = {
+  copyscapeUser: "",
+  copyscapeKey: "",
+  geminiApiKey: "test-key",
+  skills: {
+    plagiarism: false, aiDetection: true, seo: false,
+    factCheck: false, tone: false, legal: false,
+    summary: false, brief: false, purpose: false,
+  },
+};
+
+describe("checkAiDetectorGemini", () => {
+  let originalFetch: typeof globalThis.fetch;
+  beforeEach(() => { originalFetch = globalThis.fetch; });
+  afterEach(() => { globalThis.fetch = originalFetch; });
+
+  test("maps 0.82 aiScore to 'ai' verdict", async () => {
+    globalThis.fetch = async () => ({
+      ok: true,
+      json: async () => ({
+        candidates: [{ content: { parts: [{ text: JSON.stringify({ aiScore: 0.82, segments: [{ text: "This sentence.", aiScore: 0.9 }] }) }] } }]
+      }),
+    } as Response);
+    const result = await checkAiDetectorGemini("Some article text.", geminiConfig);
+    expect(result.verdict).toBe("ai");
+    expect(result.aiPct).toBe(82);
+    expect(result.topSegments).toHaveLength(1);
+    expect(result.topSegments[0].aiScore).toBe(0.9);
+  });
+
+  test("maps 0.15 aiScore to 'human' verdict", async () => {
+    globalThis.fetch = async () => ({
+      ok: true,
+      json: async () => ({
+        candidates: [{ content: { parts: [{ text: JSON.stringify({ aiScore: 0.15, segments: [] }) }] } }]
+      }),
+    } as Response);
+    const result = await checkAiDetectorGemini("Human-written text.", geminiConfig);
+    expect(result.verdict).toBe("human");
+    expect(result.aiPct).toBe(15);
+    expect(result.topSegments).toHaveLength(0);
+  });
+
+  test("clamps out-of-range aiScore to [0,1]", async () => {
+    globalThis.fetch = async () => ({
+      ok: true,
+      json: async () => ({
+        candidates: [{ content: { parts: [{ text: JSON.stringify({ aiScore: 1.5, segments: [] }) }] } }]
+      }),
+    } as Response);
+    const result = await checkAiDetectorGemini("text", geminiConfig);
+    expect(result.aiScore).toBeLessThanOrEqual(1);
+    expect(result.aiScore).toBeGreaterThanOrEqual(0);
+  });
+
+  test("returns error result when Gemini API key is missing", async () => {
+    const configNoKey = { ...geminiConfig, geminiApiKey: undefined };
+    const result = await checkAiDetectorGemini("text", configNoKey);
+    expect(result.error).toMatch(/Gemini API key/i);
+    expect(result.aiPct).toBe(0);
+  });
+
+  test("returns error result when Gemini response is not valid JSON", async () => {
+    globalThis.fetch = async () => ({
+      ok: true,
+      json: async () => ({
+        candidates: [{ content: { parts: [{ text: "I cannot analyze this." }] } }]
+      }),
+    } as Response);
+    const result = await checkAiDetectorGemini("text", geminiConfig);
+    expect(result.error).toMatch(/parse/i);
+  });
+
+  test("returns error result on HTTP failure", async () => {
+    globalThis.fetch = async () => ({ ok: false, status: 429 } as Response);
+    const result = await checkAiDetectorGemini("text", geminiConfig);
+    expect(result.error).toMatch(/429/);
+  });
+});
 
 // Import the internal parser via a test-only export pattern —
 // we test the XML parsing logic directly without making network calls.
