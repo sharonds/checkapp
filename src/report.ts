@@ -38,6 +38,7 @@ interface ProviderMeta {
 const PROVIDER_LABEL: Record<string, ProviderMeta> = {
   copyscape: { label: "Copyscape", color: "#0078D4", href: "https://copyscape.com", processor: "Copyscape" },
   "gemini-ai-detection": { label: "Gemini AI Detection", color: "#4285f4", href: "https://ai.google.dev", processor: "Google Gemini" },
+  "gemini-grounded-plagiarism": { label: "Gemini Grounded Plagiarism", color: "#4285f4", href: "https://ai.google.dev", processor: "Google Gemini" },
   gemini: { label: "Gemini", color: "#4285f4", href: "https://ai.google.dev", processor: "Google Gemini" },
   "gemini-grounded": { label: "Gemini Grounded", color: "#4285f4", href: "https://ai.google.dev", processor: "Google Gemini" },
   "gemini-deep-research": { label: "Gemini Deep Research", color: "#4285f4", href: "https://ai.google.dev", processor: "Google Gemini" },
@@ -107,6 +108,7 @@ function skillCard(r: SkillResult): string {
         <li style="margin-bottom:8px;padding:8px 12px;background:#fff;border-radius:6px;border:1px solid #f3f4f6;font-size:13px;color:#374151;line-height:1.5">
           <span style="margin-right:5px">${SEVERITY_ICON[f.severity] ?? ""}</span>${escapeHtml(f.text)}
           ${f.quote ? `<div style="margin-top:4px;padding:4px 8px;background:#f9fafb;border-left:3px solid #d1d5db;border-radius:2px;font-style:italic;font-size:12px;color:#6b7280">"${escapeHtml(f.quote.slice(0, 140))}${f.quote.length > 140 ? "…" : ""}"</div>` : ""}
+          ${f.sources?.length ? `<div style="margin-top:6px;font-size:12px;color:#4b5563">Source: ${f.sources.slice(0, 2).map((s) => `<a href="${escapeHtml(s.url)}" style="color:#2563eb;text-decoration:none">${escapeHtml(s.title || s.url)}</a>`).join(", ")}</div>` : ""}
         </li>`).join("")}
     </ul>`;
 

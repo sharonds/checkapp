@@ -77,6 +77,35 @@ test("Copyscape AI Detection report does not disclose Google Gemini", () => {
   expect(html).not.toContain("Google Gemini");
 });
 
+test("Gemini grounded plagiarism report shows provider and source evidence", () => {
+  const html = generateReport({
+    source: "article.md",
+    wordCount: 800,
+    totalCostUsd: 0.04,
+    results: [{
+      skillId: "plagiarism",
+      name: "Plagiarism Check",
+      score: 56,
+      verdict: "warn",
+      summary: "22% grounded similarity — 1 source matched",
+      findings: [{
+        severity: "warn",
+        text: "4 words matched at https://example.com/source",
+        quote: "[high confidence · exact] Exact copied sentence.",
+        sources: [{ url: "https://example.com/source", title: "Source" }],
+        confidence: "high",
+      }],
+      costUsd: 0.04,
+      provider: "gemini-grounded-plagiarism",
+    }],
+  });
+
+  expect(html).toContain("Gemini Grounded Plagiarism");
+  expect(html).toContain("Google Gemini");
+  expect(html).toContain("https://example.com/source");
+  expect(html).toContain("Source");
+});
+
 test("SEO-only report does not disclose third-party processors", () => {
   const html = generateReport({
     source: "article.md",

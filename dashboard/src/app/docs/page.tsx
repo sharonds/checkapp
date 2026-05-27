@@ -138,9 +138,9 @@ function SkillsReference() {
   const skills = [
     {
       name: "Plagiarism Check",
-      engine: "Copyscape",
-      cost: "~$0.09",
-      desc: "Compares your article against billions of web pages to detect duplicated or closely paraphrased content. Returns matched URLs, percentage overlap, and specific quoted passages.",
+      engine: "Copyscape / Gemini Grounded",
+      cost: "~$0.09 / ~$0.04",
+      desc: "Compares your article against Copyscape's indexed web data by default, or uses Gemini with Google Search grounding and URL context when explicitly configured. Returns matched URLs, confidence, percentage overlap, and specific quoted passages.",
     },
     {
       name: "AI Detection",
@@ -313,12 +313,12 @@ function ApiKeysSetup() {
 
       <SubHeading>Gemini</SubHeading>
       <Prose>
-        <p>Required for AI Detection only when Gemini is explicitly selected as the AI Detection provider.</p>
+        <p>Required when Gemini is explicitly selected for AI Detection, Gemini Grounded Plagiarism, or Gemini-backed fact-check tiers.</p>
       </Prose>
       <ol className="mt-1 space-y-1 text-sm text-muted-foreground list-decimal pl-5">
         <li>Generate a Gemini API key in Google AI Studio</li>
-        <li>Set GEMINI_API_KEY, config.geminiApiKey, or providers["ai-detection"].apiKey</li>
-        <li>Set providers["ai-detection"].provider to gemini-ai-detection</li>
+        <li>Set GEMINI_API_KEY, config.geminiApiKey, or a provider-scoped apiKey</li>
+        <li>Set providers["ai-detection"].provider to gemini-ai-detection or providers.plagiarism.provider to gemini-grounded-plagiarism</li>
       </ol>
 
       <SubHeading>Exa AI</SubHeading>
@@ -491,7 +491,7 @@ function Faq() {
     },
     {
       q: "What's the cost per check?",
-      a: "With all skills enabled, cost depends on enabled providers and article length. SEO runs offline. Copyscape plagiarism starts at $0.03 and scales by word count; Copyscape AI detection is about $0.03/check; Gemini AI detection is recorded as an in-app estimate of about $0.01/check; most MiniMax-based skills are about $0.002/check.",
+      a: "With all skills enabled, cost depends on enabled providers and article length. Copyscape plagiarism starts at $0.03 and scales by word count; Gemini Grounded Plagiarism is recorded as an in-app estimate of about $0.04/check; Copyscape AI detection is about $0.03/check; Gemini AI detection is about $0.01/check; most MiniMax-based skills are about $0.002/check.",
     },
     {
       q: "Can I add custom skills?",
@@ -499,7 +499,7 @@ function Faq() {
     },
     {
       q: "Is my article text sent to third parties?",
-      a: "Yes, when using external skills. Copyscape receives the article text for plagiarism and AI detection. Exa AI receives extracted claims for evidence search. MiniMax receives the text for tone, legal, fact-check, and summary analysis. All communication is over HTTPS.",
+      a: "Yes, when using external skills. Copyscape receives article text for plagiarism and AI detection. Gemini receives article text for Gemini AI detection, Gemini Grounded Plagiarism, and Gemini-backed fact-check tiers when selected. Exa AI receives extracted claims for evidence search. MiniMax receives text for tone, legal, fact-check, and summary analysis. All communication is over HTTPS.",
     },
     {
       q: "Can I use it offline?",

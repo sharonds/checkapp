@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Gemini Grounded Plagiarism provider** — selectable plagiarism provider using Gemini 3.1 Pro Preview with Google Search grounding, URL context, structured output, and source-confidence evidence. Copyscape remains the default; users can explicitly select Gemini or configure `providers.plagiarism.extra.fallbackProvider = "gemini-grounded-plagiarism"` for Copyscape skipped states.
 - **Gemini 3.1 Pro Preview AI detection provider** — multilingual AI detection via Gemini. Set as default via `providers["ai-detection"].provider = "gemini-ai-detection"` in `~/.checkapp/config.json` and provide `GEMINI_API_KEY`, `geminiApiKey`, or `providers["ai-detection"].apiKey`. CheckApp records an in-app estimate of about $0.01/check; Copyscape remains the default at about $0.03/check.
 - **Google Docs tab support** — `?tab=t.xxx` URLs now fetch the correct tab instead of always returning the first tab. Tab IDs are allowlist-validated (alphanumeric + dots + hyphens, max 64 chars). No Google auth required.
 

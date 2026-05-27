@@ -17,6 +17,12 @@ const GEMINI_FACT_CHECK_PROVIDERS = new Set<SkillProviderConfig["provider"]>([
   "gemini-deep-research",
 ]);
 
+const GEMINI_PROVIDERS = new Set<SkillProviderConfig["provider"]>([
+  ...GEMINI_FACT_CHECK_PROVIDERS,
+  "gemini-grounded-plagiarism",
+  "gemini-ai-detection",
+]);
+
 export function resolveProvider(
   config: Config,
   skillId: SkillId,
@@ -25,7 +31,7 @@ export function resolveProvider(
   if (explicit?.provider) {
     const apiKey =
       explicit.apiKey ??
-      (skillId === "fact-check" && GEMINI_FACT_CHECK_PROVIDERS.has(explicit.provider) ? config.geminiApiKey : undefined);
+      (GEMINI_PROVIDERS.has(explicit.provider) ? config.geminiApiKey : undefined);
     return { provider: explicit.provider, apiKey, metadata: getProvider(skillId, explicit.provider) };
   }
   const legacy = LEGACY_MAP[skillId];

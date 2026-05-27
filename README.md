@@ -40,7 +40,7 @@ See [docs/security.md](docs/security.md) for the BYOK-alpha threat model.
 
 | Skill | Engine | Cost/check | Enabled by default |
 |-------|--------|-----------|-------------------|
-| **Plagiarism** | Copyscape | ~$0.09 | ✅ |
+| **Plagiarism** | Copyscape · Gemini Grounded Plagiarism | ~$0.09 / ~$0.04 estimate | ✅ |
 | **AI Detection** | Copyscape (English) · Gemini 3.1 Pro Preview (multilingual) | ~$0.03 / ~$0.01 estimate | ✅ |
 | **SEO** | Offline (no API) | free | ✅ |
 | **Grammar & Style** | LanguageTool + LLM fallback | free tier / ~$0.002 | ❌ disabled by default (enable in Settings; LanguageTool free tier works without any API key) |
@@ -86,7 +86,7 @@ Research basis: the Standard tier was selected based on an [internal benchmark o
 | Feature | Details |
 |---------|---------|
 | **Pluggable skills** | Enable/disable any skill via config. Add custom skills by implementing one TypeScript interface. |
-| **Plagiarism check** | Checks against Copyscape's indexed web data. Returns 0–100% similarity + matched sources. |
+| **Plagiarism check** | Checks against Copyscape's indexed web data by default, or Gemini Grounded Plagiarism when selected. Returns 0–100% similarity + matched sources. |
 | **AI detection** | Copyscape AI detector. Returns 0–100% probability per sentence and an overall verdict. |
 | **SEO analysis** | Offline. Checks word count (800–2500 ideal), H1/H2 headings, average sentence length, Flesch-Kincaid readability. |
 | **Fact check** | Extracts 4 specific claims → searches each with Exa AI → Claude assesses evidence → per-claim supported/unsupported verdict with citation recommendations. |
@@ -195,6 +195,38 @@ Top match: ynet.co.il/articles/0,7340,L-4870486,00.html  76 words
 | 0 – 15% | ✅ **PASS** | No significant matches detected by this check. Ready for editorial review. |
 | 16 – 25% | ⚠️ **REVIEW** | Some overlap. Check listed sources and rewrite matching passages. |
 | 26%+ | ❌ **REWRITE** | Too similar to existing content. Rewrite before publishing. |
+
+CheckApp supports two plagiarism providers:
+
+| Provider | Best for | Cost | When used |
+|----------|----------|------|-----------|
+| Copyscape | Deterministic indexed-web plagiarism checks | ~$0.09 per 800 words | Default |
+| Gemini Grounded Plagiarism | Grounded web-search evidence, especially multilingual/Hebrew checks | ~$0.04/check in-app estimate | Explicitly configured, or explicit fallback from Copyscape |
+
+To select Gemini Grounded Plagiarism:
+```json
+{
+  "providers": {
+    "plagiarism": {
+      "provider": "gemini-grounded-plagiarism"
+    }
+  }
+}
+```
+
+To keep Copyscape as the primary provider but explicitly fall back to Gemini when Copyscape skips, for example insufficient credits:
+```json
+{
+  "providers": {
+    "plagiarism": {
+      "provider": "copyscape",
+      "extra": {
+        "fallbackProvider": "gemini-grounded-plagiarism"
+      }
+    }
+  }
+}
+```
 
 ### AI Detection
 
@@ -514,8 +546,8 @@ Approximate cost per 800-word article check with all skills enabled:
 
 | Skill | Engine | Cost |
 |-------|--------|------|
-| Plagiarism | Copyscape | ~$0.09 |
-| AI Detection | Copyscape | ~$0.09 |
+| Plagiarism | Copyscape / Gemini Grounded Plagiarism | ~$0.09 / ~$0.04 estimate |
+| AI Detection | Copyscape / Gemini | ~$0.03 / ~$0.01 estimate |
 | SEO | Offline | free |
 | Fact Check | Exa + MiniMax/Claude | ~$0.03 |
 | Tone of Voice | MiniMax/Claude | ~$0.002 |
@@ -634,7 +666,7 @@ Set the path: `TONE_GUIDE_FILE=/path/to/brand-voice.md`
 |-------|-----------|
 | Runtime & compiler | [Bun](https://bun.sh) |
 | Terminal UI | [Ink](https://github.com/vadimdemedes/ink) — React for CLIs |
-| Plagiarism + AI detection | [Copyscape Premium API](https://www.copyscape.com/api-guide.php) |
+| Plagiarism + AI detection | [Copyscape Premium API](https://www.copyscape.com/api-guide.php); Gemini Grounded Plagiarism is available as a selectable/fallback plagiarism provider |
 | SEO analysis | Offline — custom metrics engine |
 | Fact checking | [Exa AI](https://exa.ai) search + MiniMax M2.7 or Claude Haiku assessment |
 | Tone + Legal | MiniMax M2.7 (preferred) or Claude Haiku (fallback) |
@@ -786,7 +818,7 @@ TONE_GUIDE_FILE=/path/to/voice.md      # optional — enables tone of voice skil
 ## Security
 
 - Credentials are stored **locally only** at `~/.checkapp/config.json`, or read from environment variables — never stored remotely
-- Article text is sent to Copyscape (plagiarism + AI detection), optionally to Parallel AI (source page fetching), Exa AI (fact checking), and MiniMax or Anthropic (fact check, tone, legal) — all over HTTPS
+- Article text is sent to Copyscape (plagiarism + AI detection), optionally to Gemini (AI detection, grounded plagiarism, and grounded fact-check tiers), Parallel AI (source page fetching), Exa AI (fact checking), and MiniMax or Anthropic (fact check, tone, legal) — all over HTTPS
 - The HTML report and SQLite database are stored locally in the current directory and `~/.checkapp/`
 - No analytics, no telemetry, no logging
 

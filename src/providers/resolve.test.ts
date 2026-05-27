@@ -66,6 +66,22 @@ describe("resolveProvider", () => {
     expect(r?.apiKey).toBe("cs-legacy");
   });
 
+  test("resolves gemini-grounded-plagiarism with config.geminiApiKey for plagiarism", () => {
+    const provider = PROVIDER_REGISTRY.plagiarism?.find((p) => p.id === "gemini-grounded-plagiarism");
+    const r = resolveProvider(
+      {
+        ...base,
+        geminiApiKey: "gk-plagiarism",
+        providers: { plagiarism: { provider: "gemini-grounded-plagiarism" } },
+      } as Config,
+      "plagiarism",
+    );
+
+    expect(r?.provider).toBe("gemini-grounded-plagiarism");
+    expect(r?.apiKey).toBe("gk-plagiarism");
+    expect(r?.metadata).toEqual(provider);
+  });
+
   test("returns null when nothing configured for fact-check", () => {
     expect(resolveProvider(base, "fact-check")).toBeNull();
   });

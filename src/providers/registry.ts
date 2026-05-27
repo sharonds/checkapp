@@ -25,6 +25,7 @@ export const PROVIDER_REGISTRY: Partial<Record<SkillId, ProviderMetadata[]>> = {
   ],
   plagiarism: [
     { id: "copyscape", label: "Copyscape", speed: "medium", costPerCheckUsd: 0.03, costLabel: "$0.03/check", depth: "standard", freeTier: false, requiresKey: true },
+    { id: "gemini-grounded-plagiarism", label: "Gemini Grounded Plagiarism", speed: "slow", costPerCheckUsd: 0.04, costLabel: "~$0.04/check estimate", depth: "deep", freeTier: false, requiresKey: true },
     { id: "originality", label: "Originality.ai", speed: "slow", costPerCheckUsd: 0.01, costLabel: "$0.01/check", depth: "deep", freeTier: false, requiresKey: true },
   ],
   "ai-detection": [

@@ -1,0 +1,141 @@
+import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { checkPlagiarismGeminiGrounded } from "./plagiarism-gemini.ts";
+import type { Config } from "./config.ts";
+
+const config: Config = {
+  copyscapeUser: "",
+  copyscapeKey: "",
+  geminiApiKey: "gemini-key",
+  providers: { plagiarism: { provider: "gemini-grounded-plagiarism" } },
+  skills: {
+    plagiarism: true, aiDetection: false, seo: false,
+    factCheck: false, tone: false, legal: false,
+    summary: false, brief: false, purpose: false,
+  },
+};
+
+describe("checkPlagiarismGeminiGrounded", () => {
+  let originalFetch: typeof globalThis.fetch;
+  beforeEach(() => { originalFetch = globalThis.fetch; });
+  afterEach(() => { globalThis.fetch = originalFetch; });
+
+  test("calls Gemini with Google Search, URL context, structured output, and thinking", async () => {
+    let requestUrl = "";
+    let requestKey = "";
+    let requestBody: any;
+    globalThis.fetch = async (url: string | URL, init?: RequestInit) => {
+      requestUrl = String(url);
+      requestKey = new Headers(init?.headers).get("x-goog-api-key") ?? "";
+      requestBody = JSON.parse(String(init?.body));
+      return {
+        ok: true,
+        json: async () => geminiResponse({
+          overallSimilarityPct: 28,
+          verdict: "rewrite",
+          confidence: "high",
+          matches: [{
+            sourceUrl: "https://example.com/source",
+            sourceTitle: "Source",
+            matchedArticleText: "Copied sentence from source.",
+            matchedSourceText: "Copied sentence from source.",
+            similarityPct: 95,
+            matchType: "exact",
+            confidence: "high",
+            explanation: "Exact copied sentence.",
+          }],
+        }),
+      } as Response;
+    };
+
+    const result = await checkPlagiarismGeminiGrounded("Copied sentence from source.", config);
+
+    expect(requestUrl).toContain("/models/gemini-3.1-pro-preview:generateContent");
+    expect(requestKey).toBe("gemini-key");
+    expect(requestBody.tools).toEqual([{ google_search: {} }, { url_context: {} }]);
+    expect(requestBody.generationConfig.thinkingConfig.thinkingLevel).toBe("high");
+    expect(requestBody.generationConfig.responseMimeType).toBe("application/json");
+    expect(requestBody.generationConfig.responseSchema.required).toContain("matches");
+    expect(result.verdict).toBe("rewrite");
+    expect(result.totalMatches).toBe(1);
+    expect(result.matches[0].url).toBe("https://example.com/source");
+    expect(result.matches[0].snippet).toContain("[high confidence");
+  });
+
+  test("downgrades ungrounded high-confidence matches to low confidence", async () => {
+    globalThis.fetch = async () => ({
+      ok: true,
+      json: async () => ({
+        candidates: [{
+          content: { parts: [{ text: JSON.stringify({
+            overallSimilarityPct: 18,
+            verdict: "review",
+            confidence: "high",
+            matches: [{
+              sourceUrl: "https://not-grounded.example/source",
+              sourceTitle: "Ungrounded",
+              matchedArticleText: "Copied sentence.",
+              similarityPct: 80,
+              matchType: "exact",
+              confidence: "high",
+              explanation: "Model claimed a match.",
+            }],
+          }) }] },
+          groundingMetadata: { groundingChunks: [] },
+        }],
+      }),
+    } as Response);
+
+    const result = await checkPlagiarismGeminiGrounded("Copied sentence.", config);
+
+    expect(result.matches[0].snippet).toContain("[low confidence");
+  });
+
+  test("caps ungrounded matches with source-text overlap at medium confidence", async () => {
+    globalThis.fetch = async () => ({
+      ok: true,
+      json: async () => ({
+        candidates: [{
+          content: { parts: [{ text: JSON.stringify({
+            overallSimilarityPct: 18,
+            verdict: "review",
+            confidence: "high",
+            matches: [{
+              sourceUrl: "https://example.com/source",
+              sourceTitle: "Source",
+              matchedArticleText: "Copied sentence from a public source.",
+              matchedSourceText: "Copied sentence from a public source.",
+              similarityPct: 80,
+              matchType: "exact",
+              confidence: "high",
+              explanation: "Exact copied sentence.",
+            }],
+          }) }] },
+          groundingMetadata: { groundingChunks: [] },
+        }],
+      }),
+    } as Response);
+
+    const result = await checkPlagiarismGeminiGrounded("Copied sentence from a public source.", config);
+
+    expect(result.matches[0].snippet).toContain("[medium confidence");
+  });
+
+  test("returns skipped when Gemini API key is missing", async () => {
+    const result = await checkPlagiarismGeminiGrounded("text", { ...config, geminiApiKey: undefined });
+
+    expect(result.verdict).toBe("skipped");
+    expect(result.error).toMatch(/Gemini API key/i);
+  });
+});
+
+function geminiResponse(payload: unknown) {
+  return {
+    candidates: [{
+      content: { parts: [{ text: JSON.stringify(payload) }] },
+      groundingMetadata: {
+        webSearchQueries: ["Copied sentence from source"],
+        groundingChunks: [{ web: { uri: "https://example.com/source", title: "Source" } }],
+      },
+    }],
+  };
+}

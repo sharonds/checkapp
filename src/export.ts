@@ -27,6 +27,9 @@ export function generateMarkdownReport(record: Omit<CheckRecord, "id" | "created
       for (const f of visible) {
         md += `- ${SEVERITY_ICON[f.severity] ?? ""} ${f.text}\n`;
         if (f.quote) md += `  > "${f.quote.slice(0, 140)}${f.quote.length > 140 ? "…" : ""}"\n`;
+        for (const source of f.sources?.slice(0, 2) ?? []) {
+          md += `  Source: [${source.title ?? source.url}](${source.url})\n`;
+        }
       }
       md += `\n`;
     }

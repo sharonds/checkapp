@@ -169,6 +169,31 @@ describe("/api/skills", () => {
     expect(skill.supportedProviders).toEqual(["copyscape"]);
   });
 
+  test("Plagiarism is ready with explicit Gemini grounded provider and top-level Gemini key", async () => {
+    mockReadAppConfig.mockReturnValue({
+      skills: { plagiarism: true },
+      providers: {
+        plagiarism: { provider: "gemini-grounded-plagiarism" },
+      },
+    });
+    mockGetApiKeyStatus.mockReturnValue({
+      anthropic: false,
+      minimax: false,
+      openrouter: false,
+      copyscape: false,
+      exa: false,
+      gemini: true,
+    });
+
+    const res = await GET();
+    const json = await res.json();
+    const skill = json.find((s: any) => s.id === "plagiarism");
+
+    expect(skill.ready).toBe(true);
+    expect(skill.supportedProviders).toEqual(["gemini"]);
+    expect(skill.missingProviders).toEqual([]);
+  });
+
   test("POST toggles skill enabled state", async () => {
     const req = new NextRequest(new URL("http://localhost/api/skills"), {
       method: "POST",

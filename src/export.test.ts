@@ -67,6 +67,30 @@ describe("generateMarkdownReport", () => {
     expect(md).toContain("github.com/sharonds/checkapp");
   });
 
+  it("includes source evidence links for grounded plagiarism findings", () => {
+    const md = generateMarkdownReport({
+      source: "test.md",
+      wordCount: 500,
+      totalCostUsd: 0.04,
+      results: [{
+        skillId: "plagiarism",
+        name: "Plagiarism Check",
+        score: 56,
+        verdict: "warn" as const,
+        summary: "22% grounded similarity — 1 source matched",
+        findings: [{
+          severity: "warn" as const,
+          text: "4 words matched at https://example.com/source",
+          sources: [{ url: "https://example.com/source", title: "Source" }],
+        }],
+        costUsd: 0.04,
+        provider: "gemini-grounded-plagiarism",
+      }],
+    });
+
+    expect(md).toContain("Source: [Source](https://example.com/source)");
+  });
+
   it("all-skipped markdown report is marked skipped with N/A score", () => {
     const md = generateMarkdownReport({
       source: "test.md",

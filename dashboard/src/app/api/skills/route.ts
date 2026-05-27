@@ -14,7 +14,7 @@ type SkillMeta = {
 };
 
 const SKILL_META: SkillMeta[] = [
-  { id: "plagiarism", name: "Plagiarism Check", engine: "Copyscape", supportedProviders: ["copyscape"] },
+  { id: "plagiarism", name: "Plagiarism Check", engine: "Copyscape / Gemini Grounded", supportedProviders: ["copyscape", "gemini"] },
   { id: "aiDetection", name: "AI Detection", engine: "Copyscape / Gemini", supportedProviders: ["copyscape", "gemini"] },
   { id: "seo", name: "SEO Analysis", engine: "Offline", supportedProviders: [] },
   { id: "factCheck", name: "Fact Check", engine: "Exa AI + MiniMax", supportedProviders: ["exa"] },
@@ -27,10 +27,17 @@ function requiredProviders(
   skill: SkillMeta,
   providers: Partial<Record<SkillId, SkillProviderConfig>>,
 ): ApiKeyProvider[] {
-  if (skill.id !== "aiDetection") return skill.supportedProviders;
+  if (skill.id === "aiDetection") {
+    const selected = providers["ai-detection"];
+    return selected?.provider === "gemini-ai-detection" ? ["gemini"] : ["copyscape"];
+  }
 
-  const selected = providers["ai-detection"];
-  return selected?.provider === "gemini-ai-detection" ? ["gemini"] : ["copyscape"];
+  if (skill.id === "plagiarism") {
+    const selected = providers.plagiarism;
+    return selected?.provider === "gemini-grounded-plagiarism" ? ["gemini"] : ["copyscape"];
+  }
+
+  return skill.supportedProviders;
 }
 
 function hasProviderKey(
@@ -41,6 +48,10 @@ function hasProviderKey(
 ): boolean {
   if (skill.id === "aiDetection" && provider === "gemini") {
     return Boolean(providers["ai-detection"]?.apiKey) || apiKeys.gemini === true;
+  }
+
+  if (skill.id === "plagiarism" && provider === "gemini") {
+    return Boolean(providers.plagiarism?.apiKey) || apiKeys.gemini === true;
   }
 
   return apiKeys[provider] === true;
