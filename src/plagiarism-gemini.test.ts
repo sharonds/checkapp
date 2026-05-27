@@ -52,6 +52,7 @@ describe("checkPlagiarismGeminiGrounded", () => {
     expect(requestUrl).toContain("/models/gemini-3.1-pro-preview:generateContent");
     expect(requestKey).toBe("gemini-key");
     expect(requestBody.tools).toEqual([{ google_search: {} }, { url_context: {} }]);
+    expect(requestBody.generationConfig.maxOutputTokens).toBe(8192);
     expect(requestBody.generationConfig.thinkingConfig.thinkingLevel).toBe("high");
     expect(requestBody.generationConfig.responseMimeType).toBe("application/json");
     expect(requestBody.generationConfig.responseSchema.required).toContain("matches");
@@ -118,6 +119,66 @@ describe("checkPlagiarismGeminiGrounded", () => {
     const result = await checkPlagiarismGeminiGrounded("Copied sentence from a public source.", config);
 
     expect(result.matches[0].snippet).toContain("[medium confidence");
+  });
+
+  test("caps ungrounded high-similarity matches with token overlap at medium confidence", async () => {
+    globalThis.fetch = async () => ({
+      ok: true,
+      json: async () => ({
+        candidates: [{
+          content: { parts: [{ text: JSON.stringify({
+            overallSimilarityPct: 31,
+            verdict: "rewrite",
+            confidence: "high",
+            matches: [{
+              sourceUrl: "https://example.com/source",
+              sourceTitle: "Source",
+              matchedArticleText: "Super-Pharm is an Israeli multinational pharmacy chain. It also operates in Poland.",
+              matchedSourceText: "Super-Pharm (Hebrew: סופר-פארם) is an Israeli multinational pharmacy chain. It also operates in Poland.",
+              similarityPct: 92,
+              matchType: "near_exact",
+              confidence: "high",
+              explanation: "Near-exact copied sentence.",
+            }],
+          }) }] },
+          groundingMetadata: { groundingChunks: [] },
+        }],
+      }),
+    } as Response);
+
+    const result = await checkPlagiarismGeminiGrounded("Super-Pharm is an Israeli multinational pharmacy chain.", config);
+
+    expect(result.matches[0].snippet).toContain("[medium confidence");
+  });
+
+  test("drops matches with non-http source URLs before report rendering", async () => {
+    globalThis.fetch = async () => ({
+      ok: true,
+      json: async () => ({
+        candidates: [{
+          content: { parts: [{ text: JSON.stringify({
+            overallSimilarityPct: 90,
+            verdict: "rewrite",
+            confidence: "high",
+            matches: [{
+              sourceUrl: "javascript:alert(1)",
+              sourceTitle: "Unsafe",
+              matchedArticleText: "Copied sentence.",
+              similarityPct: 90,
+              matchType: "exact",
+              confidence: "high",
+              explanation: "Unsafe URL should not be rendered.",
+            }],
+          }) }] },
+          groundingMetadata: { groundingChunks: [] },
+        }],
+      }),
+    } as Response);
+
+    const result = await checkPlagiarismGeminiGrounded("Copied sentence.", config);
+
+    expect(result.matches).toHaveLength(0);
+    expect(result.totalMatches).toBe(0);
   });
 
   test("returns skipped when Gemini API key is missing", async () => {

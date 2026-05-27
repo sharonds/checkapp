@@ -136,7 +136,7 @@ export async function checkPlagiarismGeminiGrounded(
         contents: [{ parts: [{ text: `${PROMPT}\n\nArticle:\n${text}` }] }],
         tools: [{ google_search: {} }, { url_context: {} }],
         generationConfig: {
-          maxOutputTokens: 4096,
+          maxOutputTokens: 8192,
           thinkingConfig: { thinkingLevel: "high" },
           responseMimeType: "application/json",
           responseSchema: RESPONSE_SCHEMA,
@@ -193,11 +193,12 @@ export async function checkPlagiarismGeminiGrounded(
 function normalizeMatches(matches: GeminiPlagiarismMatch[], groundedUrls: string[]): CopyscapeMatch[] {
   return matches
     .filter((m) => m && typeof m.sourceUrl === "string" && typeof m.matchedArticleText === "string")
+    .filter((m) => isHttpUrl(m.sourceUrl))
     .map((m) => {
       const grounded = groundedUrls.some((url) => sameUrl(url, m.sourceUrl));
       const confidence = grounded
         ? normalizeConfidence(m.confidence)
-        : hasTextOverlap(m.matchedArticleText, m.matchedSourceText)
+        : hasTextOverlap(m.matchedArticleText, m.matchedSourceText, m.similarityPct)
           ? capConfidence(normalizeConfidence(m.confidence), "medium")
           : "low";
       const matchType = normalizeMatchType(m.matchType);
@@ -277,17 +278,29 @@ function capConfidence(confidence: Confidence, maximum: Confidence): Confidence 
   return maximum;
 }
 
-function hasTextOverlap(articleText: string, sourceText: string | undefined): boolean {
+function hasTextOverlap(articleText: string, sourceText: string | undefined, similarityPct: number): boolean {
   if (!sourceText) return false;
   const article = normalizeText(articleText);
   const source = normalizeText(sourceText);
   if (!article || !source) return false;
+  if (similarityPct >= 70 && tokenOverlapRatio(article, source) >= 0.5) return true;
   return article.includes(source.slice(0, Math.min(source.length, 80))) ||
     source.includes(article.slice(0, Math.min(article.length, 80)));
 }
 
 function normalizeText(value: string): string {
   return value.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function tokenOverlapRatio(a: string, b: string): number {
+  const left = new Set(a.split(/\s+/).filter((token) => token.length > 2));
+  const right = new Set(b.split(/\s+/).filter((token) => token.length > 2));
+  if (left.size === 0 || right.size === 0) return 0;
+  let overlap = 0;
+  for (const token of left) {
+    if (right.has(token)) overlap++;
+  }
+  return overlap / Math.min(left.size, right.size);
 }
 
 function sameUrl(a: string, b: string): boolean {
@@ -298,6 +311,15 @@ function sameUrl(a: string, b: string): boolean {
       left.pathname.replace(/\/$/, "") === right.pathname.replace(/\/$/, "");
   } catch {
     return a === b;
+  }
+}
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
   }
 }
 
