@@ -173,8 +173,10 @@ export async function checkPlagiarismGeminiGrounded(
   }
 
   const matches = normalizeMatches(parsed.matches ?? [], groundedSourceUrls);
-  const similarityPct = clampPct(Number(parsed.overallSimilarityPct) || maxSimilarity(matches));
-  const verdict = normalizeVerdict(parsed.verdict, similarityPct);
+  const similarityPct = matches.length === 0
+    ? 0
+    : clampPct(Number(parsed.overallSimilarityPct) || maxSimilarity(matches));
+  const verdict = matches.length === 0 ? "publish" : normalizeVerdict(parsed.verdict, similarityPct);
 
   return {
     totalMatches: matches.length,
@@ -194,6 +196,7 @@ function normalizeMatches(matches: GeminiPlagiarismMatch[], groundedUrls: string
   return matches
     .filter((m) => m && typeof m.sourceUrl === "string" && typeof m.matchedArticleText === "string")
     .filter((m) => isHttpUrl(m.sourceUrl))
+    .filter((m) => groundedUrls.some((url) => sameUrl(url, m.sourceUrl)))
     .map((m) => {
       const grounded = groundedUrls.some((url) => sameUrl(url, m.sourceUrl));
       const confidence = grounded

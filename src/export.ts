@@ -3,6 +3,7 @@ import type { SkillResult } from "./skills/types.ts";
 import { generateReport } from "./report.ts";
 import { writeFileSync } from "fs";
 import { formatScore, formatSkillScore, summarizeResults } from "./output-summary.ts";
+import { escapeMarkdownLabel, safeReportUrl } from "./report-sanitize.ts";
 
 const VERDICT_ICON: Record<string, string> = { pass: "✅", warn: "⚠️", fail: "❌", skipped: "–" };
 const SEVERITY_ICON: Record<string, string> = { info: "ℹ️", warn: "⚠️", error: "❌" };
@@ -42,13 +43,15 @@ export function generateMarkdownReport(record: Omit<CheckRecord, "id" | "created
     md += `## ${VERDICT_ICON[r.verdict] ?? ""} ${r.name} — ${formatSkillScore(r)} ${r.verdict.toUpperCase()}\n\n`;
     if (r.provider) md += `**Provider:** ${PROVIDER_LABEL[r.provider] ?? r.provider}\n\n`;
     md += `${r.summary}\n\n`;
-    const visible = r.findings.filter(f => f.severity === "warn" || f.severity === "error");
+    const visible = r.findings.filter(f => f.severity === "warn" || f.severity === "error" || (f.sources?.length ?? 0) > 0);
     if (visible.length > 0) {
       for (const f of visible) {
         md += `- ${SEVERITY_ICON[f.severity] ?? ""} ${f.text}\n`;
         if (f.quote) md += `  > "${f.quote.slice(0, 140)}${f.quote.length > 140 ? "…" : ""}"\n`;
         for (const source of f.sources?.slice(0, 2) ?? []) {
-          md += `  Source: [${source.title ?? source.url}](${source.url})\n`;
+          const safeUrl = safeReportUrl(source.url);
+          const label = escapeMarkdownLabel(source.title ?? source.url);
+          md += safeUrl ? `  Source: [${label}](${safeUrl})\n` : `  Source: ${label}\n`;
         }
       }
       md += `\n`;

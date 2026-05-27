@@ -104,5 +104,17 @@ export function getMaskedConfig(): AppConfig {
       masked[key] = maskKey(masked[key] as string);
     }
   }
+  if (masked.providers && typeof masked.providers === "object") {
+    masked.providers = Object.fromEntries(
+      Object.entries(masked.providers).map(([skillId, provider]) => {
+        if (!provider || typeof provider !== "object") return [skillId, provider];
+        const copy = { ...provider };
+        if (typeof copy.apiKey === "string" && copy.apiKey) {
+          copy.apiKey = maskKey(copy.apiKey);
+        }
+        return [skillId, copy];
+      }),
+    ) as AppConfig["providers"];
+  }
   return masked;
 }

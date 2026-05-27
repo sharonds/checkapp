@@ -119,7 +119,7 @@ export class FactCheckGroundedSkill implements Skill {
       return skippedResult(this, "gemini-grounded API key missing");
     }
 
-    const llm = getLlmClient(config);
+    const llm = getLlmClient({ ...config, geminiApiKey: config.geminiApiKey ?? apiKey });
     if (!llm) {
       return skippedResult(this, "no LLM key configured for claim extraction");
     }
@@ -153,19 +153,20 @@ export class FactCheckGroundedSkill implements Skill {
     }
 
     for (const { claim, assessment, sources, webSearchQueries } of groundedResults) {
-      const confidence = claimConfidence(sources.length, assessment.supported);
+      const supported = sources.length === 0 && assessment.supported === true ? null : assessment.supported;
+      const confidence = claimConfidence(sources.length, supported);
       const queryHint = webSearchQueries.length > 0 ? ` Search: ${webSearchQueries.slice(0, 2).join(" | ")}` : "";
       const base = { sources, confidence, claimType: "general" as ClaimType };
-      if (assessment.supported === false) {
+      if (supported === false) {
         findings.push({
           severity: "error",
           text: `Unsupported (${confidence} confidence): "${claim}" — ${assessment.note}${queryHint}`,
           ...base,
         });
-      } else if (assessment.supported === null) {
+      } else if (supported === null) {
         findings.push({
           severity: "warn",
-          text: `Unverified (${confidence} confidence): "${claim}" — ${assessment.note}${queryHint}`,
+          text: `Unverified (${confidence} confidence): "${claim}" — ${sources.length === 0 ? "No grounded source URL was returned." : assessment.note}${queryHint}`,
           ...base,
         });
       } else {

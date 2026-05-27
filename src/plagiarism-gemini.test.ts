@@ -62,7 +62,7 @@ describe("checkPlagiarismGeminiGrounded", () => {
     expect(result.matches[0].snippet).toContain("[high confidence");
   });
 
-  test("downgrades ungrounded high-confidence matches to low confidence", async () => {
+  test("drops ungrounded high-confidence matches", async () => {
     globalThis.fetch = async () => ({
       ok: true,
       json: async () => ({
@@ -88,10 +88,12 @@ describe("checkPlagiarismGeminiGrounded", () => {
 
     const result = await checkPlagiarismGeminiGrounded("Copied sentence.", config);
 
-    expect(result.matches[0].snippet).toContain("[low confidence");
+    expect(result.matches).toHaveLength(0);
+    expect(result.similarityPct).toBe(0);
+    expect(result.verdict).toBe("publish");
   });
 
-  test("caps ungrounded matches with source-text overlap at medium confidence", async () => {
+  test("requires grounding even when source-text overlap exists", async () => {
     globalThis.fetch = async () => ({
       ok: true,
       json: async () => ({
@@ -118,10 +120,12 @@ describe("checkPlagiarismGeminiGrounded", () => {
 
     const result = await checkPlagiarismGeminiGrounded("Copied sentence from a public source.", config);
 
-    expect(result.matches[0].snippet).toContain("[medium confidence");
+    expect(result.matches).toHaveLength(0);
+    expect(result.similarityPct).toBe(0);
+    expect(result.verdict).toBe("publish");
   });
 
-  test("caps ungrounded high-similarity matches with token overlap at medium confidence", async () => {
+  test("requires grounding even for high-similarity token overlap", async () => {
     globalThis.fetch = async () => ({
       ok: true,
       json: async () => ({
@@ -148,7 +152,9 @@ describe("checkPlagiarismGeminiGrounded", () => {
 
     const result = await checkPlagiarismGeminiGrounded("Super-Pharm is an Israeli multinational pharmacy chain.", config);
 
-    expect(result.matches[0].snippet).toContain("[medium confidence");
+    expect(result.matches).toHaveLength(0);
+    expect(result.similarityPct).toBe(0);
+    expect(result.verdict).toBe("publish");
   });
 
   test("drops matches with non-http source URLs before report rendering", async () => {
@@ -179,6 +185,8 @@ describe("checkPlagiarismGeminiGrounded", () => {
 
     expect(result.matches).toHaveLength(0);
     expect(result.totalMatches).toBe(0);
+    expect(result.similarityPct).toBe(0);
+    expect(result.verdict).toBe("publish");
   });
 
   test("returns skipped when Gemini API key is missing", async () => {

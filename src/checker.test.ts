@@ -191,6 +191,22 @@ describe("fact-check tier routing", () => {
     expect(skills.map((skill) => skill.id)).not.toContain("fact-check");
   });
 
+  it("routes explicit gemini-grounded provider to grounded fact-check even when tier flag is off", () => {
+    const config = buildBaseConfig();
+    config.skills.factCheck = true;
+    config.factCheckTierFlag = false;
+    config.providers = { "fact-check": { provider: "gemini-grounded", apiKey: "gemini-key" } };
+
+    const selection = selectFactCheckSkill(config).selection;
+    const skills = buildSkills(config);
+
+    expect(selection.effectiveTier).toBe("standard");
+    expect(selection.selectedImplementation).toBe("grounded");
+    expect(selection.selectedSkillId).toBe("fact-check-grounded");
+    expect(skills.map((skill) => skill.id)).toContain("fact-check-grounded");
+    expect(skills.map((skill) => skill.id)).not.toContain("fact-check");
+  });
+
   it("keeps premium tier on the basic sync fact-check path", () => {
     const config = buildBaseConfig();
     config.skills.factCheck = true;

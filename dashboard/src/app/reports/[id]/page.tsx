@@ -21,11 +21,7 @@ function getVerdict(score: number): "pass" | "warn" | "fail" {
 }
 
 function resolveVerdict(normalizedVerdict: Verdict, score: number): Verdict {
-  // Preserve 'skipped' from the stored skill result — it's the neutral
-  // 'not configured / not applicable' state and must not be recomputed
-  // from a zero score (which would render as FAIL).
-  if (normalizedVerdict === "skipped") return "skipped";
-  return getVerdict(score);
+  return normalizedVerdict;
 }
 
 export default async function ReportDetailPage({
@@ -96,8 +92,13 @@ export default async function ReportDetailPage({
     scores.length > 0
       ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
       : 0;
-  // If every skill was skipped, don't show FAIL — show 'skipped' as the overall state.
-  const verdict: Verdict = allSkipped ? "skipped" : getVerdict(avgScore);
+  const verdict: Verdict = allSkipped
+    ? "skipped"
+    : scoredResults.some((r) => r.verdict === "fail")
+      ? "fail"
+      : scoredResults.some((r) => r.verdict === "warn")
+        ? "warn"
+        : getVerdict(avgScore);
 
   const dateStr = formatDateTime(check.createdAt);
 

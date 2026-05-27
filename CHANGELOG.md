@@ -38,6 +38,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - Standard fact-check tier now consistently runs Gemini grounded fact-check even if the saved fact-check provider is still Exa, dashboard readiness asks for Gemini in that mode, and HTML/Markdown reports show the Gemini grounded provider and source evidence.
+- Dashboard saved reports now preserve stored fail/warn/pass verdicts instead of recomputing them from score, so a single unsupported fact-check claim with a 75 score still renders as fail.
+- Gemini grounded fact-check and Basic Exa fact-check now downgrade `supported: true` assessments to unverified when no source URL is attached.
+- Gemini grounded plagiarism now counts only source URLs present in Gemini grounding metadata; ungrounded or unsafe URLs no longer affect similarity or verdict.
+- Report exports now include verified info-level source evidence, sanitize unsafe source URLs, and disclose providers in generated Markdown/HTML.
 - AI detection returns `"skipped"` (excluded from overall score) for non-English content when Copyscape is the active provider, instead of hard-failing with score 0. Configure `gemini-ai-detection` as the provider to handle non-English articles.
 - Copyscape insufficient-credits error now maps to `"skipped"` verdict (billing issue) rather than `"fail"` (content quality failure).
 - `"skipped"` results are now excluded from overall score averaging in HTML report, Markdown export, and CLI summary.

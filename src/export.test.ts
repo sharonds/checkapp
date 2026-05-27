@@ -116,6 +116,56 @@ describe("generateMarkdownReport", () => {
     expect(md).toContain("Source: [Evidence](https://example.com/evidence)");
   });
 
+  it("includes verified info source links for passing grounded fact-check", () => {
+    const md = generateMarkdownReport({
+      source: "test.md",
+      wordCount: 500,
+      totalCostUsd: 0.16,
+      results: [{
+        skillId: "fact-check-grounded",
+        name: "Fact Check (Grounded)",
+        score: 100,
+        verdict: "pass" as const,
+        summary: "1 claims checked — 0 unsupported, 0 unverified (via gemini-grounded)",
+        findings: [{
+          severity: "info" as const,
+          text: "Verified (medium confidence): \"Claim\" — Supported by sources",
+          sources: [{ url: "https://example.com/evidence", title: "Evidence" }],
+        }],
+        costUsd: 0.04,
+        provider: "gemini-grounded",
+      }],
+    });
+
+    expect(md).toContain("Verified");
+    expect(md).toContain("Source: [Evidence](https://example.com/evidence)");
+  });
+
+  it("renders unsafe source URLs as plain text in markdown exports", () => {
+    const md = generateMarkdownReport({
+      source: "test.md",
+      wordCount: 500,
+      totalCostUsd: 0,
+      results: [{
+        skillId: "fact-check",
+        name: "Fact Check",
+        score: 50,
+        verdict: "warn" as const,
+        summary: "Needs review",
+        findings: [{
+          severity: "warn" as const,
+          text: "Unsafe source",
+          sources: [{ url: "javascript:alert(1)", title: "Unsafe [link]" }],
+        }],
+        costUsd: 0,
+        provider: "exa-search",
+      }],
+    });
+
+    expect(md).toContain("Source: Unsafe \\[link\\]");
+    expect(md).not.toContain("](javascript:");
+  });
+
   it("all-skipped markdown report is marked skipped with N/A score", () => {
     const md = generateMarkdownReport({
       source: "test.md",

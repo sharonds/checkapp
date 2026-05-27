@@ -27,6 +27,10 @@ function standardFactCheckSelected(config: Record<string, unknown>): boolean {
   return config.factCheckTierFlag === true && config.factCheckTier === "standard";
 }
 
+function hasAnyLlmKey(apiKeys: ApiKeyStatus): boolean {
+  return apiKeys.minimax || apiKeys.anthropic || apiKeys.openrouter || apiKeys.gemini;
+}
+
 function requiredProviders(
   skill: SkillMeta,
   providers: Partial<Record<SkillId, SkillProviderConfig>>,
@@ -46,7 +50,7 @@ function requiredProviders(
     if (standardFactCheckSelected(config) || providers["fact-check"]?.provider === "gemini-grounded") {
       return ["gemini"];
     }
-    return ["exa"];
+    return ["exa", "minimax", "anthropic", "openrouter", "gemini"];
   }
 
   return skill.supportedProviders;
@@ -87,6 +91,16 @@ function missingProviders(
 ): ApiKeyProvider[] {
   const required = requiredProviders(skill, providers, config);
   if (required.length === 0) return [];
+
+  if (skill.id === "factCheck") {
+    if (standardFactCheckSelected(config) || providers["fact-check"]?.provider === "gemini-grounded") {
+      return hasProviderKey("gemini", apiKeys, skill, providers) ? [] : ["gemini"];
+    }
+    const missing: ApiKeyProvider[] = [];
+    if (!hasProviderKey("exa", apiKeys, skill, providers)) missing.push("exa");
+    if (!hasAnyLlmKey(apiKeys)) missing.push("minimax");
+    return missing;
+  }
 
   if (skill.id !== "aiDetection" && skill.id !== "plagiarism" && skill.id !== "factCheck") {
     return required.some((provider) => apiKeys[provider] === true) ? [] : required;

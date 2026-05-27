@@ -46,6 +46,7 @@
     "test:dashboard": "cd dashboard && bunx vitest run",
     "test:e2e:browser": "bun test tests/e2e/browser/*.test.ts",
     "test:e2e:live": "bun test tests/e2e/live/*.test.ts",
+    "test:gemini-grounded:scenarios": "bun run scripts/validate-gemini-grounded-scenarios.ts",
     "test:all": "bun run test && bun run test:dashboard",
     "check:registry": "bun run scripts/check-registry-parity.ts"
   },

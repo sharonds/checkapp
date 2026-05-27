@@ -73,11 +73,17 @@ Standard is opt-in and stays off by default until Gate 2 passes. Basic remains t
 
 | Tier | Engine | Cost per article | Typical time | Notes |
 |------|--------|------|------|-------|
-| Basic (default) | Exa + LLM | $0.04 | ~15s | Works without Gemini API key |
-| Standard (opt-in) | Gemini + Google Search grounding | $0.16 | ~45s | Requires `GEMINI_API_KEY`. Enable with `factCheckTierFlag=true` and `factCheckTier="standard"` in config. |
-| Deep Audit (async) | Gemini Deep Research | $1.50 | 5–15 min | Premium audit workflow. Initiate via dashboard button or `deep_audit_article` MCP tool. |
+| Basic (default) | Exa + LLM | $0.04 | ~15s | Requires Exa plus an LLM key for claim extraction/assessment |
+| Standard (opt-in) | Gemini 3.1 Pro + Google Search grounding | $0.16 | ~45s | Requires Gemini. Enable with `factCheckTierFlag=true` and `factCheckTier="standard"`, or set `providers["fact-check"].provider = "gemini-grounded"`. |
+| Deep Audit (async) | Gemini Deep Research | $1.50 | 5–15 min | Premium async audit workflow. The normal sync check still runs Basic unless Standard is selected. Initiate via dashboard button or `deep_audit_article` MCP tool. |
 
 Research basis: the Standard tier was selected based on an [internal benchmark on a 20-claim synthetic corpus](https://github.com/sharonds/checkapp-fact-check-research). That benchmark is directional, not definitive - see its [LIMITATIONS.md](https://github.com/sharonds/checkapp-fact-check-research/blob/main/LIMITATIONS.md) before relying on the results for your own decisions.
+
+### Confidence and limitations
+
+CheckApp reports evidence confidence, not certainty. Gemini grounded fact-check has the strongest signal on concrete dates, statistics, named entities, and claims where Google Search returns source URLs. If Gemini or Exa marks a claim as supported but no source URL is attached, CheckApp downgrades that claim to unverified. “No issues found” does not prove the article is accurate or original across the whole web.
+
+Gemini grounded plagiarism is stricter than a general similarity prompt: matched URLs must appear in Gemini grounding metadata before they count as grounded matches. Exact public-source English and Hebrew copying is the highest-confidence path we validate. Translated or paraphrased plagiarism is lower confidence and should still receive human review.
 
 ---
 
@@ -162,7 +168,7 @@ AI detection:    12%  probability AI-generated
 ────────────────────────────────────────────────
 ```
 
-Hebrew content, RTL — no configuration needed.
+Hebrew content and RTL rendering are supported. Provider configuration still matters: Copyscape AI detection is English-only, so use `gemini-ai-detection` for Hebrew AI detection; use `gemini-grounded-plagiarism` for Hebrew plagiarism checks when Copyscape cannot cover the language.
 
 ---
 

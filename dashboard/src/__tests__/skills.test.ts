@@ -247,6 +247,32 @@ describe("/api/skills", () => {
     expect(skill.missingProviders).toEqual([]);
   });
 
+  test("Fact Check basic tier requires Exa and an LLM provider", async () => {
+    mockReadAppConfig.mockReturnValue({
+      skills: { factCheck: true },
+      factCheckTierFlag: false,
+      providers: {
+        "fact-check": { provider: "exa-search", apiKey: "EXA_KEY" },
+      },
+    });
+    mockGetApiKeyStatus.mockReturnValue({
+      anthropic: false,
+      minimax: false,
+      openrouter: false,
+      copyscape: false,
+      exa: true,
+      gemini: false,
+    });
+
+    const res = await GET();
+    const json = await res.json();
+    const skill = json.find((s: any) => s.id === "factCheck");
+
+    expect(skill.ready).toBe(false);
+    expect(skill.supportedProviders).toEqual(["exa", "minimax", "anthropic", "openrouter", "gemini"]);
+    expect(skill.missingProviders).toEqual(["minimax"]);
+  });
+
   test("POST toggles skill enabled state", async () => {
     const req = new NextRequest(new URL("http://localhost/api/skills"), {
       method: "POST",

@@ -185,4 +185,89 @@ describe("FactCheckGroundedSkill", () => {
     expect(result.verdict).toBe("pass");
     expect(result.summary).toContain("via gemini-grounded");
   });
+
+  test("uses provider-scoped Gemini key for both grounding and claim extraction", async () => {
+    let sawGeminiRequest = false;
+    mockFetch(urlRouter({
+      "generativelanguage.googleapis.com": async (req) => {
+        sawGeminiRequest = true;
+        expect(req.url).toContain("provider-gemini-key");
+        const body = await req.json() as any;
+        const prompt = body.contents?.[0]?.parts?.[0]?.text ?? "";
+        if (prompt.includes("Extract the 4 most specific")) {
+          return jsonResponse({
+            candidates: [{
+              content: {
+                parts: [
+                  { text: JSON.stringify(["OpenAI announced GPT-4 in March 2023."]) },
+                ],
+              },
+            }],
+          });
+        }
+        return jsonResponse({
+          candidates: [{
+            content: {
+              parts: [
+                { text: JSON.stringify({ supported: true, note: "Grounded sources support the claim." }) },
+              ],
+            },
+            groundingMetadata: {
+              webSearchQueries: ["OpenAI GPT-4 March 2023"],
+              groundingChunks: [
+                { web: { uri: "https://openai.com/index/gpt-4-research/", title: "GPT-4 research" } },
+              ],
+            },
+          }],
+        });
+      },
+    }));
+
+    const result = await new FactCheckGroundedSkill().run("OpenAI announced GPT-4 in March 2023.", {
+      ...baseConfig,
+      geminiApiKey: undefined,
+      minimaxApiKey: undefined,
+      providers: { "fact-check": { provider: "gemini-grounded", apiKey: "provider-gemini-key" } },
+    });
+
+    expect(sawGeminiRequest).toBe(true);
+    expect(result.provider).toBe("gemini-grounded");
+    expect(result.verdict).toBe("pass");
+  });
+
+  test("downgrades supported=true to unverified when no grounded source URL is returned", async () => {
+    mockFetch(urlRouter({
+      "api.minimax.io": async () => jsonResponse({
+        id: "msg_extract_grounded",
+        type: "message",
+        role: "assistant",
+        model: "MiniMax-M2.7",
+        content: [{
+          type: "text",
+          text: JSON.stringify(["A source-free claim is verified."]),
+        }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 10, output_tokens: 10 },
+      }),
+      "generativelanguage.googleapis.com": async () => jsonResponse({
+        candidates: [{
+          content: {
+            parts: [
+              { text: "{\"supported\":true,\"note\":\"The model says yes but provides no source.\"}" },
+            ],
+          },
+          groundingMetadata: {
+            webSearchQueries: ["source-free claim"],
+            groundingChunks: [],
+          },
+        }],
+      }),
+    }));
+
+    const result = await new FactCheckGroundedSkill().run("A source-free claim is verified.", baseConfig);
+
+    expect(result.verdict).toBe("pass");
+    expect(result.findings[0].severity).toBe("warn");
+    expect(result.findings[0].text).toContain("No grounded source URL was returned");
+  });
 });

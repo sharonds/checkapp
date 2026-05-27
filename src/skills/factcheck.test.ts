@@ -46,8 +46,8 @@ describe("claimConfidence", () => {
     expect(claimConfidence(2, true)).toBe("medium");
     expect(claimConfidence(1, true)).toBe("medium");
   });
-  test("returns low when unsupported regardless of sources", () => {
-    expect(claimConfidence(5, false)).toBe("low");
+  test("returns high for unsupported claims with 3+ sources", () => {
+    expect(claimConfidence(5, false)).toBe("high");
   });
   test("returns low when inconclusive", () => {
     expect(claimConfidence(3, null)).toBe("low");
@@ -138,6 +138,23 @@ describe("FactCheckSkill — Phase 7 evidence", () => {
       },
     });
     expect(result.provider).toBe("exa-search");
+  });
+
+  test("supported assessment without evidence source becomes unverified", async () => {
+    let llmCallCount = 0;
+    exaSearchHandler = async () => ({ results: [] });
+    mockFetch(urlRouter({
+      "api.minimax.io": async () => {
+        llmCallCount++;
+        if (llmCallCount === 1) return anthropicContent("[\"A source-free claim is verified\"]");
+        return anthropicContent("{\"supported\":true,\"note\":\"yes\",\"claimType\":\"general\"}");
+      },
+    }));
+
+    const result = await new FactCheckSkill().run("A source-free claim is verified.", cfgBase);
+
+    expect(result.findings[0].severity).toBe("warn");
+    expect(result.findings[0].text).toContain("No evidence source URL was returned");
   });
 
   test("claimType is one of the 4 enum values", async () => {

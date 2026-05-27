@@ -128,8 +128,35 @@ test("Gemini grounded fact-check report shows provider and source evidence", () 
     }],
   });
 
-  expect(html).toContain("Gemini Grounded");
+  expect(html).toContain("Gemini 3.1 Pro + Google Search");
   expect(html).toContain("Google Gemini");
+  expect(html).toContain("https://example.com/evidence");
+  expect(html).toContain("Evidence");
+});
+
+test("passing Gemini grounded fact-check report shows verified info source evidence", () => {
+  const html = generateReport({
+    source: "article.md",
+    wordCount: 800,
+    totalCostUsd: 0.16,
+    results: [{
+      skillId: "fact-check-grounded",
+      name: "Fact Check (Grounded)",
+      score: 100,
+      verdict: "pass",
+      summary: "1 claims checked — 0 unsupported, 0 unverified (via gemini-grounded)",
+      findings: [{
+        severity: "info",
+        text: "Verified (medium confidence): \"Claim\" — Supported by sources",
+        sources: [{ url: "https://example.com/evidence", title: "Evidence" }],
+        confidence: "medium",
+      }],
+      costUsd: 0.04,
+      provider: "gemini-grounded",
+    }],
+  });
+
+  expect(html).toContain("Gemini 3.1 Pro + Google Search");
   expect(html).toContain("https://example.com/evidence");
   expect(html).toContain("Evidence");
 });

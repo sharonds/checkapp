@@ -8,7 +8,14 @@ interface SkillResult {
   score: number;
   verdict: string;
   summary: string;
-  findings: Array<{ severity: string; text: string; quote?: string }>;
+  provider?: string;
+  findings: Array<{
+    severity: string;
+    text: string;
+    quote?: string;
+    confidence?: string;
+    sources?: Array<{ url: string; title?: string }>;
+  }>;
   costUsd: number;
 }
 
@@ -37,11 +44,12 @@ function generateMarkdown(props: ExportButtonsProps): string {
     lines.push(`## ${r.name}`);
     lines.push("");
     lines.push(`- **Score:** ${r.score}/100 (${r.verdict})`);
+    if (r.provider) lines.push(`- **Provider:** ${r.provider}`);
     lines.push(`- **Summary:** ${r.summary}`);
     lines.push(`- **Cost:** $${r.costUsd.toFixed(4)}`);
 
     const issues = r.findings.filter(
-      (f) => f.severity === "warn" || f.severity === "error"
+      (f) => f.severity === "warn" || f.severity === "error" || (f.sources?.length ?? 0) > 0
     );
     if (issues.length > 0) {
       lines.push("");
@@ -53,6 +61,12 @@ function generateMarkdown(props: ExportButtonsProps): string {
         );
         if (f.quote) {
           lines.push(`  > ${f.quote}`);
+        }
+        if (f.confidence) {
+          lines.push(`  Confidence: ${f.confidence}`);
+        }
+        for (const source of f.sources?.slice(0, 3) ?? []) {
+          lines.push(`  Source: ${source.title ?? source.url} — ${source.url}`);
         }
       }
     }
@@ -75,7 +89,7 @@ function generateHtml(props: ExportButtonsProps): string {
     .replace(/\n\n/g, "\n<br/>\n");
 
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" dir="auto">
 <head>
 <meta charset="UTF-8">
 <title>Article Check Report — ${props.source}</title>
