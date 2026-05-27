@@ -156,9 +156,9 @@ function SkillsReference() {
     },
     {
       name: "Fact Check",
-      engine: "Exa AI + MiniMax",
-      cost: "~$0.02",
-      desc: "Extracts factual claims from the article, searches for supporting or contradicting evidence via Exa AI, then uses MiniMax to assess confidence levels for each claim. Includes citation links for verified claims.",
+      engine: "Exa + LLM / Gemini Grounded",
+      cost: "~$0.04 / ~$0.16",
+      desc: "Basic extracts factual claims, searches evidence via Exa, and uses the configured LLM to assess support. Standard uses Gemini 3.1 Pro with Google Search grounding. Claims without returned source URLs are treated as unverified, not verified.",
     },
     {
       name: "Tone of Voice",
@@ -318,12 +318,12 @@ function ApiKeysSetup() {
       <ol className="mt-1 space-y-1 text-sm text-muted-foreground list-decimal pl-5">
         <li>Generate a Gemini API key in Google AI Studio</li>
         <li>Set GEMINI_API_KEY, config.geminiApiKey, or a provider-scoped apiKey</li>
-        <li>Set providers["ai-detection"].provider to gemini-ai-detection or providers.plagiarism.provider to gemini-grounded-plagiarism</li>
+        <li>Set providers["ai-detection"].provider to gemini-ai-detection, providers.plagiarism.provider to gemini-grounded-plagiarism, or providers["fact-check"].provider to gemini-grounded</li>
       </ol>
 
       <SubHeading>Exa AI</SubHeading>
       <Prose>
-        <p>Required for Fact Check skill (evidence search).</p>
+        <p>Required for Basic Fact Check evidence search. Basic also needs an LLM key for claim extraction and assessment.</p>
       </Prose>
       <ol className="mt-1 space-y-1 text-sm text-muted-foreground list-decimal pl-5">
         <li>Sign up at dashboard.exa.ai</li>
@@ -491,7 +491,7 @@ function Faq() {
     },
     {
       q: "What's the cost per check?",
-      a: "With all skills enabled, cost depends on enabled providers and article length. Copyscape plagiarism starts at $0.03 and scales by word count; Gemini Grounded Plagiarism is recorded as an in-app estimate of about $0.04/check; Copyscape AI detection is about $0.03/check; Gemini AI detection is about $0.01/check; most MiniMax-based skills are about $0.002/check.",
+      a: "With all skills enabled, cost depends on enabled providers and article length. Copyscape plagiarism starts at $0.03 and scales by word count; Gemini Grounded Plagiarism is recorded as an in-app estimate of about $0.04/check; Basic Fact Check is about $0.04/check; Standard Gemini grounded fact-check is about $0.16/check; Copyscape AI detection is about $0.03/check; Gemini AI detection is about $0.01/check; most MiniMax-based skills are about $0.002/check.",
     },
     {
       q: "Can I add custom skills?",
