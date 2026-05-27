@@ -118,6 +118,7 @@ test("all-skipped report is not marked ready to publish", () => {
 
   expect(html).toContain("Not assessed");
   expect(html).toContain("N/A");
+  expect(html).not.toContain("0/100");
   expect(html).not.toContain("Ready to publish");
 });
 
@@ -131,5 +132,25 @@ test("empty report is not marked ready to publish", () => {
 
   expect(html).toContain("Not assessed");
   expect(html).toContain("N/A");
+  expect(html).not.toContain("Ready to publish");
+});
+
+test("passing report is marked ready for review, not guaranteed publishable", () => {
+  const html = generateReport({
+    source: "article.md",
+    wordCount: 800,
+    totalCostUsd: 0,
+    results: [{
+      skillId: "seo",
+      name: "SEO",
+      score: 90,
+      verdict: "pass",
+      summary: "Good SEO",
+      findings: [],
+      costUsd: 0,
+    }],
+  });
+
+  expect(html).toContain("Ready for review");
   expect(html).not.toContain("Ready to publish");
 });

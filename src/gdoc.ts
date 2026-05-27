@@ -23,8 +23,7 @@ export function extractDocId(url: string): string {
 }
 
 // Returns the tab ID (e.g. "t.rqhjvmdg4l1h") when present and safe,
-// undefined otherwise. Only alphanumeric chars, dots, and hyphens are allowed
-// so the value is safe to interpolate into a URL query string without encoding.
+// undefined otherwise. Only alphanumeric chars, dots, and hyphens are allowed.
 export function extractTabId(url: string): string | undefined {
   try {
     const parsed = new URL(url);
@@ -33,6 +32,24 @@ export function extractTabId(url: string): string | undefined {
     if (!/^[a-zA-Z0-9.-]{1,64}$/.test(tab)) return undefined;
     return tab;
   } catch {
+    return undefined;
+  }
+}
+
+function getRequestedTabId(input: string): string | undefined {
+  try {
+    const parsed = new URL(input);
+    const tab = parsed.searchParams.get("tab");
+    if (!tab) return undefined;
+    const safeTab = extractTabId(input);
+    if (!safeTab) {
+      throw new Error(
+        "Invalid Google Docs tab ID. Expected 1-64 characters using only letters, numbers, dots, and hyphens."
+      );
+    }
+    return safeTab;
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("Invalid Google Docs tab ID")) throw err;
     return undefined;
   }
 }
@@ -50,7 +67,7 @@ export async function fetchGoogleDoc(input: string): Promise<string> {
   }
 
   const docId = extractDocId(input);
-  const tabId = extractTabId(input);
+  const tabId = getRequestedTabId(input);
 
   const exportUrl = new URL(
     `https://docs.google.com/document/d/${docId}/export`

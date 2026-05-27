@@ -9,6 +9,19 @@ export class PlagiarismSkill implements Skill {
   async run(text: string, config: Config): Promise<SkillResult> {
     const result = await checkCopyscape(text, config);
 
+    if (result.verdict === "skipped") {
+      return {
+        skillId: this.id,
+        name: this.name,
+        score: 0,
+        verdict: "skipped",
+        summary: result.error ?? "Plagiarism check skipped.",
+        findings: [],
+        costUsd: 0,
+        provider: "copyscape",
+      };
+    }
+
     const findings: Finding[] = result.matches.slice(0, 5).map((m) => ({
       severity: result.verdict === "rewrite" ? "error" : "warn",
       text: `${m.wordsMatched} words matched at ${m.url}`,
@@ -25,6 +38,7 @@ export class PlagiarismSkill implements Skill {
       summary: `${result.similarityPct}% similarity — ${result.totalMatches} source${result.totalMatches !== 1 ? "s" : ""} matched`,
       findings,
       costUsd: result.totalWords > 0 ? 0.03 + Math.max(0, Math.ceil((result.totalWords - 200) / 100)) * 0.01 : 0.03,
+      provider: "copyscape",
       error: result.error,
     };
   }

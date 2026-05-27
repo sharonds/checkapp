@@ -41,7 +41,7 @@ See [docs/security.md](docs/security.md) for the BYOK-alpha threat model.
 | Skill | Engine | Cost/check | Enabled by default |
 |-------|--------|-----------|-------------------|
 | **Plagiarism** | Copyscape | ~$0.09 | ✅ |
-| **AI Detection** | Copyscape (English) · Gemini 2.0 Flash (multilingual) | ~$0.03 / ~$0.01 | ✅ |
+| **AI Detection** | Copyscape (English) · Gemini 3.1 Pro Preview (multilingual) | ~$0.03 / ~$0.01 estimate | ✅ |
 | **SEO** | Offline (no API) | free | ✅ |
 | **Grammar & Style** | LanguageTool + LLM fallback | free tier / ~$0.002 | ❌ disabled by default (enable in Settings; LanguageTool free tier works without any API key) |
 | **Academic Citations** | OpenAlex (default) / Semantic Scholar (legacy) | free | ❌ disabled by default (augments fact-check findings when enabled; OpenAlex/SS both free) |
@@ -86,7 +86,7 @@ Research basis: the Standard tier was selected based on an [internal benchmark o
 | Feature | Details |
 |---------|---------|
 | **Pluggable skills** | Enable/disable any skill via config. Add custom skills by implementing one TypeScript interface. |
-| **Plagiarism check** | Checks against the full indexed web via Copyscape. Returns 0–100% similarity + matched sources. |
+| **Plagiarism check** | Checks against Copyscape's indexed web data. Returns 0–100% similarity + matched sources. |
 | **AI detection** | Copyscape AI detector. Returns 0–100% probability per sentence and an overall verdict. |
 | **SEO analysis** | Offline. Checks word count (800–2500 ideal), H1/H2 headings, average sentence length, Flesch-Kincaid readability. |
 | **Fact check** | Extracts 4 specific claims → searches each with Exa AI → Claude assesses evidence → per-claim supported/unsupported verdict with citation recommendations. |
@@ -192,7 +192,7 @@ Top match: ynet.co.il/articles/0,7340,L-4870486,00.html  76 words
 
 | Similarity | Verdict | What to do |
 |-----------|---------|-----------|
-| 0 – 15% | ✅ **PUBLISH** | No significant matches. Safe to publish. |
+| 0 – 15% | ✅ **PASS** | No significant matches detected by this check. Ready for editorial review. |
 | 16 – 25% | ⚠️ **REVIEW** | Some overlap. Check listed sources and rewrite matching passages. |
 | 26%+ | ❌ **REWRITE** | Too similar to existing content. Rewrite before publishing. |
 
@@ -209,7 +209,7 @@ CheckApp supports two AI detection providers:
 | Provider | Languages | Cost | When used |
 |----------|-----------|------|-----------|
 | Copyscape AI | English only | ~$0.03/check | Default |
-| Gemini 2.0 Flash | All languages incl. Hebrew | ~$0.01/check | Explicitly configured (required for non-English) |
+| Gemini 3.1 Pro Preview | All languages incl. Hebrew | ~$0.01/check in-app estimate | Explicitly configured (required for non-English) |
 
 Copyscape only supports English. For non-English articles, set Gemini as the ai-detection provider in `~/.checkapp/config.json` and provide either `GEMINI_API_KEY`, `geminiApiKey`, or a provider-scoped `apiKey`:
 ```json

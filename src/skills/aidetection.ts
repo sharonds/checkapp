@@ -97,10 +97,10 @@ export class AiDetectionSkill implements Skill {
       name: this.name,
       score: result.error ? 0 : Math.max(0, 100 - result.aiPct),
       verdict: result.error
-        ? "fail"
+        ? "skipped"
         : result.verdict === "human" ? "pass" : result.verdict === "mixed" ? "warn" : "fail",
       summary: result.error
-        ? "Skill failed — see error"
+        ? "AI detection skipped — Gemini provider failed. See error."
         : `${result.aiPct}% AI probability — ${result.verdict} (Gemini)`,
       findings,
       costUsd: result.error ? 0 : 0.01,

@@ -73,7 +73,7 @@ Google Doc URL
 | `src/index.tsx` | Entry point. Parses CLI args (`--setup`, doc URL). Routes to `runSetup()` or `runCheck()`. Prints usage help when called with no arguments. |
 | `src/config.ts` | Reads and writes `~/.checkapp/config.json`. Exports `Config` interface, `configExists()`, `readConfig()`, `saveConfig()`, `configPath()`. |
 | `src/gdoc.ts` | Extracts the doc ID from any Google Docs URL format, fetches plain text via the public export endpoint, cleans the text, counts words. Throws with a human-readable message on auth errors or redirect-to-login responses. |
-| `src/copyscape.ts` | Posts article text to the Copyscape content-search API, parses the XML response into a typed `CopyscapeResult`, applies verdict thresholds, handles the "insufficient credits" error as a non-fatal warning. |
+| `src/copyscape.ts` | Posts article text to the Copyscape content-search API, parses the XML response into a typed `CopyscapeResult`, applies verdict thresholds, and maps insufficient credits to a skipped result rather than a content-quality pass. |
 | `src/setup.tsx` | Ink/React interactive wizard that collects Copyscape username, Copyscape API key, and (optionally) a Parallel AI API key. Saves all credentials to disk via `config.ts`. |
 | `src/check.tsx` | Ink/React component that orchestrates the full check flow: reading → checking → enriching (optional) → done/error. Renders the `Report` component with the final result and any matched passages. |
 | `src/parallel.ts` | Parallel Extract API client. Accepts a list of URLs and an API key, POSTs to `https://api.parallel.ai/v1beta/extract`, returns `ExtractPage[]` with `{ url, content }`. |

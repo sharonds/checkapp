@@ -32,7 +32,7 @@ const KEY_LABELS: Record<string, string> = {
 const SKILL_INFO: Record<string, { description: string; context?: string }> = {
   plagiarism: {
     description:
-      "Checks the full indexed web for copied passages via Copyscape.",
+      "Checks Copyscape's indexed web data for copied passages.",
   },
   aiDetection: {
     description:

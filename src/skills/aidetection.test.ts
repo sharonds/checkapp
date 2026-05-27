@@ -63,7 +63,7 @@ describe("AiDetectionSkill routing", () => {
     expect(calls[0]?.key).toBe("provider-key");
   });
 
-  test("Gemini error result records gemini-ai-detection provider and zero cost", async () => {
+  test("Gemini error result records gemini-ai-detection provider, skipped verdict, and zero cost", async () => {
     globalThis.fetch = async () => ({ ok: false, status: 429 } as Response);
     const config: Config = {
       ...baseConfig,
@@ -71,7 +71,7 @@ describe("AiDetectionSkill routing", () => {
     };
     const result = await new AiDetectionSkill().run("Some article.", config);
     expect(result.provider).toBe("gemini-ai-detection");
-    expect(result.verdict).toBe("fail");
+    expect(result.verdict).toBe("skipped");
     expect(result.costUsd).toBe(0);
   });
 

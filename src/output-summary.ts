@@ -27,6 +27,10 @@ export function formatScore(score: number | null): string {
   return score === null ? "N/A" : `${score}/100`;
 }
 
+export function formatSkillScore(result: SkillResult): string {
+  return result.verdict === "skipped" ? "N/A" : `${result.score}/100`;
+}
+
 export function formatCiVerdict(verdict: Verdict): string {
   return verdict === "pass"
     ? "PASS"

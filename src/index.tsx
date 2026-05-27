@@ -6,7 +6,7 @@ import { openDb, queryRecent } from "./db.ts";
 import { runBatch } from "./batch.ts";
 import { resolveProvider } from "./providers/resolve.ts";
 import type { Finding } from "./skills/types.ts";
-import { formatCiOverallStatus, formatCiVerdict, formatScore, shouldCiExitNonZero, summarizeResults } from "./output-summary.ts";
+import { formatCiOverallStatus, formatCiVerdict, formatScore, formatSkillScore, shouldCiExitNonZero, summarizeResults } from "./output-summary.ts";
 
 const args = process.argv.slice(2);
 const forceSetup = args.includes("--setup");
@@ -207,7 +207,7 @@ async function main() {
         console.log(`Words: ${result.wordCount} | Cost: $${result.totalCostUsd.toFixed(3)}\n`);
         for (const r of result.results) {
           const icon = formatCiVerdict(r.verdict);
-          console.log(`  ${icon}  ${r.name}: ${r.score}/100 — ${r.summary}`);
+          console.log(`  ${icon}  ${r.name}: ${formatSkillScore(r)} — ${r.summary}`);
         }
         const overall = summarizeResults(result.results);
         console.log(`\nOverall: ${formatScore(overall.score)} ${formatCiOverallStatus(overall)}`);

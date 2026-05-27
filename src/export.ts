@@ -2,7 +2,7 @@ import type { CheckRecord } from "./db.ts";
 import type { SkillResult } from "./skills/types.ts";
 import { generateReport } from "./report.ts";
 import { writeFileSync } from "fs";
-import { formatScore, summarizeResults } from "./output-summary.ts";
+import { formatScore, formatSkillScore, summarizeResults } from "./output-summary.ts";
 
 const VERDICT_ICON: Record<string, string> = { pass: "✅", warn: "⚠️", fail: "❌", skipped: "–" };
 const SEVERITY_ICON: Record<string, string> = { info: "ℹ️", warn: "⚠️", error: "❌" };
@@ -20,7 +20,7 @@ export function generateMarkdownReport(record: Omit<CheckRecord, "id" | "created
   md += `---\n\n`;
 
   for (const r of record.results) {
-    md += `## ${VERDICT_ICON[r.verdict] ?? ""} ${r.name} — ${r.score}/100 ${r.verdict.toUpperCase()}\n\n`;
+    md += `## ${VERDICT_ICON[r.verdict] ?? ""} ${r.name} — ${formatSkillScore(r)} ${r.verdict.toUpperCase()}\n\n`;
     md += `${r.summary}\n\n`;
     const visible = r.findings.filter(f => f.severity === "warn" || f.severity === "error");
     if (visible.length > 0) {

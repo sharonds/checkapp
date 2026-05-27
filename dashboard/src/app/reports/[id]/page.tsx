@@ -78,6 +78,7 @@ export default async function ReportDetailPage({
           summary: n.summary,
           findings: n.findings,
           costUsd: n.costUsd,
+          provider: n.provider,
         };
       });
     }

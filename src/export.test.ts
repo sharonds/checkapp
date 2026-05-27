@@ -84,7 +84,7 @@ describe("generateMarkdownReport", () => {
     });
 
     expect(md).toMatch(/\*\*Overall:\*\* N\/A .* SKIPPED/);
-    expect(md).toContain("AI Detection — 0/100 SKIPPED");
+    expect(md).toContain("AI Detection — N/A SKIPPED");
   });
 
   it("empty markdown report is marked skipped with N/A score", () => {

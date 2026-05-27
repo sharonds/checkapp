@@ -27,4 +27,21 @@ describe("SkillCard", () => {
     expect(infoFinding?.textContent).toContain("hint");
     expect(warnFinding?.textContent).toContain("issue");
   });
+
+  it("renders the stored provider label when available", () => {
+    const result: SkillResult = {
+      skillId: "ai-detection",
+      name: "AI Detection",
+      verdict: "pass",
+      score: 95,
+      summary: "5% AI probability",
+      costUsd: 0.01,
+      provider: "gemini-ai-detection",
+      findings: [],
+    };
+
+    const { getByText, queryByText } = render(<SkillCard result={result} />);
+    expect(getByText("Gemini 3.1 Pro Preview (multilingual)")).toBeDefined();
+    expect(queryByText("Copyscape")).toBeNull();
+  });
 });

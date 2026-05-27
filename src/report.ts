@@ -1,6 +1,6 @@
 import type { SkillResult } from "./skills/types.ts";
 import type { CheckRecord } from "./db.ts";
-import { formatScore, summarizeResults } from "./output-summary.ts";
+import { formatScore, formatSkillScore, summarizeResults } from "./output-summary.ts";
 
 const VERDICT_COLOR: Record<string, string> = {
   pass: "#16a34a",
@@ -117,11 +117,11 @@ function skillCard(r: SkillResult): string {
         <span style="margin-left:8px">${engineBadge(r)}</span>
       </div>
       <span style="display:flex;align-items:center;gap:10px;flex-shrink:0;margin-left:16px">
-        <span style="font-size:22px;font-weight:800;color:${color}">${r.score}</span>
+        <span style="font-size:22px;font-weight:800;color:${color}">${escapeHtml(formatSkillScore(r))}</span>
         ${badge}
       </span>
     </div>
-    ${scoreBar(r.score, r.verdict)}
+    ${scoreBar(r.verdict === "skipped" ? null : r.score, r.verdict)}
     <p style="margin:8px 0 0 0;font-size:13px;color:#6b7280">${escapeHtml(r.summary)}</p>
     ${r.error ? `<p style="margin:8px 0 0 0;font-size:12px;color:#dc2626">⚠ ${escapeHtml(r.error)}</p>` : ""}
     ${findingsHtml}
@@ -136,7 +136,7 @@ function overallBanner(score: number | null, verdict: string, wordCount: number,
   const color = VERDICT_COLOR[verdict] ?? "#6b7280";
   const label = verdict === "skipped"
     ? "Not assessed"
-    : verdict === "pass" ? "✓ Ready to publish" : verdict === "warn" ? "⚠ Needs attention" : "✕ Do not publish";
+    : verdict === "pass" ? "✓ Ready for review" : verdict === "warn" ? "⚠ Needs attention" : "✕ Do not publish";
   const labelBg = verdict === "skipped"
     ? "#6b728022"
     : verdict === "pass" ? "#16a34a22" : verdict === "warn" ? "#d9770622" : "#dc262622";

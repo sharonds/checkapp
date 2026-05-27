@@ -491,7 +491,7 @@ function Faq() {
     },
     {
       q: "What's the cost per check?",
-      a: "With all skills enabled, a typical check costs approximately $0.22 USD. The SEO Analysis skill is free (runs offline). Copyscape skills cost ~$0.09 each, and MiniMax-based skills cost ~$0.01 each. Exa AI search for fact checking costs ~$0.02.",
+      a: "With all skills enabled, cost depends on enabled providers and article length. SEO runs offline. Copyscape plagiarism starts at $0.03 and scales by word count; Copyscape AI detection is about $0.03/check; Gemini AI detection is recorded as an in-app estimate of about $0.01/check; most MiniMax-based skills are about $0.002/check.",
     },
     {
       q: "Can I add custom skills?",

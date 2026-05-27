@@ -74,6 +74,14 @@ describe("extractTabId", () => {
   });
 });
 
+describe("fetchGoogleDoc tab validation", () => {
+  test("throws instead of falling back to the default tab when tab param is invalid", async () => {
+    await expect(
+      fetchGoogleDoc("https://docs.google.com/document/d/ABC12345678901234567890/edit?tab=../evil")
+    ).rejects.toThrow("Invalid Google Docs tab ID");
+  });
+});
+
 describe("fetchGoogleDoc with local file", () => {
   const TMP = "/tmp/checkapp-test.md";
 

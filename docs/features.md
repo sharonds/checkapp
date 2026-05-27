@@ -5,7 +5,7 @@
 | Skill | Engine | Cost/check | Default |
 |-------|--------|-----------|---------|
 | Plagiarism Check | Copyscape | ~$0.09 | Enabled |
-| AI Detection | Copyscape (English) / Gemini 2.0 Flash (multilingual) | ~$0.03 / ~$0.01 | Enabled |
+| AI Detection | Copyscape (English) / Gemini 3.1 Pro Preview (multilingual) | ~$0.03 / ~$0.01 estimate | Enabled |
 | SEO Analysis | Offline | Free | Enabled |
 | Fact Check | Tiered: Basic = Exa + LLM; Standard = Gemini + Google Search; Deep Audit = Gemini Deep Research | varies | Basic is default; Standard is opt-in; Deep Audit is async |
 | Tone of Voice | MiniMax/Claude | ~$0.002 | Requires API keys + tone guide |
@@ -43,7 +43,7 @@ Phase 7 extends findings with evidence + rewrite + citation. Findings now carry 
 | Deep fact-check | `--deep-fact-check` flag swaps the provider to Exa Deep Reasoning for multi-hop claims |
 | Claim drill-down | Dashboard `/check` page shows sources + citations + rewrite inline per finding |
 | Cost estimator | `checkapp --estimate-cost` or the Run Check page shows per-skill estimate before any API call |
-| Provider picker | Settings → Providers page lets users choose per-skill provider; no key = degraded fallback, never silent failure |
+| Provider picker | Settings → Providers page lets users choose per-skill provider; missing providers return skipped unless a configured fallback exists |
 
 ### LLM Providers
 

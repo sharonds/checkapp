@@ -9,7 +9,7 @@ import { generateReport } from "./report.ts";
 import { writeFileSync } from "fs";
 import type { SkillResult } from "./skills/types.ts";
 import { exportReport } from "./export.ts";
-import { formatScore, summarizeResults } from "./output-summary.ts";
+import { formatScore, formatSkillScore, summarizeResults } from "./output-summary.ts";
 
 type Phase =
   | { name: "reading" }
@@ -41,7 +41,7 @@ function Report({ results, words, reportPath, totalCostUsd }: {
             <Text color={VERDICT_COLOR[r.verdict]}>{VERDICT_ICON[r.verdict]}</Text>
             <Text bold>{r.name}:</Text>
             <Text>{r.summary}</Text>
-            <Text dimColor>({r.score}/100)</Text>
+            <Text dimColor>({formatSkillScore(r)})</Text>
           </Box>
         ))}
       </Box>
