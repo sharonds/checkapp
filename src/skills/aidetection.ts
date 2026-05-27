@@ -19,6 +19,19 @@ export class AiDetectionSkill implements Skill {
     try {
       const result = await checkAiDetector(text, config);
 
+      if (result.error) {
+        return {
+          skillId: this.id,
+          name: this.name,
+          score: 0,
+          verdict: "fail",
+          summary: "Skill failed — see error",
+          findings: [],
+          costUsd: 0,
+          error: result.error,
+        };
+      }
+
       const findings: Finding[] = result.topSegments.map((seg) => ({
         severity: seg.aiScore >= 0.85 ? "error" : "warn",
         text: `${Math.round(seg.aiScore * 100)}% AI probability`,

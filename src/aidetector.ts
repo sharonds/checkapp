@@ -85,13 +85,13 @@ export async function checkAiDetectorGemini(
     };
   }
 
-  const url = `${GEMINI_AI_DETECT_BASE}/models/${GEMINI_AI_DETECT_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const url = `${GEMINI_AI_DETECT_BASE}/models/${GEMINI_AI_DETECT_MODEL}:generateContent`;
 
   let response: Response;
   try {
     response = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
       body: JSON.stringify({
         contents: [{ parts: [{ text: `${AI_DETECTION_PROMPT}\n\nText to analyze:\n${text}` }] }],
         generationConfig: { temperature: 0, maxOutputTokens: 512 },

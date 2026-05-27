@@ -40,7 +40,7 @@ export const PROVIDER_REGISTRY: Partial<Record<SkillId, ProviderMetadata[]>> = {
     },
     {
       id: "gemini-ai-detection",
-      label: "Gemini 3.1 Pro (multilingual)",
+      label: "Gemini 2.0 Flash (multilingual)",
       speed: "medium",
       costPerCheckUsd: 0.01,
       costLabel: "$0.01/check",
