@@ -177,7 +177,7 @@ describe("PlagiarismSkill Copyscape results", () => {
       providers: { plagiarism: { provider: "gemini-grounded-plagiarism" } },
     });
 
-    expect(result.verdict).toBe("warn");
+    expect(result.verdict).toBe("fail");
     expect(result.summary).toContain("reduced-confidence Gemini similarity");
     expect(result.summary).not.toContain("grounded similarity");
   });

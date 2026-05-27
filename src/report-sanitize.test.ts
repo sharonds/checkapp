@@ -12,4 +12,9 @@ describe("safeReportUrl", () => {
     expect(safeReportUrl("javascript:alert(1)")).toBeNull();
     expect(safeReportUrl("file:///etc/passwd")).toBeNull();
   });
+
+  test("strips URL userinfo to prevent misleading source links", () => {
+    expect(safeReportUrl("https://trusted.com:secret@evil.example/path")).toBe("https://evil.example/path");
+    expect(safeReportUrl("http://trusted.com@evil.example/")).toBe("http://evil.example/");
+  });
 });

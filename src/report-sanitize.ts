@@ -1,13 +1,7 @@
+import { sanitizeHttpReportUrl } from "../shared/report-url.ts";
+
 export function safeReportUrl(raw: unknown): string | null {
-  if (typeof raw !== "string" || raw.trim() === "") return null;
-  try {
-    const url = new URL(raw.trim());
-    return url.protocol === "http:" || url.protocol === "https:"
-      ? url.toString()
-      : null;
-  } catch {
-    return null;
-  }
+  return sanitizeHttpReportUrl(raw);
 }
 
 export function escapeMarkdownLabel(value: string): string {

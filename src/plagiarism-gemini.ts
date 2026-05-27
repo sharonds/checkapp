@@ -290,9 +290,8 @@ function skipped(error: string): GeminiGroundedPlagiarismResult {
 }
 
 function normalizeVerdict(similarityPct: number, ungroundedMatches: number): GeminiGroundedPlagiarismResult["verdict"] {
-  if (ungroundedMatches > 0) return "review";
   if (similarityPct >= 26) return "rewrite";
-  if (similarityPct >= 16) return "review";
+  if (similarityPct >= 16 || ungroundedMatches > 0) return "review";
   return "publish";
 }
 

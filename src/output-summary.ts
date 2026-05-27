@@ -50,5 +50,5 @@ export function formatCiOverallStatus(summary: OverallSummary): string {
 }
 
 export function shouldCiExitNonZero(summary: OverallSummary): boolean {
-  return summary.verdict === "fail";
+  return summary.verdict === "fail" || summary.verdict === "skipped";
 }

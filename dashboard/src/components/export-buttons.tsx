@@ -2,6 +2,7 @@
 
 import { Download } from "lucide-react";
 import { formatDateTime, formatNumber } from "@/lib/format";
+import { sanitizeHttpReportUrl } from "../../../shared/report-url";
 
 interface SkillResult {
   name: string;
@@ -35,7 +36,7 @@ export function generateMarkdown(props: ExportButtonsProps): string {
   lines.push("");
   lines.push(`**Source:** ${props.source}`);
   lines.push(`**Date:** ${formatDateTime(props.createdAt)}`);
-  lines.push(`**Score:** ${formatScore(props.score)} (${props.verdict.toUpperCase()})`);
+  lines.push(`**Score:** ${formatScore(props.score)} (${String(props.verdict ?? "").toUpperCase()})`);
   lines.push(`**Word Count:** ${formatNumber(props.wordCount)}`);
   lines.push(`**Total Cost:** $${props.totalCost.toFixed(4)}`);
   lines.push("");
@@ -66,7 +67,7 @@ export function generateMarkdown(props: ExportButtonsProps): string {
           lines.push(`  Confidence: ${f.confidence}`);
         }
         for (const source of f.sources?.slice(0, 3) ?? []) {
-          const safeUrl = safeHttpUrl(source.url);
+          const safeUrl = sanitizeHttpReportUrl(source.url);
           const label = escapeMarkdownLabel(source.title ?? source.url);
           lines.push(safeUrl ? `  Source: [${label}](${safeUrl})` : `  Source: ${label}`);
         }
@@ -92,7 +93,7 @@ export function generateHtml(props: ExportButtonsProps): string {
             ${f.quote ? `<blockquote>${escapeHtml(f.quote)}</blockquote>` : ""}
             ${f.confidence ? `<div>Confidence: ${escapeHtml(f.confidence)}</div>` : ""}
             ${(f.sources?.slice(0, 3) ?? []).map((source) => {
-              const safeUrl = safeHttpUrl(source.url);
+              const safeUrl = sanitizeHttpReportUrl(source.url);
               const label = escapeHtml(source.title ?? source.url);
               return safeUrl
                 ? `<div>Source: <a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer">${label}</a></div>`
@@ -136,7 +137,7 @@ export function generateHtml(props: ExportButtonsProps): string {
 <h1>Article Check Report</h1>
 <p><strong>Source:</strong> ${escapeHtml(props.source)}</p>
 <p><strong>Date:</strong> ${escapeHtml(formatDateTime(props.createdAt))}</p>
-<p><strong>Score:</strong> ${escapeHtml(formatScore(props.score))} (${escapeHtml(props.verdict.toUpperCase())})</p>
+<p><strong>Score:</strong> ${escapeHtml(formatScore(props.score))} (${escapeHtml(String(props.verdict ?? "").toUpperCase())})</p>
 <p><strong>Word Count:</strong> ${escapeHtml(formatNumber(props.wordCount))}</p>
 <p><strong>Total Cost:</strong> $${escapeHtml(props.totalCost.toFixed(4))}</p>
 ${sections}
@@ -144,8 +145,8 @@ ${sections}
 </html>`;
 }
 
-function escapeHtml(value: string): string {
-  return value
+function escapeHtml(value: unknown): string {
+  return String(value ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -159,15 +160,6 @@ function formatScore(score: number | null): string {
 
 function escapeMarkdownLabel(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/\]/g, "\\]").replace(/\[/g, "\\[");
-}
-
-function safeHttpUrl(raw: string): string | null {
-  try {
-    const url = new URL(raw);
-    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : null;
-  } catch {
-    return null;
-  }
 }
 
 function downloadFile(content: string, filename: string, mimeType: string) {

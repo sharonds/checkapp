@@ -22,6 +22,7 @@ const baseReport = {
       sources: [
         { title: "Safe Source", url: "https://example.com/source" },
         { title: "Bad](javascript:alert(1)) [ok", url: "https://example.com/injected" },
+        { title: "Userinfo Source", url: "https://trusted.com:secret@evil.example/path" },
         { title: "Unsafe Source", url: "javascript:alert(1)" },
       ],
     }],
@@ -38,6 +39,8 @@ describe("dashboard report exports", () => {
     expect(html).not.toContain("<script>alert(1)</script>");
     expect(html).not.toContain("<img src=x onerror=alert(1)>");
     expect(html).toContain('href="https://example.com/source"');
+    expect(html).toContain('href="https://evil.example/path"');
+    expect(html).not.toContain("trusted.com:secret@evil.example");
     expect(html).toContain('target="_blank" rel="noopener noreferrer"');
     expect(html).not.toContain('href="javascript:alert(1)"');
   });
@@ -47,8 +50,25 @@ describe("dashboard report exports", () => {
 
     expect(md).toContain("Source: [Safe Source](https://example.com/source)");
     expect(md).toContain("Source: [Bad\\](javascript:alert(1)) \\[ok](https://example.com/injected)");
-    expect(md).toContain("Source: Unsafe Source");
+    expect(md).toContain("Source: [Userinfo Source](https://evil.example/path)");
+    expect(md).not.toContain("trusted.com:secret@evil.example");
     expect(md).not.toMatch(/[^\\]\]\(javascript:alert\(1\)\)/);
+  });
+
+  test("HTML and Markdown exports do not link unsafe source URLs", () => {
+    const report = {
+      ...baseReport,
+      results: [{
+        ...baseReport.results[0],
+        findings: [{
+          ...baseReport.results[0].findings[0],
+          sources: [{ title: "Unsafe Source", url: "javascript:alert(1)" }],
+        }],
+      }],
+    };
+
+    expect(generateHtml(report)).not.toContain('href="javascript:alert(1)"');
+    expect(generateMarkdown(report)).toContain("Source: Unsafe Source");
   });
 
   test("exports all-skipped reports with N/A score", () => {
@@ -57,5 +77,28 @@ describe("dashboard report exports", () => {
 
     expect(md).toContain("**Score:** N/A (SKIPPED)");
     expect(html).toContain("<strong>Score:</strong> N/A (SKIPPED)");
+  });
+
+  test("HTML export tolerates tampered non-string fields", () => {
+    const html = generateHtml({
+      ...baseReport,
+      source: null as unknown as string,
+      verdict: null as unknown as string,
+      results: [{
+        ...baseReport.results[0],
+        name: 123 as unknown as string,
+        summary: null as unknown as string,
+        findings: [{
+          ...baseReport.results[0].findings[0],
+          text: null as unknown as string,
+          quote: 123 as unknown as string,
+          confidence: null as unknown as string,
+          sources: [{ title: null as unknown as string, url: "https://example.com" }],
+        }],
+      }],
+    });
+
+    expect(html).toContain("Article Check Report");
+    expect(html).toContain('href="https://example.com/"');
   });
 });

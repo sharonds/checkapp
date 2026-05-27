@@ -90,7 +90,7 @@ describe("checkPlagiarismGeminiGrounded", () => {
 
     expect(result.matches).toHaveLength(1);
     expect(result.similarityPct).toBe(100);
-    expect(result.verdict).toBe("review");
+    expect(result.verdict).toBe("rewrite");
     expect(result.confidence).toBe("medium");
     expect(result.matches[0].snippet).toContain("without Google grounding metadata");
     expect(result.matches[0].snippet).toContain("[low confidence");
@@ -125,7 +125,7 @@ describe("checkPlagiarismGeminiGrounded", () => {
 
     expect(result.matches).toHaveLength(1);
     expect(result.similarityPct).toBe(100);
-    expect(result.verdict).toBe("review");
+    expect(result.verdict).toBe("rewrite");
     expect(result.confidence).toBe("medium");
     expect(result.matches[0].snippet).toContain("[medium confidence");
   });
@@ -233,6 +233,34 @@ describe("checkPlagiarismGeminiGrounded", () => {
 
     expect(result.verdict).toBe("skipped");
     expect(result.error).toContain("HTTP 404");
+    expect(result.costUsd).toBe(0);
+  });
+
+  test("returns skipped on Gemini network errors", async () => {
+    globalThis.fetch = async () => {
+      throw new Error("socket closed");
+    };
+
+    const result = await checkPlagiarismGeminiGrounded("Copied sentence.", config);
+
+    expect(result.verdict).toBe("skipped");
+    expect(result.error).toContain("network error");
+    expect(result.error).toContain("socket closed");
+    expect(result.costUsd).toBe(0);
+  });
+
+  test("returns skipped when Gemini JSON body cannot be parsed", async () => {
+    globalThis.fetch = async () => ({
+      ok: true,
+      json: async () => {
+        throw new Error("bad json");
+      },
+    } as unknown as Response);
+
+    const result = await checkPlagiarismGeminiGrounded("Copied sentence.", config);
+
+    expect(result.verdict).toBe("skipped");
+    expect(result.error).toMatch(/could not parse API response body/i);
     expect(result.costUsd).toBe(0);
   });
 });

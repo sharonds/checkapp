@@ -42,7 +42,7 @@ describe("CI output summary", () => {
     expect(summary).toEqual({ score: null, verdict: "skipped" });
     expect(formatScore(summary.score)).toBe("N/A");
     expect(formatCiOverallStatus(summary)).toBe("SKIPPED");
-    expect(shouldCiExitNonZero(summary)).toBe(false);
+    expect(shouldCiExitNonZero(summary)).toBe(true);
   });
 
   it("excludes skipped results from scored CI averages", () => {
