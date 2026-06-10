@@ -124,6 +124,8 @@ describe("FactCheckGroundedSkill", () => {
       expect(finding.auditRef?.claimId).toBe("claim-1");
       expect(finding.searchQueries).toContain("netherlands indoor smoking ban 2008");
       expect((result as any).audit.factAssessments[0].provider).toBe("gemini-grounded");
+      // The assessment must attribute the model that actually served the call.
+      expect((result as any).audit.factAssessments[0].model).toBe((result as any).audit.providerAttempts[0].model);
       expect((result as any).audit.claims[0].direction).toBe("ltr");
       expect(result.costUsd).toBeGreaterThan(0.01);
 

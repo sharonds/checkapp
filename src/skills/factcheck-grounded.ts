@@ -4,7 +4,7 @@ import { createGeminiCapability } from "../providers/gemini-capability.ts";
 import { getProvider } from "../providers/registry.ts";
 import { resolveProvider } from "../providers/resolve.ts";
 import { emitGroundedCallEvent } from "../telemetry/audit-events.ts";
-import { getLlmClient, parseJsonResponse, LLM_MODEL } from "./llm.ts";
+import { getLlmClient, parseJsonResponse } from "./llm.ts";
 import { claimConfidence, formatCitation, extractClaimsPrompt } from "./factcheck.ts";
 import type { ClaimType, Finding, Skill, SkillResult, Source } from "./types.ts";
 import { isE2E, assertMocksOnly } from "../e2e/mode.ts";
@@ -74,7 +74,6 @@ interface GroundedClaimResult {
 
 type ProviderAttemptDraft = Omit<ProviderAttempt, "id">;
 
-const GEMINI_GROUNDED_MODEL = LLM_MODEL.gemini;
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 
 export class FactCheckGroundedSkill implements Skill {
@@ -134,6 +133,10 @@ export class FactCheckGroundedSkill implements Skill {
     if (!apiKey) {
       return skippedResult(this, "gemini-grounded API key missing");
     }
+
+    // Resolve the grounded model once so audit records attribute the model
+    // that actually serves the calls (the capability layer owns the choice).
+    const groundedModel = createGeminiCapability({ apiKey }).getModel("grounded");
 
     const llm = getLlmClient({ ...config, geminiApiKey: config.geminiApiKey ?? apiKey });
     if (!llm) {
@@ -208,6 +211,7 @@ export class FactCheckGroundedSkill implements Skill {
       const grounded = await assessClaimGrounded(
         claim,
         apiKey,
+        groundedModel,
         perClaimCost,
         remainingProviderRetries(budget.maxProviderRetries, providerRetries),
       );
@@ -273,7 +277,7 @@ export class FactCheckGroundedSkill implements Skill {
         confidenceRationale: rationale,
         searchQueries: webSearchQueries.length ? webSearchQueries : [claim],
         provider: resolved.provider,
-        model: GEMINI_GROUNDED_MODEL,
+        model: groundedModel,
         attemptIds: attemptIdsByResult.get(index) ?? [],
         language: located.language,
         direction: located.direction,
@@ -292,7 +296,7 @@ export class FactCheckGroundedSkill implements Skill {
         confidenceRationale: rationale,
         searchQueries: webSearchQueries.length ? webSearchQueries : [claim],
         provider: resolved.provider,
-        model: GEMINI_GROUNDED_MODEL,
+        model: groundedModel,
         auditRef: { auditId, claimId, assessmentId },
         rewrite,
       } satisfies Partial<Finding>;
@@ -423,6 +427,7 @@ let _e2eGroundedScenarioName: string | null = null;
 async function assessClaimGrounded(
   claim: string,
   apiKey: string,
+  groundedModel: string,
   perClaimCost: number,
   retriesLeft = 1,
 ): Promise<Omit<GroundedClaimResult, "claim">> {
@@ -440,7 +445,7 @@ async function assessClaimGrounded(
         webSearchQueries: [],
         attempts: [{
           provider: "gemini-grounded",
-          model: GEMINI_GROUNDED_MODEL,
+          model: groundedModel,
           status: "skipped",
         }],
       };
@@ -453,7 +458,7 @@ async function assessClaimGrounded(
       webSearchQueries: [mock.claim],
       attempts: [{
         provider: "gemini-grounded",
-        model: GEMINI_GROUNDED_MODEL,
+        model: groundedModel,
         status: "success",
       }],
     };
@@ -463,7 +468,7 @@ async function assessClaimGrounded(
   const { response, attempts, errorMessage } = await fetchGroundedAssessment(
     claim,
     apiKey,
-    createGeminiCapability({ apiKey }).getModel("grounded"),
+    groundedModel,
     retriesLeft,
     perClaimCost,
   );
