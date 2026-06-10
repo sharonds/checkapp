@@ -135,7 +135,7 @@ describe("FactCheckGroundedSkill", () => {
       expect(groundedEvent).toBeDefined();
       expect(groundedEvent.payload).toMatchObject({
         provider: "gemini-grounded",
-        model: "gemini-3-pro-preview",
+        model: "gemini-3.1-pro-preview",
         httpStatus: 200,
         costUsd: 0.04,
         inputTokens: 111,

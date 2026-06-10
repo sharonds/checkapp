@@ -21,7 +21,7 @@ export const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 export const LLM_MODEL = {
   minimax: "MiniMax-M2.7",
   anthropic: "claude-haiku-4-5-20251001",
-  gemini: "gemini-3-pro-preview",
+  gemini: "gemini-3.5-flash",
   openrouter: "anthropic/claude-3.5-haiku",
 } as const;
 
