@@ -464,6 +464,39 @@ describe("deep_audit_article", () => {
   });
 });
 
+describe("dispatch-level error sanitization", () => {
+  it("check_article tool errors are sanitized before reaching the MCP client", async () => {
+    __setMcpServerTestOverrides({
+      runCheckHeadless: async () => {
+        throw new Error("Gemini auth failed: key AIzaSyB1234567890abcdefghij and https://h.example/x?api_key=sk-live-abc123456");
+      },
+    });
+
+    const res = await handleToolCall("check_article", { text: "hello", source: "t" });
+    const text = res.content[0].type === "text" ? res.content[0].text : "";
+
+    expect(res.isError).toBe(true);
+    expect(text).not.toContain("AIzaSy");
+    expect(text).not.toContain("sk-live-abc123456");
+  });
+
+  it("regenerate_article tool errors are sanitized before reaching the MCP client", async () => {
+    __setMcpServerTestOverrides({
+      runCheckHeadless: async () => {
+        throw new Error("Provider failed with Bearer sk-live-abc1234567890 and token=abc123456");
+      },
+    });
+
+    const res = await handleToolCall("regenerate_article", { text: "hello" });
+    const text = res.content[0].type === "text" ? res.content[0].text : "";
+
+    expect(res.isError).toBe(true);
+    expect(text).not.toContain("sk-live-abc1234567890");
+    expect(text).not.toContain("abc123456");
+    expect(text).toContain("[redacted]");
+  });
+});
+
 describe("get_deep_audit_result", () => {
   it("returns a clean in-progress response when the interaction is still running", async () => {
     const originalFetch = globalThis.fetch;
