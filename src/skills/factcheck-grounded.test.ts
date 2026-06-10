@@ -848,6 +848,50 @@ describe("FactCheckGroundedSkill", () => {
     });
   });
 
+  describe("claim extraction failure handling", () => {
+    const minimaxResponse = (content: unknown[]) => jsonResponse({
+      id: "msg_x",
+      type: "message",
+      role: "assistant",
+      model: "MiniMax-M2.7",
+      content,
+      stop_reason: "max_tokens",
+      usage: { input_tokens: 10, output_tokens: 10 },
+    });
+
+    test("empty extraction response reports extraction failure, not a claim-free article", async () => {
+      // Reasoning models can exhaust max_tokens inside the thinking block and
+      // return no text block at all — observed live with MiniMax-M2.7.
+      mockFetch(urlRouter({
+        "api.minimax.io": async () => minimaxResponse([{ type: "thinking", thinking: "..." }]),
+      }));
+      const result = await new FactCheckGroundedSkill().run("ירושלים היא בירת ישראל.", baseConfig);
+      expect(result.verdict).toBe("warn");
+      expect(result.summary).not.toContain("No specific verifiable claims");
+      expect(result.summary).toContain("Claim extraction failed");
+      expect(result.findings[0]?.status).toBe("provider_error");
+    });
+
+    test("unparseable extraction response reports extraction failure", async () => {
+      mockFetch(urlRouter({
+        "api.minimax.io": async () => minimaxResponse([{ type: "text", text: "I could not find any claims in this article." }]),
+      }));
+      const result = await new FactCheckGroundedSkill().run("ירושלים היא בירת ישראל.", baseConfig);
+      expect(result.verdict).toBe("warn");
+      expect(result.summary).toContain("Claim extraction failed");
+      expect(result.findings[0]?.status).toBe("provider_error");
+    });
+
+    test("a valid empty claims array still reports a claim-free article", async () => {
+      mockFetch(urlRouter({
+        "api.minimax.io": async () => minimaxResponse([{ type: "text", text: "[]" }]),
+      }));
+      const result = await new FactCheckGroundedSkill().run("סתם משפט בלי טענות.", baseConfig);
+      expect(result.verdict).toBe("warn");
+      expect(result.summary).toBe("No specific verifiable claims detected");
+    });
+  });
+
   describe("computeRetryAfterDelayMs", () => {
     test("caps numeric Retry-After at 30 seconds", () => {
       expect(computeRetryAfterDelayMs("45")).toBe(30_000);

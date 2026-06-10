@@ -142,6 +142,22 @@ export class FactCheckGroundedSkill implements Skill {
 
     const documentAnalysis = analyzeDocument(text);
     const claims = await extractClaims(text, llm.call);
+    if (claims === null) {
+      return {
+        skillId: this.id,
+        name: this.name,
+        score: 60,
+        verdict: "warn",
+        summary: "Claim extraction failed — claims could not be verified",
+        findings: [{
+          severity: "warn",
+          status: "provider_error",
+          text: "The claim-extraction provider returned an unusable response, so fact-checking could not run. Re-run the check or switch the LLM provider.",
+        }],
+        costUsd: 0.001,
+        provider: resolved.provider,
+      };
+    }
     if (claims.length === 0) {
       return {
         skillId: this.id,
@@ -380,17 +396,22 @@ function budgetStopReasonFromKey(key: ReturnType<typeof shouldStopForBudget>): A
   return "provider_call_budget";
 }
 
+// Returns null when the extraction provider produced an unusable response
+// (empty, unparseable, or non-array). Reasoning models can exhaust max_tokens
+// inside their thinking block and emit no text at all, so an empty response
+// means "extraction failed", never "the article has no claims".
 async function extractClaims(
   text: string,
   call: (prompt: string, maxTokens?: number) => Promise<string>,
-): Promise<string[]> {
-  const claimsText = await call(extractClaimsPrompt(text), 1024);
+): Promise<string[] | null> {
+  const claimsText = await call(extractClaimsPrompt(text), 4096);
+  if (!claimsText.trim()) return null;
 
   try {
     const parsed = parseJsonResponse<string[]>(claimsText);
-    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string").slice(0, 20) : [];
+    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string").slice(0, 20) : null;
   } catch {
-    return [];
+    return null;
   }
 }
 
