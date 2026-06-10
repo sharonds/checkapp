@@ -20,6 +20,7 @@ describe("shared audit contract", () => {
       "chars",
       "confidence",
       "confidenceRationale",
+      "details",
       "documentQuote",
       "evidence",
       "factCheck",
@@ -28,6 +29,7 @@ describe("shared audit contract", () => {
       "approximateLocation",
       "paragraph",
       "plagiarismCheck",
+      "providerError",
       "qualityReport",
       "search",
       "sentence",
@@ -40,8 +42,10 @@ describe("shared audit contract", () => {
       for (const key of stringKeys) {
         expect(DASHBOARD_AUDIT_UI[locale][key]).toBe(CLI_AUDIT_UI[locale][key]);
       }
-      expect(DASHBOARD_AUDIT_UI[locale].checkedClaims(4, 1, 0, "gemini-grounded", 2, "claim_cap"))
-        .toBe(CLI_AUDIT_UI[locale].checkedClaims(4, 1, 0, "gemini-grounded", 2, "claim_cap"));
+      expect(DASHBOARD_AUDIT_UI[locale].checkedClaims(4, 1, 0, "gemini-grounded", 2, "claim_cap", 1))
+        .toBe(CLI_AUDIT_UI[locale].checkedClaims(4, 1, 0, "gemini-grounded", 2, "claim_cap", 1));
+      expect(DASHBOARD_AUDIT_UI[locale].checkedClaims(2, 0, 1, "gemini-grounded", 1, "cost_budget", 1))
+        .toBe(CLI_AUDIT_UI[locale].checkedClaims(2, 0, 1, "gemini-grounded", 1, "cost_budget", 1));
     }
   });
 

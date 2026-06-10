@@ -807,6 +807,23 @@ describe("FactCheckGroundedSkill", () => {
       }
     });
 
+    test("skill summary separates provider errors from unverified", async () => {
+      process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS = "0";
+      try {
+        mockFetch(urlRouter({
+          "api.minimax.io": async () => minimaxExtract(["claim one", "claim two"]),
+          "generativelanguage.googleapis.com": geminiSequence([
+            () => geminiOk(null as never, "inconclusive", ["https://example.com/a"]), // unverified
+            () => new Response("", { status: 400 }),                                  // provider_error
+          ]),
+        }));
+        const result = await new FactCheckGroundedSkill().run("claim one. claim two.", baseConfig);
+        expect(result.summary).toBe("2 claims checked — 0 unsupported, 1 unverified, 1 provider errors (via gemini-grounded)");
+      } finally {
+        delete process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS;
+      }
+    });
+
     test("thrown network errors that exhaust the budget end as failed with truthful retryable flag", async () => {
       process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS = "0";
       try {

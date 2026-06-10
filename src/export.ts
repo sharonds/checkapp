@@ -88,7 +88,8 @@ function localizedMarkdownSummary(
   if (result.skillId !== "fact-check-grounded" && result.skillId !== "fact-check") return result.summary;
   if (!coverage) return result.summary;
   const unsupported = result.findings.filter((finding) => finding.status === "unsupported" || /unsupported|לא נתמך/i.test(finding.text)).length;
-  const unverified = result.findings.filter((finding) => finding.status === "unverified" || /unverified|לא אומת/i.test(finding.text)).length;
+  const providerErrors = result.findings.filter((finding) => finding.status === "provider_error").length;
+  const unverified = result.findings.filter((finding) => finding.status !== "provider_error" && (finding.status === "unverified" || /unverified|לא אומת/i.test(finding.text))).length;
   return AUDIT_UI[locale].checkedClaims(
     coverage.claimsChecked,
     unsupported,
@@ -96,6 +97,7 @@ function localizedMarkdownSummary(
     result.provider,
     coverage.claimsSkipped,
     coverage.budgetStopReason,
+    providerErrors,
   );
 }
 

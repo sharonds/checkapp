@@ -21,7 +21,9 @@ export function ClaimDrillDown({ finding, locale: reportLocale }: Props) {
   const evidenceCount = (finding.sources?.length ?? 0) + (finding.citations?.length ?? 0);
   const buttonLabel = hasEvidence
     ? labels.viewEvidence(evidenceCount)
-    : labels.viewSuggestedRewrite;
+    : hasRewrite
+      ? labels.viewSuggestedRewrite
+      : labels.details;
 
   return (
     <Sheet>
@@ -29,7 +31,7 @@ export function ClaimDrillDown({ finding, locale: reportLocale }: Props) {
       <SheetContent dir={locale === "he" ? "rtl" : "ltr"} className="w-full sm:max-w-[520px] overflow-y-auto">
         <SheetHeader>
           <SheetTitle>
-            {hasEvidence ? labels.evidence : labels.suggestedRewrite}
+            {hasEvidence ? labels.evidence : hasRewrite ? labels.suggestedRewrite : labels.details}
           </SheetTitle>
         </SheetHeader>
         <div className="mt-4 space-y-4">

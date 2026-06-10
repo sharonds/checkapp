@@ -24,6 +24,7 @@ export const AUDIT_UI = {
     chars: "chars",
     confidence: "Confidence",
     confidenceRationale: "Confidence rationale",
+    details: "Details",
     documentQuote: "Document quote",
     evidence: "Evidence",
     factCheck: "Fact Check",
@@ -62,14 +63,15 @@ export const AUDIT_UI = {
     needsAttention: "Needs attention",
     doNotPublish: "Do not publish",
     words: "Words",
-    checkedClaims: (checked: number, unsupported: number, unverified: number, provider?: string, skipped?: number, budgetStopReason?: string) =>
-      `${checked} claims checked — ${unsupported} unsupported, ${unverified} unverified${skipped ? `, ${skipped} skipped${budgetStopReason ? ` by ${formatBudgetStopReason(budgetStopReason, "en")}` : ""}` : ""}${provider ? ` (via ${provider})` : ""}`,
+    checkedClaims: (checked: number, unsupported: number, unverified: number, provider?: string, skipped?: number, budgetStopReason?: string, providerErrors?: number) =>
+      `${checked} claims checked — ${unsupported} unsupported, ${unverified} unverified${providerErrors ? `, ${providerErrors} provider errors` : ""}${skipped ? `, ${skipped} skipped${budgetStopReason ? ` by ${formatBudgetStopReason(budgetStopReason, "en")}` : ""}` : ""}${provider ? ` (via ${provider})` : ""}`,
   },
   he: {
     apiCost: "עלות API",
     chars: "תווים",
     confidence: "רמת ביטחון",
     confidenceRationale: "נימוק רמת הביטחון",
+    details: "פרטים",
     documentQuote: "ציטוט מהמסמך",
     evidence: "ראיות",
     factCheck: "בדיקת עובדות",
@@ -108,8 +110,8 @@ export const AUDIT_UI = {
     needsAttention: "דורש טיפול",
     doNotPublish: "לא לפרסום",
     words: "מילים",
-    checkedClaims: (checked: number, unsupported: number, unverified: number, provider?: string, skipped?: number, budgetStopReason?: string) =>
-      `${checked} טענות נבדקו — ${unsupported} לא נתמכו, ${unverified} לא אומתו${skipped ? `, ${skipped} דולגו${budgetStopReason ? ` בגלל ${formatBudgetStopReason(budgetStopReason, "he")}` : ""}` : ""}${provider ? ` (באמצעות ${provider})` : ""}`,
+    checkedClaims: (checked: number, unsupported: number, unverified: number, provider?: string, skipped?: number, budgetStopReason?: string, providerErrors?: number) =>
+      `${checked} טענות נבדקו — ${unsupported} לא נתמכו, ${unverified} לא אומתו${providerErrors ? `, ${providerErrors} שגיאות ספק` : ""}${skipped ? `, ${skipped} דולגו${budgetStopReason ? ` בגלל ${formatBudgetStopReason(budgetStopReason, "he")}` : ""}` : ""}${provider ? ` (באמצעות ${provider})` : ""}`,
   },
 } as const;
 

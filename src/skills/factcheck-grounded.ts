@@ -336,7 +336,8 @@ export class FactCheckGroundedSkill implements Skill {
     const noCheckedClaims = groundedResults.length === 0 && claims.length > 0;
     const score = noCheckedClaims ? 60 : Math.round(100 - failCount * 25 - warnCount * 10);
     const verdict = noCheckedClaims ? "warn" : failCount > 0 ? "fail" : providerErrorCount > 0 ? "warn" : warnCount > 1 ? "warn" : "pass";
-    const summary = `${groundedResults.length} claims checked — ${failCount} unsupported, ${warnCount} unverified (via gemini-grounded)`;
+    const unverifiedCount = warnCount - providerErrorCount;
+    const summary = `${groundedResults.length} claims checked — ${failCount} unsupported, ${unverifiedCount} unverified${providerErrorCount > 0 ? `, ${providerErrorCount} provider errors` : ""} (via gemini-grounded)`;
 
     const result: SkillResult = {
       skillId: this.id,

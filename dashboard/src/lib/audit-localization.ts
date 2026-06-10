@@ -21,6 +21,7 @@ export const AUDIT_UI = {
   en: {
     confidence: "Confidence",
     confidenceRationale: "Confidence rationale",
+    details: "Details",
     documentQuote: "Document quote",
     evidence: "Evidence",
     approximateLocation: "Approximate location",
@@ -53,12 +54,13 @@ export const AUDIT_UI = {
     factCheckGrounded: "Fact Check (Grounded)",
     plagiarismCheck: "Plagiarism Check",
     cost: "Cost",
-    checkedClaims: (checked: number, unsupported: number, unverified: number, provider?: string, skipped?: number, budgetStopReason?: string) =>
-      `${checked} claims checked — ${unsupported} unsupported, ${unverified} unverified${skipped ? `, ${skipped} skipped${budgetStopReason ? ` by ${formatBudgetStopReason(budgetStopReason, "en")}` : ""}` : ""}${provider ? ` (via ${provider})` : ""}`,
+    checkedClaims: (checked: number, unsupported: number, unverified: number, provider?: string, skipped?: number, budgetStopReason?: string, providerErrors?: number) =>
+      `${checked} claims checked — ${unsupported} unsupported, ${unverified} unverified${providerErrors ? `, ${providerErrors} provider errors` : ""}${skipped ? `, ${skipped} skipped${budgetStopReason ? ` by ${formatBudgetStopReason(budgetStopReason, "en")}` : ""}` : ""}${provider ? ` (via ${provider})` : ""}`,
   },
   he: {
     confidence: "רמת ביטחון",
     confidenceRationale: "נימוק רמת הביטחון",
+    details: "פרטים",
     documentQuote: "ציטוט מהמסמך",
     evidence: "ראיות",
     approximateLocation: "מיקום משוער",
@@ -91,8 +93,8 @@ export const AUDIT_UI = {
     factCheckGrounded: "בדיקת עובדות מבוססת מקורות",
     plagiarismCheck: "בדיקת מקוריות",
     cost: "עלות",
-    checkedClaims: (checked: number, unsupported: number, unverified: number, provider?: string, skipped?: number, budgetStopReason?: string) =>
-      `${checked} טענות נבדקו — ${unsupported} לא נתמכו, ${unverified} לא אומתו${skipped ? `, ${skipped} דולגו${budgetStopReason ? ` בגלל ${formatBudgetStopReason(budgetStopReason, "he")}` : ""}` : ""}${provider ? ` (באמצעות ${provider})` : ""}`,
+    checkedClaims: (checked: number, unsupported: number, unverified: number, provider?: string, skipped?: number, budgetStopReason?: string, providerErrors?: number) =>
+      `${checked} טענות נבדקו — ${unsupported} לא נתמכו, ${unverified} לא אומתו${providerErrors ? `, ${providerErrors} שגיאות ספק` : ""}${skipped ? `, ${skipped} דולגו${budgetStopReason ? ` בגלל ${formatBudgetStopReason(budgetStopReason, "he")}` : ""}` : ""}${provider ? ` (באמצעות ${provider})` : ""}`,
   },
 } as const;
 
@@ -204,7 +206,8 @@ export function localizedSkillSummary(
   if (result.skillId !== "fact-check-grounded" && result.skillId !== "fact-check") return result.summary;
   if (typeof coverage?.claimsChecked !== "number") return result.summary;
   const unsupported = result.findings.filter((finding) => finding.status === "unsupported" || /unsupported|לא נתמך/i.test(finding.text)).length;
-  const unverified = result.findings.filter((finding) => finding.status === "unverified" || /unverified|לא אומת/i.test(finding.text)).length;
+  const providerErrors = result.findings.filter((finding) => finding.status === "provider_error").length;
+  const unverified = result.findings.filter((finding) => finding.status !== "provider_error" && (finding.status === "unverified" || /unverified|לא אומת/i.test(finding.text))).length;
   return AUDIT_UI[locale].checkedClaims(
     coverage.claimsChecked,
     unsupported,
@@ -212,5 +215,6 @@ export function localizedSkillSummary(
     result.provider,
     coverage.claimsSkipped,
     coverage.budgetStopReason,
+    providerErrors,
   );
 }

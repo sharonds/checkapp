@@ -43,6 +43,20 @@ describe("ClaimDrillDown", () => {
     expect(within(container).getByRole("button", { name: "הצגת ניסוח מוצע" })).toBeDefined();
   });
 
+  test("provider-error finding gets a Details drill-down, not 'View suggested rewrite'", () => {
+    const f: Finding = {
+      severity: "warn",
+      text: "Provider error",
+      status: "provider_error",
+      confidenceRationale: "Provider call failed",
+      searchQueries: ["claim"],
+      location: { sectionId: "s", paragraphIndex: 0 } as any,
+    };
+    const { container } = render(<ClaimDrillDown finding={f} locale="en" />);
+    expect(within(container).queryByText(/suggested rewrite/i)).toBeNull();
+    expect(within(container).getByRole("button", { name: "Details" })).toBeDefined();
+  });
+
   test("counts sources + citations in the button label", () => {
     const f: Finding = {
       severity: "warn", text: "t",

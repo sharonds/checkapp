@@ -184,7 +184,8 @@ function localizedSkillSummary(r: SkillResult, locale: AuditLocale, audit?: Chec
   const coverage = audit?.coverage;
   if (!coverage) return r.summary;
   const unsupported = r.findings.filter((f) => f.status === "unsupported" || f.text.toLowerCase().includes("unsupported")).length;
-  const unverified = r.findings.filter((f) => f.status === "unverified" || f.text.toLowerCase().includes("unverified")).length;
+  const providerErrors = r.findings.filter((f) => f.status === "provider_error").length;
+  const unverified = r.findings.filter((f) => f.status !== "provider_error" && (f.status === "unverified" || f.text.toLowerCase().includes("unverified"))).length;
   return AUDIT_UI[locale].checkedClaims(
     coverage.claimsChecked,
     unsupported,
@@ -192,6 +193,7 @@ function localizedSkillSummary(r: SkillResult, locale: AuditLocale, audit?: Chec
     r.provider,
     coverage.claimsSkipped,
     coverage.budgetStopReason,
+    providerErrors,
   );
 }
 
