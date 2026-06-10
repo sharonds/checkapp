@@ -64,6 +64,15 @@ describe("audit document analysis", () => {
     expect(located?.location?.matchQuality).toBe("exact");
   });
 
+  test("documents the Turkish İ limitation: İstanbul/istanbul is not an exact pair (degrades to fuzzy)", () => {
+    // The accent-sensitive collator treats the dot-above as significant, so
+    // this pair never matched exactly — before or after the prefilter. It
+    // falls through to the fuzzy/token-overlap path instead of being lost.
+    const text = "İstanbul hosted the annual technology conference downtown.";
+    const located = locateQuote(text, "istanbul hosted the annual technology conference");
+    expect(located?.location?.matchQuality).not.toBe("exact");
+  });
+
   test("locateQuote stays under 500ms for 10 unmatched quotes on a 10k-word article", () => {
     const words = Array.from({ length: 10_000 }, (_, i) => `word${i % 700}`);
     const text = Array.from({ length: 500 }, (_, p) => words.slice(p * 20, p * 20 + 20).join(" ")).join("\n\n");

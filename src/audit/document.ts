@@ -206,7 +206,10 @@ function findCaseInsensitiveIndex(text: string, query: string): number {
   if (!query || query.length > text.length) return -1;
   // Cheap practical prefilter. It is not a complete Unicode case-fold
   // invariant; exact indexOf is still attempted first, and unsupported pairs
-  // degrade to the existing fuzzy/token-overlap path.
+  // degrade to the existing fuzzy/token-overlap path. Known unsupported pairs:
+  // Turkish İ/i (also rejected by the accent-sensitive collator scan below, so
+  // not a behavior change) and width-folded forms (ＡＢＣ/abc — the collator
+  // would match these but the gate rejects them; they fall back to fuzzy).
   if (
     !text.toLowerCase().includes(query.toLowerCase()) &&
     !text.toUpperCase().includes(query.toUpperCase())

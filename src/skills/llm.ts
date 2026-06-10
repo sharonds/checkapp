@@ -21,7 +21,10 @@ export const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 export const LLM_MODEL = {
   minimax: "MiniMax-M2.7",
   anthropic: "claude-haiku-4-5-20251001",
-  gemini: "gemini-3.5-flash",
+  // Must match gemini-capability's DEFAULT_MODEL_PRO: the live gemini client
+  // resolves its model via getModel("chat") (pro by default); this constant
+  // only labels the E2E mock client, so a mismatch misreports the model there.
+  gemini: "gemini-3.1-pro-preview",
   openrouter: "anthropic/claude-3.5-haiku",
 } as const;
 
