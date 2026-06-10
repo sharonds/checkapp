@@ -153,7 +153,7 @@ describe("generateMarkdownReport", () => {
       }],
     });
 
-    expect(md).toContain("**Provider:** Gemini 3 Pro Preview + Google Search");
+    expect(md).toContain("**Provider:** Gemini 3.1 Pro + Google Search");
     expect(md).toContain("1 claims checked — 0 unsupported, 1 unverified, 2 skipped by claim cap");
     expect(md).toContain('> "Claim"');
     expect(md).toContain("Location: Intro · paragraph 1 · sentence 1 · chars 10-15");
@@ -357,7 +357,7 @@ describe("generateMarkdownReport", () => {
     expect(md).toContain("**מקור:** he.md");
     expect(md).toContain("**מילים:** 120");
     expect(md).toContain("**עלות API:** $0.040");
-    expect(md).toContain("**ספק:** Gemini 3 Pro Preview + Google Search");
+    expect(md).toContain("**ספק:** Gemini 3.1 Pro + Google Search");
     expect(md).toContain("לא נתמך");
     expect(md).toContain("רמת ביטחון: גבוהה");
     expect(md).not.toContain("Unsupported");

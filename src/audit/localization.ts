@@ -162,7 +162,7 @@ export function localizedFindingStatus(finding: Pick<Finding, "status" | "confid
   if (finding.status === "unverified") return labels.unverified;
   if (finding.status === "provider_error") return labels.providerError;
   if (finding.status === "plagiarism_match") return labels.plagiarismCheck;
-  if (finding.confidence) return `${labels.confidence}: ${finding.confidence}`;
+  if (finding.confidence) return `${labels.confidence}: ${localizedConfidenceValue(finding.confidence, locale)}`;
   return undefined;
 }
 
