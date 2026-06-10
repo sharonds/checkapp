@@ -12,6 +12,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Structured fact-check and plagiarism audit records with document quote locations, evidence, confidence rationale, suggested rewrites, coverage metadata, and localized English/Hebrew report labels.
 - Dashboard and HTML report rendering for Hebrew/RTL audit evidence, including mixed Hebrew-English quote direction handling.
 - Scenario fixtures and package/docs gates for open-source audit-contract validation.
+- Retry coverage expanded to HTTP 429, 502, and 504 (previously only 500/503), and thrown network errors, with `Retry-After` header support (cap: 30 s).
+- Provider-error localization (en/he) in CLI HTML report; provider errors counted separately in claim summaries.
+- Hebrew + English labels for all 8 budget stop reasons.
+- Dashboard drill-down "Details" label for provider errors.
+
+### Changed
+
+- **Contract change (`retryable` field):** `retryable` on provider attempts now means the error class was transient (HTTP 429/500/502/503/504 or network throw), regardless of remaining retry budget. Previously `retryable` was cleared once the budget was exhausted. The `status` field (`retry`/`failed`) records whether a retry actually happened. Effective 1.4.0; no migration of older records.
+- MCP-wide error sanitization: all MCP tool errors now return sanitized messages (API keys and sensitive URLs redacted) via a dispatch-level wrapper.
+
+### Performance
+
+- `locateQuote`: hoisted `Intl.Collator` and added pre-filter before case-insensitive scan (~4x faster on unmatched quotes).
 
 ### Fixed
 

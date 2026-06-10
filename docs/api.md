@@ -456,6 +456,10 @@ Common status codes:
 | 404 | Check not found |
 | 500 | Internal server error |
 
+### MCP tool errors
+
+All MCP tool errors return sanitized messages. API keys and sensitive URLs are redacted before the error text is returned to the calling agent, so provider credentials do not leak through tool error responses.
+
 ---
 
 ## Finding (Phase 7+)

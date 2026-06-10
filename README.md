@@ -87,6 +87,8 @@ CheckApp reports evidence confidence, not certainty. Gemini grounded fact-check 
 
 Gemini grounded plagiarism is stricter than a general similarity prompt: matched URLs that appear in Gemini grounding metadata are treated as grounded matches. If Gemini returns plausible match JSON without grounding metadata, CheckApp reports a reduced-confidence review finding instead of a clean pass. Exact public-source English and Hebrew copying is the highest-confidence path we validate. Translated or paraphrased plagiarism is lower confidence and should still receive human review.
 
+Provider failures (HTTP 429/500/502/503/504 and network errors) are retried within a configurable retry budget; claims that still fail after retries are reported as provider errors and force a warn verdict, never a pass.
+
 ### Coverage audit details
 
 Fact-check and plagiarism checks now attach structured audit details when provider-backed checks run. Each actionable finding can include the exact article quote, section/paragraph/sentence location, character offsets when available, language/direction metadata for Hebrew, English, or mixed text, confidence rationale, evidence sources, provider/search metadata, and a suggested rewrite in the article language. Character offsets are JavaScript/UTF-16 code-unit offsets. Fuzzy token-overlap locations are labeled approximate and omit exact character offsets. Coverage metadata records checked/skipped claims and budget stop reasons. Dashboard and HTML detail reports show this context; list/search APIs return only summaries so quotes and evidence are not exposed outside detail views.

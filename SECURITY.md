@@ -44,3 +44,10 @@ make a remote request trusted. Mutation routes such as `/api/providers`,
 `/api/checks/[id]/tags`, and `/api/reports/[id]/deep-audit` require CSRF.
 Read-only routes are loopback-guarded. Binding the dashboard to a non-loopback
 interface is unsupported.
+
+## MCP error sanitization
+
+All MCP tool errors return sanitized messages. API keys and sensitive URLs are
+redacted at the MCP dispatch layer before the error text is returned to the
+calling agent, so provider credentials do not leak through tool error
+responses.
