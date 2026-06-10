@@ -519,24 +519,36 @@ async function fetchGroundedAssessment(
       },
     );
   } catch (error) {
-    attempts.push({
-      provider: "gemini-grounded",
-      model,
-      status: "failed",
-      retryable: true,
-      errorMessage: sanitizeProviderError(error instanceof Error ? error.message : String(error)),
-    });
+    const errorMessage = sanitizeProviderError(error instanceof Error ? error.message : String(error));
     emitAttempt({
       httpStatus: null,
       latencyMs: Date.now() - startedAt,
       inputTokens: null,
       outputTokens: null,
       totalTokens: null,
-      error: sanitizeProviderError(error instanceof Error ? error.message : String(error)),
+      error: errorMessage,
+    });
+    if (retriesLeft > 0) {
+      attempts.push({
+        provider: "gemini-grounded",
+        model,
+        status: "retry",
+        retryable: true,
+        errorMessage,
+      });
+      await sleep(groundedRetryDelayMs());
+      return fetchGroundedAssessment(claim, apiKey, model, retriesLeft - 1, perClaimCost, attempts);
+    }
+    attempts.push({
+      provider: "gemini-grounded",
+      model,
+      status: "failed",
+      retryable: true,
+      errorMessage,
     });
     return {
       attempts,
-      errorMessage: sanitizeProviderError(error instanceof Error ? error.message : String(error)) || "Gemini grounded provider request failed.",
+      errorMessage: errorMessage || "Gemini grounded provider request failed.",
     };
   }
 
@@ -557,11 +569,7 @@ async function fetchGroundedAssessment(
       outputTokens: null,
       totalTokens: null,
     });
-    const retryAfterSeconds = Number(response.headers.get("retry-after"));
-    const providerDelayMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0
-      ? Math.min(retryAfterSeconds * 1000, 30_000)
-      : 0;
-    await sleep(Math.max(providerDelayMs, groundedRetryDelayMs()));
+    await sleep(Math.max(computeRetryAfterDelayMs(response.headers.get("retry-after")), groundedRetryDelayMs()));
     return fetchGroundedAssessment(claim, apiKey, model, retriesLeft - 1, perClaimCost, attempts);
   }
 
@@ -571,7 +579,7 @@ async function fetchGroundedAssessment(
       provider: "gemini-grounded",
       model,
       status: "failed",
-      retryable: false,
+      retryable: RETRYABLE_STATUS_CODES.has(response.status),
       statusCode: response.status,
       errorMessage,
     });
@@ -611,6 +619,13 @@ function sumAttemptTokens(attempts: ProviderAttemptDraft[], key: "inputTokens" |
 
 function remainingProviderRetries(maxProviderRetries: number, providerRetriesUsed: number): number {
   return Math.max(0, Math.floor(maxProviderRetries) - providerRetriesUsed);
+}
+
+export function computeRetryAfterDelayMs(retryAfterHeader: string | null): number {
+  const retryAfterSeconds = Number(retryAfterHeader);
+  return Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0
+    ? Math.min(retryAfterSeconds * 1000, 30_000)
+    : 0;
 }
 
 function groundedRetryDelayMs(): number {

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Config } from "../config.ts";
 import { jsonResponse, mockFetch, urlRouter } from "../testing/mock-fetch.ts";
-import { FactCheckGroundedSkill } from "./factcheck-grounded.ts";
+import { FactCheckGroundedSkill, computeRetryAfterDelayMs } from "./factcheck-grounded.ts";
 
 describe("FactCheckGroundedSkill", () => {
   const baseConfig: Config = {
@@ -168,7 +168,10 @@ describe("FactCheckGroundedSkill", () => {
     }));
 
     try {
-      const result = await new FactCheckGroundedSkill().run("The claim needs checking.", baseConfig);
+      const result = await new FactCheckGroundedSkill().run(
+        "The claim needs checking.",
+        { ...baseConfig, factAudit: { maxProviderRetries: 0 } },
+      );
 
       expect(result.verdict).toBe("warn");
       expect(result.findings[0].status).toBe("provider_error");
@@ -681,6 +684,79 @@ describe("FactCheckGroundedSkill", () => {
       } finally {
         delete process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS;
       }
+    });
+
+    test("retries thrown network errors within the retry budget", async () => {
+      process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS = "0";
+      try {
+        let calls = 0;
+        mockFetch(urlRouter({
+          "api.minimax.io": async () => minimaxExtract(["one claim"]),
+          "generativelanguage.googleapis.com": async () => {
+            calls++;
+            if (calls === 1) throw new Error("fetch failed: ECONNRESET");
+            return geminiOk(true, "ok", ["https://example.com/a"]);
+          },
+        }));
+        const result = await new FactCheckGroundedSkill().run("one claim", baseConfig);
+        expect((result as any).audit.providerAttempts.map((a: any) => a.status)).toEqual(["retry", "success"]);
+        expect(result.findings.filter((f) => f.status === "provider_error")).toHaveLength(0);
+      } finally {
+        delete process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS;
+      }
+    });
+
+    test("terminal attempts carry truthful retryable flags", async () => {
+      process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS = "0";
+      try {
+        // transient class, budget 1: 503 -> retry, 503 -> terminal failed but still retryable:true
+        mockFetch(urlRouter({
+          "api.minimax.io": async () => minimaxExtract(["one claim"]),
+          "generativelanguage.googleapis.com": geminiSequence([
+            () => new Response("", { status: 503 }),
+            () => new Response("", { status: 503 }),
+          ]),
+        }));
+        const first = await new FactCheckGroundedSkill().run(
+          "one claim",
+          { ...baseConfig, factAudit: { maxProviderRetries: 1 } },
+        );
+        const attempts = (first as any).audit.providerAttempts;
+        expect(attempts.map((a: any) => a.status)).toEqual(["retry", "failed"]);
+        expect(attempts[1].retryable).toBe(true); // transient class — truthful despite exhausted budget
+
+        // non-transient class: 400 -> failed, retryable:false
+        mockFetch(urlRouter({
+          "api.minimax.io": async () => minimaxExtract(["one claim"]),
+          "generativelanguage.googleapis.com": async () => new Response("", { status: 400 }),
+        }));
+        const second = await new FactCheckGroundedSkill().run("one claim", baseConfig);
+        expect((second as any).audit.providerAttempts[0].retryable).toBe(false);
+      } finally {
+        delete process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS;
+      }
+    });
+  });
+
+  describe("computeRetryAfterDelayMs", () => {
+    test("caps numeric Retry-After at 30 seconds", () => {
+      expect(computeRetryAfterDelayMs("45")).toBe(30_000);
+    });
+
+    test("returns 0 for a missing header", () => {
+      expect(computeRetryAfterDelayMs(null)).toBe(0);
+    });
+
+    test("converts seconds to milliseconds", () => {
+      expect(computeRetryAfterDelayMs("2")).toBe(2_000);
+    });
+
+    test("returns 0 for HTTP-date Retry-After values", () => {
+      expect(computeRetryAfterDelayMs("Fri, 13 Jun 2026 07:00:00 GMT")).toBe(0);
+    });
+
+    test("returns 0 for negative values", () => {
+      expect(computeRetryAfterDelayMs("-5")).toBe(0);
     });
   });
 });
