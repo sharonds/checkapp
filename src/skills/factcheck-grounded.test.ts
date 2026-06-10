@@ -344,6 +344,44 @@ describe("FactCheckGroundedSkill", () => {
     expect((result as any).audit.factAssessments[0].attemptIds).toEqual(["attempt-1", "attempt-2"]);
   });
 
+  test("does not retry Gemini 503 responses when maxProviderRetries is zero", async () => {
+    let assessmentCalls = 0;
+    mockFetch(urlRouter({
+      "api.minimax.io": async () => jsonResponse({
+        id: "msg_extract_no_retry",
+        type: "message",
+        role: "assistant",
+        model: "MiniMax-M2.7",
+        content: [{
+          type: "text",
+          text: JSON.stringify(["Claim one."]),
+        }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 10, output_tokens: 10 },
+      }),
+      "generativelanguage.googleapis.com": async () => {
+        assessmentCalls++;
+        if (assessmentCalls === 1) return new Response("temporary", { status: 503 });
+        return jsonResponse({
+          candidates: [{
+            content: { parts: [{ text: JSON.stringify({ supported: true, note: "Grounded sources support the claim." }) }] },
+            groundingMetadata: {
+              webSearchQueries: ["claim one"],
+              groundingChunks: [{ web: { uri: "https://example.com/claim", title: "Source" } }],
+            },
+          }],
+        });
+      },
+    }));
+
+    await expect(new FactCheckGroundedSkill().run(
+      "Claim one.",
+      { ...baseConfig, factAudit: { maxProviderRetries: 0 } },
+    )).rejects.toThrow("Gemini grounded error: HTTP 503");
+
+    expect(assessmentCalls).toBe(1);
+  });
+
   test("warns instead of passing when a budget skips every grounded claim", async () => {
     let assessmentCalls = 0;
     mockFetch(urlRouter({

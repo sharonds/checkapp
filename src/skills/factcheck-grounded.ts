@@ -187,7 +187,12 @@ export class FactCheckGroundedSkill implements Skill {
         );
         break;
       }
-      const grounded = await assessClaimGrounded(claim, apiKey, perClaimCost);
+      const grounded = await assessClaimGrounded(
+        claim,
+        apiKey,
+        perClaimCost,
+        remainingProviderRetries(budget.maxProviderRetries, providerRetries),
+      );
       costUsd += perClaimCost;
       groundedResults.push({ claim, ...grounded });
       providerRetries += grounded.attempts.filter((attempt) => attempt.status === "retry").length;
@@ -387,6 +392,7 @@ async function assessClaimGrounded(
   claim: string,
   apiKey: string,
   perClaimCost: number,
+  retriesLeft = 1,
 ): Promise<Omit<GroundedClaimResult, "claim">> {
   if (isE2E()) {
     const s = loadScenario();
@@ -426,7 +432,7 @@ async function assessClaimGrounded(
     claim,
     apiKey,
     createGeminiCapability({ apiKey }).getModel("grounded"),
-    1,
+    retriesLeft,
     perClaimCost,
   );
   const candidate = response.candidates?.[0];
@@ -573,6 +579,10 @@ async function fetchGroundedAssessment(
 
 function sumAttemptTokens(attempts: ProviderAttemptDraft[], key: "inputTokens" | "outputTokens"): number {
   return attempts.reduce((sum, attempt) => sum + (attempt[key] ?? 0), 0);
+}
+
+function remainingProviderRetries(maxProviderRetries: number, providerRetriesUsed: number): number {
+  return Math.min(1, Math.max(0, Math.floor(maxProviderRetries) - providerRetriesUsed));
 }
 
 function buildGroundedPrompt(claim: string): string {
