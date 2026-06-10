@@ -1,12 +1,14 @@
 import { jsonWithCors } from "@/lib/cors";
 import { getContextByType, deleteContextByType } from "@/lib/db";
-import { guardLocalMutation } from "@/lib/guard-local";
+import { guardLocalMutation, guardLocalReadOnly } from "@/lib/guard-local";
 import { NextRequest } from "next/server";
 
 export async function GET(
-  _request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ type: string }> }
 ) {
+  const blocked = guardLocalReadOnly(request);
+  if (blocked) return blocked;
   try {
     const { type } = await params;
     const ctx = getContextByType(type);

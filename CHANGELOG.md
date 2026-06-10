@@ -5,6 +5,24 @@ All notable changes to CheckApp are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.4.0] - 2026-06-10
+
+### Added
+
+- Structured fact-check and plagiarism audit records with document quote locations, evidence, confidence rationale, suggested rewrites, coverage metadata, and localized English/Hebrew report labels.
+- Dashboard and HTML report rendering for Hebrew/RTL audit evidence, including mixed Hebrew-English quote direction handling.
+- Scenario fixtures and package/docs gates for open-source audit-contract validation.
+
+### Fixed
+
+- Sync fact-check budgets now keep Basic, Standard, and Exa deep-reasoning checks at the documented 4-claim default unless config explicitly raises the cap.
+- Fact-checks that extract claims but skip every claim due to budget now warn instead of returning a score-100 pass.
+- Retry/failure budget settings no longer preempt the first provider call when set to `0`.
+- Unicode case-insensitive quote matching no longer corrupts stored exact quotes when earlier characters fold to a different code-unit length.
+- Gemini plagiarism audit records now preserve per-match confidence and ungrounded-review rationale.
+- Gemini grounded fact-check audit records now capture retry/success provider attempts instead of synthesizing success-only attempts.
+- MCP `toggle_skill` rejects prototype property names, and provider error redaction now catches bare Gemini API keys.
+
 ## [1.3.1] - 2026-04-23
 
 ### Security

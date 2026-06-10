@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, rmSync, statSync } from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
 import {
   getRecentChecks,
   getAllChecks,
@@ -55,6 +58,64 @@ describe("getRecentChecks", () => {
     expect(checks).toHaveLength(2);
     expect(checks[0].source).toBe("b.md"); // most recent first
   });
+
+  it("omits raw article text and audit JSON from list rows", () => {
+    const db = getDb();
+    db.run(
+      sql`INSERT INTO checks (source, word_count, results_json, audit_json, total_cost, article_text)
+          VALUES ('audit-list.md', 100, '[]', '{"auditId":"secret-audit"}', 0.01, 'private article text')`
+    );
+
+    const checks = getRecentChecks(10) as Array<Record<string, unknown>>;
+
+    expect(checks[0].source).toBe("audit-list.md");
+    expect(checks[0].articleText).toBeUndefined();
+    expect(checks[0].article_text).toBeUndefined();
+    expect(checks[0].auditJson).toBeUndefined();
+    expect(checks[0].audit_json).toBeUndefined();
+    expect(JSON.stringify(checks)).not.toContain("private article text");
+    expect(JSON.stringify(checks)).not.toContain("secret-audit");
+  });
+});
+
+describe("dashboard DB file permissions", () => {
+  it("creates owner-only database file when POSIX modes are supported", () => {
+    closeDb();
+    delete process.env.ARTICLE_CHECKER_DB;
+    const tmp = mkdtempSync(join(tmpdir(), "checkapp-dashboard-db-mode-"));
+    const dbPath = join(tmp, "history.db");
+    process.env.CHECKAPP_DB_PATH = dbPath;
+    try {
+      getDb();
+      closeDb();
+      expect(statSync(dbPath).mode & 0o777).toBe(0o600);
+    } finally {
+      delete process.env.CHECKAPP_DB_PATH;
+      process.env.ARTICLE_CHECKER_DB = ":memory:";
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("enables WAL and a busy timeout for file-backed dashboard databases", () => {
+    closeDb();
+    delete process.env.ARTICLE_CHECKER_DB;
+    const tmp = mkdtempSync(join(tmpdir(), "checkapp-dashboard-db-pragma-"));
+    const dbPath = join(tmp, "history.db");
+    process.env.CHECKAPP_DB_PATH = dbPath;
+    try {
+      const db = getDb();
+      const journal = db.all(sql`PRAGMA journal_mode`) as Array<{ journal_mode: string }>;
+      const timeout = db.all(sql`PRAGMA busy_timeout`) as Array<{ timeout: number }>;
+
+      expect(journal[0]?.journal_mode).toBe("wal");
+      expect(timeout[0]?.timeout).toBeGreaterThanOrEqual(5000);
+    } finally {
+      closeDb();
+      delete process.env.CHECKAPP_DB_PATH;
+      process.env.ARTICLE_CHECKER_DB = ":memory:";
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("getAllChecks", () => {
@@ -69,6 +130,47 @@ describe("getAllChecks", () => {
     expect(checks).toHaveLength(12);
     expect(checks[0].source).toBe("row-12.md");
     expect(checks[11].source).toBe("row-1.md");
+  });
+
+  it("omits raw article text and audit JSON from dashboard list rows", () => {
+    const db = getDb();
+    db.run(
+      sql`INSERT INTO checks (source, word_count, results_json, audit_json, total_cost, article_text)
+          VALUES ('all-audit.md', 100, '[]', '{"auditId":"all-secret-audit"}', 0.01, 'private all article text')`
+    );
+
+    const checks = getAllChecks() as Array<Record<string, unknown>>;
+
+    expect(checks[0].source).toBe("all-audit.md");
+    expect(checks[0].articleText).toBeUndefined();
+    expect(checks[0].article_text).toBeUndefined();
+    expect(checks[0].auditJson).toBeUndefined();
+    expect(checks[0].audit_json).toBeUndefined();
+    expect(JSON.stringify(checks)).not.toContain("private all article text");
+    expect(JSON.stringify(checks)).not.toContain("all-secret-audit");
+  });
+});
+
+describe("checks schema contract", () => {
+  it("creates the expected physical checks columns", () => {
+    const columns = getDb().all(sql`PRAGMA table_info(checks)`) as Array<{
+      name: string;
+      type: string;
+      notnull: number;
+      dflt_value: string | null;
+      pk: number;
+    }>;
+    const byName = new Map(columns.map((column) => [column.name, column]));
+
+    expect(byName.get("id")?.pk).toBe(1);
+    expect(byName.get("source")).toMatchObject({ type: "TEXT", notnull: 1 });
+    expect(byName.get("word_count")).toMatchObject({ type: "INTEGER", notnull: 1, dflt_value: "0" });
+    expect(byName.get("results_json")).toMatchObject({ type: "TEXT", notnull: 1, dflt_value: "'[]'" });
+    expect(byName.get("total_cost")).toMatchObject({ type: "REAL", notnull: 1, dflt_value: "0" });
+    expect(byName.get("article_text")).toMatchObject({ type: "TEXT", notnull: 1, dflt_value: "''" });
+    expect(byName.get("audit_json")).toMatchObject({ type: "TEXT", notnull: 0 });
+    expect(byName.get("created_at")?.notnull).toBe(1);
+    expect(byName.get("created_at")?.dflt_value).toContain("datetime('now')");
   });
 });
 
@@ -295,6 +397,19 @@ describe("searchChecks", () => {
     const results = searchChecks("vitamin");
     expect(results).toHaveLength(1);
     expect(results[0].source).toContain("vitamin");
+  });
+
+  it("omits raw audit_json from search results", () => {
+    const db = getDb();
+    db.run(
+      sql`INSERT INTO checks (source, word_count, results_json, audit_json, total_cost) VALUES ('audit-article.md', 500, '[]', '{"auditId":"audit-secret"}', 0)`
+    );
+
+    const results = searchChecks("audit");
+
+    expect(results).toHaveLength(1);
+    expect(results[0].source).toBe("audit-article.md");
+    expect(results[0].auditJson).toBeUndefined();
   });
 
   it("returns empty for no matches", () => {

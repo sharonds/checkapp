@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from "fs";
+import { chmodSync, readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from "fs";
 import { homedir } from "os";
 import { dirname, join } from "path";
 import type { SkillId, SkillProviderConfig } from "./providers";
@@ -25,6 +25,18 @@ export interface AppConfig {
   llmProvider?: "minimax" | "anthropic" | "openrouter" | "gemini";
   factCheckTier?: FactCheckTier;
   factCheckTierFlag?: boolean;
+  factAudit?: {
+    standardMaxClaims?: number;
+    deepMaxClaims?: number;
+    maxUsd?: number;
+    maxInputTokens?: number;
+    maxOutputTokens?: number;
+    maxProviderCalls?: number;
+    maxWallClockMs?: number;
+    maxConcurrency?: number;
+    maxProviderRetries?: number;
+    maxProviderFailures?: number;
+  };
   toneGuideFile?: string;
   thresholds?: Record<string, unknown>;
   contexts?: Record<string, string>;
@@ -64,9 +76,19 @@ export function readAppConfig(): AppConfig {
 }
 
 export function writeAppConfig(partial: Partial<AppConfig>): void {
-  mkdirSync(dirname(CONFIG_PATH), { recursive: true });
+  mkdirSync(dirname(CONFIG_PATH), { recursive: true, mode: 0o700 });
+  chmodPrivate(dirname(CONFIG_PATH), 0o700);
   const existing = readAppConfig();
-  writeFileSync(CONFIG_PATH, JSON.stringify({ ...existing, ...partial }, null, 2));
+  writeFileSync(CONFIG_PATH, JSON.stringify({ ...existing, ...partial }, null, 2), { mode: 0o600 });
+  chmodPrivate(CONFIG_PATH, 0o600);
+}
+
+function chmodPrivate(path: string, mode: number): void {
+  try {
+    chmodSync(path, mode);
+  } catch {
+    // Best effort on filesystems that do not support POSIX modes.
+  }
 }
 
 function maskKey(key: string | undefined): string {

@@ -1,6 +1,6 @@
 # CheckApp
 
-> AI content quality gate for marketing teams. CLI + web dashboard that returns plagiarism, AI-detection, SEO score, fact-check, tone-of-voice, legal risk, brief matching, and content summary — before you publish. Supports context management (tone guides, briefs, legal policies), MCP server for AI agent integration, batch checking, CI mode, JSON output, tags, search, report export, and a local web dashboard for browsing results and managing skills.
+> AI content quality gate for marketing teams. CLI + source-repo web dashboard that returns plagiarism, AI-detection, SEO score, fact-check, tone-of-voice, legal risk, brief matching, and content summary — before you publish. Supports context management (tone guides, briefs, legal policies), MCP server for AI agent integration, batch checking, CI mode, JSON output, tags, search, report export, and a local dashboard for browsing results and managing skills when running from the source repo.
 
 [![CI](https://github.com/sharonds/checkapp/actions/workflows/ci.yml/badge.svg)](https://github.com/sharonds/checkapp/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/checkapp.svg)](https://www.npmjs.com/package/checkapp)
@@ -28,7 +28,7 @@ Every flagged issue ships with evidence + rewrite + citation:
 - **Academic Citations** (OpenAlex recommended, Semantic Scholar legacy) merges citations onto matching fact-check findings with scientific/medical/financial claim types. Free, no API key — see [Academic Citations](#academic-citations) below.
 - **Self-Plagiarism** (Cloudflare Vectorize + OpenRouter embeddings) flags overlap with your past articles. Run `checkapp index <dir>` once to ingest your archive.
 
-Pick a provider per skill from the Settings → Providers dashboard. CheckApp never holds API tokens — users bring their own keys.
+Pick a provider per skill from the Settings → Providers dashboard. CheckApp stores API tokens only in the local user config or reads them from environment variables — users bring their own keys.
 
 Pre-flight cost estimate: `checkapp --estimate-cost article.md` or the Run Check page in the dashboard shows "Estimated cost: $0.0320" before spending anything.
 
@@ -63,7 +63,7 @@ CheckApp finds peer-reviewed supporting papers for scientific, medical, and fina
 
 **Legacy provider: Semantic Scholar.** Users with an explicit `providers.academic = { provider: "semantic-scholar" }` config continue to hit SS. Note: the free tier of SS has aggressive per-IP rate limiting and is effectively unusable on shared IPs — that's why OpenAlex is the new default. Authenticated (paid) SS requests are not currently wired in the client; support for a paid SS API key is a separate workstream.
 
-See `poc-replacement/03-academic-citations/RESULTS.md` for the comparison data that drove this decision.
+OpenAlex is the recommended provider because it is free, broad, and avoids Semantic Scholar's aggressive unauthenticated rate limits.
 
 ---
 
@@ -77,6 +77,8 @@ Standard is opt-in and stays off by default until Gate 2 passes. Basic remains t
 | Standard (opt-in) | Gemini 3 Pro Preview + Google Search grounding | $0.16 | ~45s | Requires Gemini. Enable with `factCheckTierFlag=true` and `factCheckTier="standard"`, or set `providers["fact-check"].provider = "gemini-grounded"`. |
 | Deep Audit (async) | Gemini Deep Research | $1.50 | 5–15 min | Premium async audit workflow. The normal sync check still runs Basic unless Standard is selected. Initiate via dashboard button or `deep_audit_article` MCP tool. |
 
+Basic, Standard, and sync deep-reasoning fact-checking default to checking up to 4 extracted claims per article to keep latency and provider cost predictable. Advanced users can adjust `factAudit.standardMaxClaims`, `factAudit.deepMaxClaims`, and provider-call budgets in config; structured reports show skipped-claim counts and budget reasons such as `claim_cap` when a cap stops verification.
+
 Research basis: the Standard tier was selected based on an [internal benchmark on a 20-claim synthetic corpus](https://github.com/sharonds/checkapp-fact-check-research). That benchmark is directional, not definitive - see its [LIMITATIONS.md](https://github.com/sharonds/checkapp-fact-check-research/blob/main/LIMITATIONS.md) before relying on the results for your own decisions.
 
 ### Confidence and limitations
@@ -84,6 +86,14 @@ Research basis: the Standard tier was selected based on an [internal benchmark o
 CheckApp reports evidence confidence, not certainty. Gemini grounded fact-check has the strongest signal on concrete dates, statistics, named entities, and claims where Google Search returns source URLs. If Gemini or Exa marks a claim as supported but no source URL is attached, CheckApp downgrades that claim to unverified. “No issues found” does not prove the article is accurate or original across the whole web.
 
 Gemini grounded plagiarism is stricter than a general similarity prompt: matched URLs that appear in Gemini grounding metadata are treated as grounded matches. If Gemini returns plausible match JSON without grounding metadata, CheckApp reports a reduced-confidence review finding instead of a clean pass. Exact public-source English and Hebrew copying is the highest-confidence path we validate. Translated or paraphrased plagiarism is lower confidence and should still receive human review.
+
+### Coverage audit details
+
+Fact-check and plagiarism checks now attach structured audit details when provider-backed checks run. Each actionable finding can include the exact article quote, section/paragraph/sentence location, character offsets when available, language/direction metadata for Hebrew, English, or mixed text, confidence rationale, evidence sources, provider/search metadata, and a suggested rewrite in the article language. Character offsets are JavaScript/UTF-16 code-unit offsets. Fuzzy token-overlap locations are labeled approximate and omit exact character offsets. Coverage metadata records checked/skipped claims and budget stop reasons. Dashboard and HTML detail reports show this context; list/search APIs return only summaries so quotes and evidence are not exposed outside detail views.
+
+HTML reports and dashboard audit drilldowns localize CheckApp-owned labels for English and Hebrew. Hebrew audit reports use RTL layout and Hebrew labels for locations, evidence, suggested rewrites, verdicts, and audit summaries. Provider names, URLs, titles, and quoted source/article text are preserved rather than translated.
+
+When the same quote appears multiple times and the provider does not return source offsets, CheckApp resolves the quote to the first deterministic matching location. Reports preserve this behavior as a known limitation; provide more specific quoted text or offsets when exact duplicate disambiguation matters.
 
 ---
 
@@ -107,14 +117,14 @@ Gemini grounded plagiarism is stricter than a general similarity prompt: matched
 | **SQLite history** | Every check is saved to `~/.checkapp/history.db`. Query with `--history`. |
 | **Google Doc support** | Paste a publicly-shared Google Doc URL including `?tab=t.xxx` for specific tabs. No Google auth required. |
 | **Local file support** | Pass a `.md` or `.txt` file path. Works offline for the fetch step. |
-| **Single binary** | No Node.js, Bun, or runtime required. |
-| **Web dashboard** | Local Next.js UI — overview stats, report browser, run checks, manage skills and settings, in-app docs. Start with `checkapp --ui`. |
-| **`--ui` flag** | Launches the dashboard dev server and opens `http://localhost:3000` in your browser. |
+| **Single binary** | CLI binaries can run checks without Node.js, Bun, or a runtime. The dashboard is not bundled into the binary. |
+| **Web dashboard** | Local Next.js UI — overview stats, report browser, run checks, manage skills and settings, in-app docs. Run from a source checkout. |
+| **`--ui` flag** | Launches the dashboard dev server when the sibling `dashboard/` directory is present, such as in a source checkout. Published npm/binary installs expose CLI/MCP features but do not bundle the dashboard app. |
 | **`--output` export** | `--output report.md` or `--output report.html` — save the report to a file. |
-| **Tags + search** | Attach tags to checks, search across all history by text or tag via dashboard or API. |
+| **Tags + search** | Attach tags to checks, search check sources and tags via dashboard or API. |
 | **JSON API** | RESTful API at `localhost:3000/api` for running checks, managing tags, toggling skills. See [docs/api.md](docs/api.md). |
 | **Context system** | Upload tone guides, content briefs, legal policies, and style guides. Contexts are stored in SQLite and automatically loaded by relevant skills. Manage via CLI (`checkapp context add/list/show/remove`) or the dashboard Contexts page. |
-| **MCP server** | 8 tools for AI agent integration (Claude Code, Cursor, Windsurf). Start with `checkapp --mcp`. Tools: `check_article`, `list_reports`, `get_report`, `upload_context`, `list_contexts`, `get_skills`, `toggle_skill`, `regenerate_article`. |
+| **MCP server** | 10 tools for AI agent integration (Claude Code, Cursor, Windsurf). Start with `checkapp --mcp`. Tools include `check_article`, `list_reports`, `get_report`, `upload_context`, `list_contexts`, `get_skills`, `toggle_skill`, `regenerate_article`, `deep_audit_article`, and `get_deep_audit_result`. |
 | **CI mode (`--ci`)** | Exits with code 1 if any skill returns a `fail` verdict. Designed for CI/CD pipelines. |
 | **JSON output (`--json`)** | Outputs structured JSON instead of the Ink terminal UI. Ideal for scripts, agents, and piping. |
 | **Brief matching** | Checks article against an uploaded content brief. Verifies coverage of required topics, audience alignment, and tone match. Requires a `brief` context. |
@@ -247,7 +257,7 @@ CheckApp supports two AI detection providers:
 | Provider | Languages | Cost | When used |
 |----------|-----------|------|-----------|
 | Copyscape AI | English only | ~$0.03/check | Default |
-| Gemini 3 Pro Preview | All languages incl. Hebrew | ~$0.01/check in-app estimate | Explicitly configured (required for non-English) |
+| Gemini 3 Pro Preview | Multilingual best-effort; tested/recommended for English and Hebrew non-Copyscape paths | ~$0.01/check in-app estimate | Explicitly configured (required for non-English) |
 
 Copyscape only supports English. For non-English articles, set Gemini as the ai-detection provider in `~/.checkapp/config.json` and provide either `GEMINI_API_KEY`, `geminiApiKey`, or a provider-scoped `apiKey`:
 ```json
@@ -371,7 +381,7 @@ Exa is a neural search engine built for AI agents. Used to search for evidence s
 2. Create an account and generate an API key
 3. Add to `.env`: `EXA_API_KEY=your-key`
 
-**Cost:** ~$0.007 per search. The fact-check skill searches 4 claims per article → ~$0.028 per check.
+**Cost:** ~$0.007 per search, or ~$0.025 per Exa deep-reasoning search. The sync fact-check skill checks up to 4 claims per article by default → ~$0.028 per Basic check or ~$0.10 per sync deep-reasoning check before LLM assessment cost. Raising `factAudit.standardMaxClaims` or `factAudit.deepMaxClaims` increases provider calls and cost.
 
 Free trial credits available on signup.
 
@@ -437,7 +447,7 @@ checkapp --batch ./articles/
 # Export report to a file
 checkapp ./my-article.md --output report.md
 
-# Open the web dashboard
+# Open the web dashboard from a source checkout
 checkapp --ui
 
 # Re-run setup wizard
@@ -513,15 +523,15 @@ Article input (Google Doc URL or local .md/.txt)
 
 ## Web Dashboard
 
-CheckApp includes a local web dashboard for browsing check history, running new checks, and managing skills and settings from the browser.
+CheckApp includes a local web dashboard for browsing check history, running new checks, and managing skills and settings from the browser when you run from a source checkout. Published npm/binary installs do not currently bundle the Next.js dashboard app.
 
 **Start the dashboard:**
 
 ```bash
-# Via CLI flag
+# Via CLI flag from the source repo
 checkapp --ui
 
-# Or directly from source
+# Or directly
 cd dashboard && bun run dev
 ```
 
@@ -605,9 +615,11 @@ Override the default pass/warn/fail cutoffs for any skill in `~/.checkapp/config
 
 Scores >= `pass` result in a PASS verdict, scores >= `warn` result in WARN, and anything below `warn` is FAIL. Only skills listed in `thresholds` are overridden; all others use their built-in defaults.
 
-### Language Support (v1.2.0)
+### Language Support
 
-CheckApp is tuned and tested for **English and Hebrew**. Other scripts (Arabic, Chinese, Japanese, Korean, Russian, etc.) are detected, but SEO tokenization, passage-matching (`MIN_WORDS` uses whitespace tokens), and sentence splitting are NOT tuned for them. Non-Latin / non-Hebrew content may produce approximate or misleading scores. Full CJK + Arabic support is planned for Phase 8.
+CheckApp is tuned and tested for **English and Hebrew**. Structured fact-check and plagiarism audit reports localize CheckApp-owned labels in English or Hebrew based on the dominant audit language. Hebrew reports use RTL layout, while mixed Hebrew/English quotes and evidence are rendered with automatic text direction. Provider names, URLs, source titles, model output, and quoted article/source text are not translated.
+
+Other scripts (Arabic, Chinese, Japanese, Korean, Russian, etc.) are detected, but SEO tokenization, passage-matching (`MIN_WORDS` uses whitespace tokens), and sentence splitting are not tuned for them. Non-Latin / non-Hebrew content may produce approximate or misleading scores. Full CJK + Arabic support is planned for a future phase.
 
 ### Tone of Voice Guide
 
@@ -633,11 +645,11 @@ Set the path: `TONE_GUIDE_FILE=/path/to/brand-voice.md`
 
 - Readability score (Flesch-Kincaid)
 - `--output report.md` / `--output report.html` export
-- Local web dashboard (`checkapp --ui`) with overview, reports, check, skills, settings, docs pages
+- Local web dashboard in source checkouts with overview, reports, check, skills, settings, docs pages
 - Tags, search, and JSON API
 - Dark mode
 - Context system — tone guides, briefs, legal policies stored in SQLite, managed via CLI or dashboard
-- MCP server — 8 tools for AI agent integration (Claude Code, Cursor, Windsurf)
+- MCP server — 10 tools for AI agent integration (Claude Code, Cursor, Windsurf)
 - Brief Matching skill — checks article against uploaded content brief
 - CI mode (`--ci`) — exit 1 on fail for CI/CD pipelines
 - JSON output (`--json`) — structured output for scripts and agents
@@ -696,6 +708,7 @@ checkapp/
 │   ├── config.ts             # Config: credentials, skill toggles
 │   ├── db.ts                 # SQLite history — openDb, insertCheck, queryRecent
 │   ├── report.ts             # Self-contained HTML report generator
+│   ├── audit/                # Structured fact/plagiarism audit contract, localization, coverage helpers
 │   ├── copyscape.ts          # Copyscape plagiarism API client + XML parser
 │   ├── aidetector.ts         # Copyscape AI detector API client + XML parser
 │   ├── parallel.ts           # Parallel Extract API client
@@ -703,7 +716,7 @@ checkapp/
 │   ├── batch.ts              # Batch checking — runs all .md/.txt files in a directory
 │   ├── checker.ts            # Headless check engine — runCheckHeadless() for MCP/CI/API
 │   ├── regenerate.ts         # Regenerate/fix engine — AI rewrites for flagged sentences
-│   ├── mcp-server.ts         # MCP server — 8 tools for agent integration
+│   ├── mcp-server.ts         # MCP server — 10 tools for agent integration
 │   ├── thresholds.ts         # Configurable pass/warn/fail score cutoffs
 │   ├── language.ts           # Language detection — English, Hebrew, Arabic, Chinese, Japanese, Korean
 │   └── skills/
@@ -719,6 +732,7 @@ checkapp/
 │       ├── brief.ts          # BriefSkill — checks article against content brief
 │       ├── purpose.ts        # PurposeSkill — detects article type with recommendations
 │       └── llm.ts            # Shared LLM client factory for MiniMax/Claude/OpenRouter
+├── shared/                   # Runtime helpers shared by CLI/MCP/dashboard without exposing full records
 ├── dashboard/                # Local web dashboard (Next.js)
 │   ├── src/app/              # Pages: overview, reports, check, skills, settings, docs
 │   ├── src/app/api/          # JSON API routes
@@ -767,7 +781,7 @@ export class MySkill implements Skill {
 }
 ```
 
-Then add it to the `allSkills` array in `src/check.tsx` and wire the toggle in `src/config.ts`.
+Then add it to `buildSkills()` in `src/checker.ts` and wire the toggle in `src/config.ts`.
 
 See [docs/custom-skills.md](docs/custom-skills.md) for the full guide with examples.
 
@@ -798,8 +812,15 @@ bun src/index.tsx --history
 # Run tests
 bun test
 
+# Run dashboard unit/integration tests
+bun run test:dashboard
+
 # End-to-end tests (mocked providers, real Next.js dashboard + CLI + MCP)
 bun run test:e2e:browser
+
+# Release gate: CLI tests, dashboard tests, registry/docs/package checks,
+# dashboard typecheck/build, production + dev browser E2E, and package build.
+bun run test:release
 
 # Build all platform binaries
 bash build.sh
@@ -823,10 +844,11 @@ TONE_GUIDE_FILE=/path/to/voice.md      # optional — enables tone of voice skil
 
 ## Security
 
-- Credentials are stored **locally only** at `~/.checkapp/config.json`, or read from environment variables — never stored remotely
+- Credentials are stored **locally only** at `~/.checkapp/config.json`, or read from environment variables. CheckApp creates/chmods local config and history files as owner-only where POSIX file modes are supported. CheckApp does not run a hosted backend for user content or credentials.
 - Article text is sent to Copyscape (plagiarism + AI detection), optionally to Gemini (AI detection, grounded plagiarism, and grounded fact-check tiers), Parallel AI (source page fetching), Exa AI (fact checking), and MiniMax or Anthropic (fact check, tone, legal) — all over HTTPS
 - The HTML report and SQLite database are stored locally in the current directory and `~/.checkapp/`
 - No analytics, no telemetry, no logging
+- The local dashboard is intended for loopback use only, binds to `127.0.0.1`, and is currently a source-checkout feature rather than part of the npm/binary package. API route guards reject non-local hosts/origins, mutation routes require CSRF, and list/search APIs intentionally return redacted summaries rather than full audit quotes, provider attempts, search queries, or article text.
 
 ---
 

@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 import { jsonWithCors } from "@/lib/cors";
 import { getDb } from "@/lib/db";
-import { guardLocalMutation } from "@/lib/guard-local";
+import { guardLocalMutation, guardLocalReadOnly } from "@/lib/guard-local";
 import { readConfig } from "../../../../../../../src/config";
 import {
   emitAuditCompletedEvent,
@@ -19,6 +19,7 @@ import {
   type InteractionResponse,
 } from "../../../../../../../src/utils/interactions-api";
 import { createGeminiCapability } from "../../../../../../../src/providers/gemini-capability";
+import { sanitizeProviderError } from "../../../../../../../src/audit/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -73,14 +74,13 @@ const STALE_MESSAGE = "Deep Audit exceeded the 90 minute stale threshold.";
 let schemaReady = false;
 const inFlightReconciliations = new Set<string>();
 let runtimeInitPromise: Promise<void> | null = null;
-void initializeDeepAuditRuntime().catch((error) => {
-  console.error(getErrorMessage(error, "Failed to initialize Deep Audit runtime"));
-});
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const blocked = guardLocalReadOnly(request);
+  if (blocked) return blocked;
   try {
     ensureDeepAuditSchema();
     await initializeDeepAuditRuntime();
@@ -193,19 +193,6 @@ export async function POST(
       );
     }
 
-    markExpiredAuditsForParent(parentKey);
-
-    const active = getActiveAuditForParent(parentKey);
-    if (active?.interaction_id) {
-      if (active.status === "in_progress" && active.interaction_id) {
-        triggerBackgroundReconciliation(active);
-      }
-      return jsonWithCors({
-        audit: serializeAudit(active),
-        reused: true,
-      });
-    }
-
     const config = readConfig();
     if (!config.geminiApiKey) {
       return jsonWithCors(
@@ -214,32 +201,26 @@ export async function POST(
       );
     }
 
-    const db = getDb();
     const startedAt = Date.now();
+    const claim = claimDashboardDeepAuditStart(parentKey, startedAt);
+    if (!claim.created) {
+      if (claim.audit.status === "in_progress" && claim.audit.interaction_id) {
+        triggerBackgroundReconciliation(claim.audit);
+      }
+      return jsonWithCors({
+        audit: serializeAudit(claim.audit),
+        reused: true,
+      });
+    }
+
+    const db = getDb();
     emitAuditRequestedEvent({
       provider: "gemini-deep-research",
       parentType: "check",
       parentKey,
       requestedBy: "dashboard",
     });
-    if (!active) {
-      db.run(sql`
-        INSERT INTO deep_audits (
-          parent_type,
-          parent_key,
-          status,
-          requested_by,
-          started_at,
-          cost_estimate_usd
-        )
-        VALUES ('check', ${parentKey}, 'pending', 'dashboard', ${startedAt}, ${DEFAULT_COST_USD})
-      `);
-    }
-
-    const created = active ?? getNewestAuditForParent(parentKey);
-    if (!created) {
-      throw new Error("Deep Audit row was not created");
-    }
+    const created = claim.audit;
 
     try {
       const { id: interactionId } = await createInteraction(config.geminiApiKey, {
@@ -340,6 +321,25 @@ function ensureDeepAuditSchema() {
     CREATE INDEX IF NOT EXISTS idx_deep_audits_status_started
     ON deep_audits (status, started_at)
   `);
+  db.run(sql`
+    UPDATE deep_audits
+    SET
+      status = 'stale',
+      completed_at = COALESCE(completed_at, CAST(strftime('%s','now') AS INTEGER) * 1000),
+      error_message = COALESCE(error_message, 'Superseded by a newer active Deep Audit during schema repair.')
+    WHERE status IN ('pending', 'in_progress')
+      AND id NOT IN (
+        SELECT MAX(id)
+        FROM deep_audits
+        WHERE status IN ('pending', 'in_progress')
+        GROUP BY parent_type, parent_key
+      )
+  `);
+  db.run(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_deep_audits_active_parent
+    ON deep_audits (parent_type, parent_key)
+    WHERE status IN ('pending', 'in_progress')
+  `);
   schemaReady = true;
 }
 
@@ -423,6 +423,30 @@ function getNewestAuditForParent(parentKey: string): DeepAuditRow | null {
   return getAuditsForParent(parentKey)[0] ?? null;
 }
 
+function claimDashboardDeepAuditStart(parentKey: string, startedAt: number): { audit: DeepAuditRow; created: boolean } {
+  markExpiredAuditsForParent(parentKey, startedAt);
+  const db = getDb();
+  const rows = db.all(sql`
+    INSERT INTO deep_audits (
+      parent_type,
+      parent_key,
+      status,
+      requested_by,
+      started_at,
+      cost_estimate_usd
+    )
+    VALUES ('check', ${parentKey}, 'pending', 'dashboard', ${startedAt}, ${DEFAULT_COST_USD})
+    ON CONFLICT DO NOTHING
+    RETURNING *
+  `) as DeepAuditRow[];
+  if (rows[0]) {
+    return { audit: rows[0], created: true };
+  }
+  const active = getActiveAuditForParent(parentKey);
+  if (active) return { audit: active, created: false };
+  throw new Error("Deep Audit row was not created");
+}
+
 function getActiveAuditForParent(parentKey: string): DeepAuditRow | null {
   const db = getDb();
   const rows = db.all(sql`
@@ -451,15 +475,15 @@ function getAuditById(parentKey: string, auditId: number): DeepAuditRow | null {
   return rows[0] ?? null;
 }
 
-function markExpiredAuditsForParent(parentKey: string) {
+function markExpiredAuditsForParent(parentKey: string, now = Date.now()) {
   const db = getDb();
-  const cutoff = Date.now() - STALE_THRESHOLD_MS;
+  const cutoff = now - STALE_THRESHOLD_MS;
   const expired = db.all(sql`
     SELECT *
     FROM deep_audits
     WHERE parent_type = 'check'
       AND parent_key = ${parentKey}
-      AND status = 'in_progress'
+      AND status IN ('pending', 'in_progress')
       AND started_at < ${cutoff}
   `) as DeepAuditRow[];
 
@@ -471,11 +495,11 @@ function markExpiredAuditsForParent(parentKey: string) {
     UPDATE deep_audits
     SET
       status = 'stale',
-      completed_at = COALESCE(completed_at, ${Date.now()}),
+      completed_at = COALESCE(completed_at, ${now}),
       error_message = COALESCE(error_message, ${STALE_MESSAGE})
     WHERE parent_type = 'check'
       AND parent_key = ${parentKey}
-      AND status = 'in_progress'
+      AND status IN ('pending', 'in_progress')
       AND started_at < ${cutoff}
   `);
   for (const audit of expired) {
@@ -486,7 +510,7 @@ function markExpiredAuditsForParent(parentKey: string) {
       parentType: audit.parent_type,
       parentKey: audit.parent_key,
       requestedBy: audit.requested_by,
-      ageMs: Date.now() - audit.started_at,
+      ageMs: now - audit.started_at,
       reason: audit.error_message ?? STALE_MESSAGE,
     });
   }
@@ -614,11 +638,10 @@ async function refreshAuditIfNeeded(
     }
 
     if (status === "failed") {
+      const sanitizedError = sanitizeProviderError(data.error?.trim() || "") || `Interaction ${staleCandidate.interaction_id} failed`;
       updateAuditStatus(staleCandidate.id, "failed", {
-        errorMessage:
-          data.error?.trim() ||
-          `Interaction ${staleCandidate.interaction_id} failed`,
-        resultJson: JSON.stringify(data),
+        errorMessage: sanitizedError,
+        resultJson: JSON.stringify({ ...data, error: sanitizedError }),
         completedAt: Date.now(),
       });
       const refreshed = getAuditById(staleCandidate.parent_key, staleCandidate.id) ?? staleCandidate;
@@ -631,8 +654,7 @@ async function refreshAuditIfNeeded(
         requestedBy: refreshed.requested_by,
         reason:
           refreshed.error_message ??
-          data.error?.trim() ??
-          `Interaction ${staleCandidate.interaction_id} failed`,
+          sanitizedError,
         stage: "poll",
       });
       return refreshed;
@@ -760,7 +782,7 @@ function normalizeInteractionStatus(
 }
 
 function getErrorMessage(error: unknown, fallback: string) {
-  return error instanceof Error ? error.message : fallback;
+  return sanitizeProviderError(error instanceof Error ? error.message : fallback) || fallback;
 }
 
 function requireDeepResearchAgent(apiKey: string): string {

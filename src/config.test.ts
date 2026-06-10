@@ -1,5 +1,8 @@
 import { describe, expect, it, test } from "bun:test";
-import { readConfig } from "./config.ts";
+import { mkdtempSync, rmSync, statSync } from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
+import { readConfig, writeConfig } from "./config.ts";
 
 describe("readConfig", () => {
   it("DEFAULT_SKILLS lists grammar, academic, and selfPlagiarism (disabled by default)", () => {
@@ -29,6 +32,21 @@ describe("readConfig", () => {
       expect(config.openalexMailto).toBeUndefined();
     } finally {
       if (saved !== undefined) process.env.OPENALEX_MAILTO = saved;
+    }
+  });
+
+  test("writeConfig creates owner-only config file when POSIX modes are supported", async () => {
+    const saved = process.env.CHECKAPP_CONFIG_PATH;
+    const dir = mkdtempSync(join(tmpdir(), "checkapp-config-test-"));
+    process.env.CHECKAPP_CONFIG_PATH = join(dir, "nested", "config.json");
+    try {
+      await writeConfig({ copyscapeUser: "u", copyscapeKey: "k" });
+      const mode = statSync(process.env.CHECKAPP_CONFIG_PATH).mode & 0o777;
+      expect(mode).toBe(0o600);
+    } finally {
+      if (saved === undefined) delete process.env.CHECKAPP_CONFIG_PATH;
+      else process.env.CHECKAPP_CONFIG_PATH = saved;
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

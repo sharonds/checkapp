@@ -1,4 +1,5 @@
 import type { Config } from "../config.ts";
+import type { SkillRunOutput } from "../audit/contribution.ts";
 import { createGeminiCapability } from "../providers/gemini-capability.ts";
 import { getProvider } from "../providers/registry.ts";
 import { resolveProvider } from "../providers/resolve.ts";
@@ -8,6 +9,16 @@ import { claimConfidence, formatCitation, extractClaimsPrompt } from "./factchec
 import type { ClaimType, Finding, Skill, SkillResult, Source } from "./types.ts";
 import { isE2E, assertMocksOnly } from "../e2e/mode.ts";
 import { loadScenario } from "../e2e/fixtures.ts";
+import { buildAuditCoverage } from "../audit/coverage.ts";
+import { createAuditBudget, selectClaimsForAudit, shouldStopForBudget, type AuditBudgetStopReason } from "../audit/budget.ts";
+import {
+  analyzeDocument,
+  confidenceRationale,
+  createAuditRecordBase,
+  factRewriteSuggestion,
+  locateQuote,
+} from "../audit/document.ts";
+import { sanitizeProviderError, type AuditClaim, type AuditRecord, type ClaimDecision, type FactAssessment, type ProviderAttempt } from "../audit/types.ts";
 
 interface GeminiGroundedChunk {
   web?: {
@@ -56,7 +67,11 @@ interface GroundedClaimResult {
   assessment: GroundedAssessment;
   sources: Source[];
   webSearchQueries: string[];
+  attempts: ProviderAttemptDraft[];
+  providerError?: boolean;
 }
+
+type ProviderAttemptDraft = Omit<ProviderAttempt, "id">;
 
 const GEMINI_GROUNDED_MODEL = LLM_MODEL.gemini;
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
@@ -65,7 +80,7 @@ export class FactCheckGroundedSkill implements Skill {
   readonly id = "fact-check-grounded";
   readonly name = "Fact Check (Grounded)";
 
-  async run(text: string, config: Config): Promise<SkillResult> {
+  async run(text: string, config: Config): Promise<SkillRunOutput> {
     const standardTierSelected = config.factCheckTierFlag === true && config.factCheckTier === "standard";
     const resolved = resolveProvider(config, "fact-check");
     if (standardTierSelected && resolved?.provider !== "gemini-grounded") {
@@ -113,7 +128,7 @@ export class FactCheckGroundedSkill implements Skill {
     text: string,
     config: Config,
     resolved: NonNullable<ReturnType<typeof resolveProvider>>,
-  ): Promise<SkillResult> {
+  ): Promise<SkillRunOutput> {
     const apiKey = resolved.apiKey;
     if (!apiKey) {
       return skippedResult(this, "gemini-grounded API key missing");
@@ -124,6 +139,7 @@ export class FactCheckGroundedSkill implements Skill {
       return skippedResult(this, "no LLM key configured for claim extraction");
     }
 
+    const documentAnalysis = analyzeDocument(text);
     const claims = await extractClaims(text, llm.call);
     if (claims.length === 0) {
       return {
@@ -145,29 +161,144 @@ export class FactCheckGroundedSkill implements Skill {
     const perClaimCost = resolved.metadata?.costPerCheckUsd ?? 0.04;
     let costUsd = 0.001;
 
+    const budget = createAuditBudget(config, "standard");
+    const claimSelection = selectClaimsForAudit(claims, budget);
     const groundedResults: GroundedClaimResult[] = [];
-    for (const claim of claims.slice(0, 4)) {
-      const grounded = await assessClaimGrounded(claim, apiKey, perClaimCost);
+    const runtimeSkippedClaims: Array<{ claim: string; skipReason: AuditBudgetStopReason }> = [];
+    const checkedClaims = claimSelection.checkedClaims;
+    const budgetStartedAt = Date.now();
+    let providerRetries = 0;
+    let providerFailures = 0;
+    let inputTokens = 0;
+    let outputTokens = 0;
+    for (const [index, claim] of checkedClaims.entries()) {
+      const stopKey = shouldStopForBudget(budget, {
+        costUsd,
+        providerCalls: groundedResults.length,
+        wallClockMs: Date.now() - budgetStartedAt,
+        providerRetries,
+        providerFailures,
+        inputTokens,
+        outputTokens,
+      });
+      if (stopKey) {
+        const skipReason = budgetStopReasonFromKey(stopKey);
+        runtimeSkippedClaims.push(
+          ...checkedClaims.slice(index).map((skippedClaim) => ({ claim: skippedClaim, skipReason })),
+        );
+        break;
+      }
+      const grounded = await assessClaimGrounded(
+        claim,
+        apiKey,
+        perClaimCost,
+        remainingProviderRetries(budget.maxProviderRetries, providerRetries),
+      );
       costUsd += perClaimCost;
       groundedResults.push({ claim, ...grounded });
+      providerRetries += grounded.attempts.filter((attempt) => attempt.status === "retry").length;
+      providerFailures += grounded.attempts.filter((attempt) => attempt.status === "failed").length;
+      inputTokens += sumAttemptTokens(grounded.attempts, "inputTokens");
+      outputTokens += sumAttemptTokens(grounded.attempts, "outputTokens");
     }
 
-    for (const { claim, assessment, sources, webSearchQueries } of groundedResults) {
-      const supported = sources.length === 0 && assessment.supported === true ? null : assessment.supported;
-      const confidence = claimConfidence(sources.length, supported);
+    const baseAudit = createAuditRecordBase(this.id, text);
+    const auditId = baseAudit.auditId;
+    const auditClaims: AuditClaim[] = [];
+    const claimDecisions: ClaimDecision[] = [];
+    const factAssessments: FactAssessment[] = [];
+    const attemptIdsByResult = new Map<number, string[]>();
+    const providerAttempts: ProviderAttempt[] = [];
+    for (const [resultIndex, result] of groundedResults.entries()) {
+      const ids: string[] = [];
+      for (const attempt of result.attempts) {
+        const id = `attempt-${providerAttempts.length + 1}`;
+        ids.push(id);
+        providerAttempts.push({ id, ...attempt });
+      }
+      attemptIdsByResult.set(resultIndex, ids);
+    }
+
+    for (const [index, { claim, assessment, sources, webSearchQueries, providerError }] of groundedResults.entries()) {
+      const supported = providerError ? null : sources.length === 0 && assessment.supported === true ? null : assessment.supported;
+      const confidence = providerError ? "low" : claimConfidence(sources.length, supported);
       const queryHint = webSearchQueries.length > 0 ? ` Search: ${webSearchQueries.slice(0, 2).join(" | ")}` : "";
       const base = { sources, confidence, claimType: "general" as ClaimType };
-      if (supported === false) {
+      const located = locateQuote(text, claim, documentAnalysis);
+      const claimId = `claim-${index + 1}`;
+      const assessmentId = `assessment-${index + 1}`;
+      const status = providerError ? "provider_error" : supported === false ? "unsupported" : supported === null ? "unverified" : "supported";
+      const rationale = providerError ? "Provider attempt failed; review manually." : confidenceRationale(sources.length, confidence);
+      const rewrite = status === "supported" || status === "provider_error" ? undefined : factRewriteSuggestion(located.quote, located.language, supported, assessment.note);
+      auditClaims.push({
+        id: claimId,
+        quote: located.quote,
+        normalizedClaim: claim,
+        type: "general",
+        language: located.language,
+        direction: located.direction,
+        location: located.location,
+        searchQueries: webSearchQueries.length ? webSearchQueries : [claim],
+      });
+      claimDecisions.push({ claimId, decision: "checked" });
+      factAssessments.push({
+        id: assessmentId,
+        claimId,
+        status,
+        sources: sources.map((source) => ({
+          url: source.url,
+          title: source.title,
+          quote: source.quote,
+          accepted: true,
+        })),
+        explanation: assessment.note,
+        confidence,
+        confidenceRationale: rationale,
+        searchQueries: webSearchQueries.length ? webSearchQueries : [claim],
+        provider: resolved.provider,
+        model: GEMINI_GROUNDED_MODEL,
+        attemptIds: attemptIdsByResult.get(index) ?? [],
+        language: located.language,
+        direction: located.direction,
+        rewrite,
+        rewriteLanguage: rewrite ? located.language : undefined,
+        rewriteDir: rewrite ? located.direction : undefined,
+      });
+      const auditFields = {
+        id: assessmentId,
+        status,
+        quote: located.quote,
+        location: located.location,
+        explanation: assessment.note,
+        explanationLanguage: located.language,
+        explanationDir: located.direction,
+        confidenceRationale: rationale,
+        searchQueries: webSearchQueries.length ? webSearchQueries : [claim],
+        provider: resolved.provider,
+        model: GEMINI_GROUNDED_MODEL,
+        auditRef: { auditId, claimId, assessmentId },
+        rewrite,
+      } satisfies Partial<Finding>;
+      if (providerError) {
+        findings.push({
+          severity: "warn",
+          text: `Provider error (${confidence} confidence): "${claim}" — ${assessment.note}${queryHint}`,
+          ...base,
+          ...auditFields,
+        });
+      } else if (supported === false) {
         findings.push({
           severity: "error",
           text: `Unsupported (${confidence} confidence): "${claim}" — ${assessment.note}${queryHint}`,
           ...base,
+          ...auditFields,
         });
       } else if (supported === null) {
         findings.push({
           severity: "warn",
           text: `Unverified (${confidence} confidence): "${claim}" — ${sources.length === 0 ? "No grounded source URL was returned." : assessment.note}${queryHint}`,
           ...base,
+          ...auditFields,
         });
       } else {
         const citations = sources.slice(0, 2).map((source) => formatCitation(source.url)).join(", ");
@@ -175,17 +306,38 @@ export class FactCheckGroundedSkill implements Skill {
           severity: "info",
           text: `Verified (${confidence} confidence): "${claim}" — ${assessment.note}${citations ? `. Cite: ${citations}` : ""}${queryHint}`,
           ...base,
+          ...auditFields,
         });
       }
     }
 
+    const skippedClaims = [...runtimeSkippedClaims, ...claimSelection.skippedClaims];
+    for (const [offset, skipped] of skippedClaims.entries()) {
+      const claim = skipped.claim;
+      const located = locateQuote(text, claim, documentAnalysis);
+      const claimId = `claim-${groundedResults.length + offset + 1}`;
+      auditClaims.push({
+        id: claimId,
+        quote: located.quote,
+        normalizedClaim: claim,
+        type: "general",
+        language: located.language,
+        direction: located.direction,
+        location: located.location,
+        searchQueries: [claim],
+      });
+      claimDecisions.push({ claimId, decision: "skipped", skipReason: skipped.skipReason });
+    }
+
     const failCount = findings.filter((finding) => finding.severity === "error").length;
     const warnCount = findings.filter((finding) => finding.severity === "warn").length;
-    const score = Math.round(100 - failCount * 25 - warnCount * 10);
-    const verdict = failCount > 0 ? "fail" : warnCount > 1 ? "warn" : "pass";
+    const providerErrorCount = findings.filter((finding) => finding.status === "provider_error").length;
+    const noCheckedClaims = groundedResults.length === 0 && claims.length > 0;
+    const score = noCheckedClaims ? 60 : Math.round(100 - failCount * 25 - warnCount * 10);
+    const verdict = noCheckedClaims ? "warn" : failCount > 0 ? "fail" : providerErrorCount > 0 ? "warn" : warnCount > 1 ? "warn" : "pass";
     const summary = `${groundedResults.length} claims checked — ${failCount} unsupported, ${warnCount} unverified (via gemini-grounded)`;
 
-    return {
+    const result: SkillResult = {
       skillId: this.id,
       name: this.name,
       score: Math.max(0, score),
@@ -195,7 +347,35 @@ export class FactCheckGroundedSkill implements Skill {
       costUsd,
       provider: resolved.provider,
     };
+    const audit: AuditRecord = {
+      ...baseAudit,
+      coverage: buildAuditCoverage({
+        wordsScanned: documentAnalysis.wordsScanned,
+        sectionsDetected: documentAnalysis.sectionsDetected,
+        paragraphsScanned: documentAnalysis.paragraphsScanned,
+        sentencesScanned: documentAnalysis.sentencesScanned,
+        claimDecisions,
+        providerAttempts,
+        budgetStopReason: runtimeSkippedClaims[0]?.skipReason ?? claimSelection.budgetStopReason,
+      }),
+      claims: auditClaims,
+      claimDecisions,
+      factAssessments,
+      providerAttempts,
+    };
+    return { ...result, audit };
   }
+}
+
+function budgetStopReasonFromKey(key: ReturnType<typeof shouldStopForBudget>): AuditBudgetStopReason {
+  if (key === "maxUsd") return "cost_budget";
+  if (key === "maxInputTokens") return "input_token_budget";
+  if (key === "maxOutputTokens") return "output_token_budget";
+  if (key === "maxProviderCalls") return "provider_call_budget";
+  if (key === "maxWallClockMs") return "wall_clock_budget";
+  if (key === "maxProviderRetries") return "provider_retry_budget";
+  if (key === "maxProviderFailures") return "provider_failure_budget";
+  return "provider_call_budget";
 }
 
 async function extractClaims(
@@ -206,7 +386,7 @@ async function extractClaims(
 
   try {
     const parsed = parseJsonResponse<string[]>(claimsText);
-    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string").slice(0, 4) : [];
+    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string").slice(0, 20) : [];
   } catch {
     return [];
   }
@@ -221,6 +401,7 @@ async function assessClaimGrounded(
   claim: string,
   apiKey: string,
   perClaimCost: number,
+  retriesLeft = 1,
 ): Promise<Omit<GroundedClaimResult, "claim">> {
   if (isE2E()) {
     const s = loadScenario();
@@ -234,6 +415,11 @@ async function assessClaimGrounded(
         assessment: { supported: null, note: "No grounded claims in scenario" },
         sources: [],
         webSearchQueries: [],
+        attempts: [{
+          provider: "gemini-grounded",
+          model: GEMINI_GROUNDED_MODEL,
+          status: "skipped",
+        }],
       };
     }
     const mock = mockClaims[_e2eGroundedCursor % mockClaims.length]!;
@@ -242,17 +428,31 @@ async function assessClaimGrounded(
       assessment: { supported: mock.supported, note: mock.note },
       sources: mock.sources.map((uri) => ({ url: uri, title: formatCitation(uri) })),
       webSearchQueries: [mock.claim],
+      attempts: [{
+        provider: "gemini-grounded",
+        model: GEMINI_GROUNDED_MODEL,
+        status: "success",
+      }],
     };
   }
 
   assertMocksOnly("gemini-grounded");
-  const response = await fetchGroundedAssessment(
+  const { response, attempts, errorMessage } = await fetchGroundedAssessment(
     claim,
     apiKey,
     createGeminiCapability({ apiKey }).getModel("grounded"),
-    1,
+    retriesLeft,
     perClaimCost,
   );
+  if (errorMessage || !response) {
+    return {
+      assessment: { supported: null, note: errorMessage ?? "Gemini grounded provider did not return a usable response." },
+      sources: [],
+      webSearchQueries: [claim],
+      attempts,
+      providerError: true,
+    };
+  }
   const candidate = response.candidates?.[0];
   const text = (candidate?.content?.parts ?? [])
     .filter((part) => part.thought !== true)
@@ -266,7 +466,14 @@ async function assessClaimGrounded(
     assessment,
     sources: extractGroundingSources(groundingMetadata),
     webSearchQueries: groundingMetadata?.webSearchQueries ?? [],
+    attempts,
   };
+}
+
+interface GeminiGroundedFetchResult {
+  response?: GeminiGroundedResponse;
+  attempts: ProviderAttemptDraft[];
+  errorMessage?: string;
 }
 
 async function fetchGroundedAssessment(
@@ -275,7 +482,8 @@ async function fetchGroundedAssessment(
   model: string,
   retriesLeft: number,
   perClaimCost: number,
-): Promise<GeminiGroundedResponse> {
+  attempts: ProviderAttemptDraft[] = [],
+): Promise<GeminiGroundedFetchResult> {
   const startedAt = Date.now();
   const emitAttempt = (payload: Record<string, unknown>) =>
     emitGroundedCallEvent({
@@ -310,20 +518,37 @@ async function fetchGroundedAssessment(
       },
     );
   } catch (error) {
+    attempts.push({
+      provider: "gemini-grounded",
+      model,
+      status: "failed",
+      retryable: true,
+      errorMessage: sanitizeProviderError(error instanceof Error ? error.message : String(error)),
+    });
     emitAttempt({
       httpStatus: null,
       latencyMs: Date.now() - startedAt,
       inputTokens: null,
       outputTokens: null,
       totalTokens: null,
-      error: error instanceof Error ? error.message : String(error),
+      error: sanitizeProviderError(error instanceof Error ? error.message : String(error)),
     });
-    throw error;
+    return {
+      attempts,
+      errorMessage: sanitizeProviderError(error instanceof Error ? error.message : String(error)) || "Gemini grounded provider request failed.",
+    };
   }
 
   const latencyMs = Date.now() - startedAt;
 
   if ((response.status === 500 || response.status === 503) && retriesLeft > 0) {
+    attempts.push({
+      provider: "gemini-grounded",
+      model,
+      status: "retry",
+      retryable: true,
+      statusCode: response.status,
+    });
     emitAttempt({
       httpStatus: response.status,
       latencyMs,
@@ -331,11 +556,20 @@ async function fetchGroundedAssessment(
       outputTokens: null,
       totalTokens: null,
     });
-    await sleep(3_000);
-    return fetchGroundedAssessment(claim, apiKey, model, retriesLeft - 1, perClaimCost);
+    await sleep(groundedRetryDelayMs());
+    return fetchGroundedAssessment(claim, apiKey, model, retriesLeft - 1, perClaimCost, attempts);
   }
 
   if (!response.ok) {
+    const errorMessage = `Gemini grounded error: HTTP ${response.status}`;
+    attempts.push({
+      provider: "gemini-grounded",
+      model,
+      status: "failed",
+      retryable: false,
+      statusCode: response.status,
+      errorMessage,
+    });
     emitAttempt({
       httpStatus: response.status,
       latencyMs,
@@ -343,10 +577,19 @@ async function fetchGroundedAssessment(
       outputTokens: null,
       totalTokens: null,
     });
-    throw new Error(`Gemini grounded error: HTTP ${response.status}`);
+    return { attempts, errorMessage };
   }
 
   const data = (await response.json()) as GeminiGroundedResponse;
+  attempts.push({
+    provider: "gemini-grounded",
+    model,
+    status: "success",
+    statusCode: response.status,
+    inputTokens: data.usageMetadata?.promptTokenCount,
+    outputTokens: data.usageMetadata?.candidatesTokenCount,
+    totalTokens: data.usageMetadata?.totalTokenCount,
+  });
   emitAttempt({
     httpStatus: response.status,
     latencyMs,
@@ -354,7 +597,20 @@ async function fetchGroundedAssessment(
     outputTokens: data.usageMetadata?.candidatesTokenCount ?? null,
     totalTokens: data.usageMetadata?.totalTokenCount ?? null,
   });
-  return data;
+  return { response: data, attempts };
+}
+
+function sumAttemptTokens(attempts: ProviderAttemptDraft[], key: "inputTokens" | "outputTokens"): number {
+  return attempts.reduce((sum, attempt) => sum + (attempt[key] ?? 0), 0);
+}
+
+function remainingProviderRetries(maxProviderRetries: number, providerRetriesUsed: number): number {
+  return Math.max(0, Math.floor(maxProviderRetries) - providerRetriesUsed);
+}
+
+function groundedRetryDelayMs(): number {
+  const configured = Number(process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS);
+  return Number.isFinite(configured) && configured >= 0 ? configured : 3_000;
 }
 
 function buildGroundedPrompt(claim: string): string {

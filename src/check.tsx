@@ -76,17 +76,18 @@ function Check({ docUrl, outputPath }: { docUrl: string; outputPath?: string }) 
             wordCount: words,
             results: coreResult.results,
             totalCostUsd: coreResult.totalCostUsd,
+            audit: coreResult.audit,
           });
         } finally {
           db.close();
         }
 
         const reportPath = outputPath ?? "checkapp-report.html";
-        writeFileSync(reportPath, generateReport({ source: sourceLabel, wordCount: words, results: coreResult.results, totalCostUsd: coreResult.totalCostUsd }));
+        writeFileSync(reportPath, generateReport({ source: sourceLabel, wordCount: words, results: coreResult.results, totalCostUsd: coreResult.totalCostUsd, audit: coreResult.audit }));
 
         // Export to custom path if --output was specified (redundant but kept for backwards compat)
         if (outputPath) {
-          exportReport({ source: sourceLabel, wordCount: words, results: coreResult.results, totalCostUsd: coreResult.totalCostUsd }, outputPath);
+          exportReport({ source: sourceLabel, wordCount: words, results: coreResult.results, totalCostUsd: coreResult.totalCostUsd, audit: coreResult.audit }, outputPath);
           console.log(`\nReport exported to ${outputPath}`);
         }
 

@@ -59,8 +59,8 @@ export async function runBatch(dir: string): Promise<BatchResult[]> {
 
       console.log(`  Checking ${basename(file)}...`);
 
-      const rawSkillResults = await registry.runAll(text, configWithContexts);
-      const skillResults = rawSkillResults.map((r) => ({
+      const rawOutput = await registry.runAllWithAudit(text, configWithContexts);
+      const skillResults = rawOutput.results.map((r) => ({
         ...r,
         verdict: applyThreshold(r.score, r.verdict, configWithContexts.thresholds?.[r.skillId]),
       }));
@@ -73,6 +73,7 @@ export async function runBatch(dir: string): Promise<BatchResult[]> {
         wordCount,
         results: skillResults,
         totalCostUsd,
+        audit: rawOutput.audit,
       });
 
       // Write individual HTML report
@@ -84,6 +85,7 @@ export async function runBatch(dir: string): Promise<BatchResult[]> {
           wordCount,
           results: skillResults,
           totalCostUsd,
+          audit: rawOutput.audit,
           createdAt: new Date().toISOString(),
         })
       );

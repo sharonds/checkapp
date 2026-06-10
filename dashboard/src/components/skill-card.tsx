@@ -12,6 +12,17 @@ import { VerdictBadge } from "./verdict-badge";
 import { ClaimDrillDown } from "./ClaimDrillDown";
 import type { Finding } from "@/lib/normalize";
 import { getProvider, type SkillId } from "@/lib/providers";
+import {
+  AUDIT_UI,
+  formatAuditLocation,
+  localeForSkillResult,
+  localizedFindingText,
+  localizedSkillName,
+  localizedSkillSummary,
+  type AuditCoverageSummary,
+  type AuditLocale,
+} from "@/lib/audit-localization";
+import { sanitizeText } from "@/lib/sanitize";
 
 const ENGINE_MAP: Record<string, string> = {
   plagiarism: "Copyscape",
@@ -39,7 +50,17 @@ export interface SkillResult {
   provider?: string;
 }
 
-export function SkillCard({ result }: { result: SkillResult }) {
+export function SkillCard({
+  result,
+  locale: reportLocale,
+  coverage,
+}: {
+  result: SkillResult;
+  locale?: AuditLocale;
+  coverage?: AuditCoverageSummary;
+}) {
+  const locale = reportLocale ?? localeForSkillResult(result);
+  const labels = AUDIT_UI[locale];
   const providerSkillId = result.skillId === "fact-check-grounded" ? "fact-check" : result.skillId;
   const engine = result.provider
     ? getProvider(providerSkillId as SkillId, result.provider)?.label ?? result.provider
@@ -49,23 +70,23 @@ export function SkillCard({ result }: { result: SkillResult }) {
   );
 
   return (
-    <Card>
+    <Card dir={locale === "he" ? "rtl" : "ltr"}>
       <CardHeader>
         <div className="flex items-start gap-4">
           <div className="flex flex-col items-center gap-2">
             <ScoreRing score={result.score} verdict={result.verdict} />
-            <VerdictBadge verdict={result.verdict} />
+            <VerdictBadge verdict={result.verdict} locale={locale} />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <CardTitle>{result.name}</CardTitle>
+              <CardTitle>{localizedSkillName(result, locale)}</CardTitle>
               <Badge variant="secondary">{engine}</Badge>
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
-              {result.summary}
+              {localizedSkillSummary(result, locale, coverage)}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Cost: ${result.costUsd.toFixed(4)}
+              {labels.cost}: ${result.costUsd.toFixed(4)}
             </p>
           </div>
         </div>
@@ -80,13 +101,26 @@ export function SkillCard({ result }: { result: SkillResult }) {
                 </span>
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-start gap-2">
-                    <span className="flex-1">{f.text}</span>
-                    <ClaimDrillDown finding={f} />
+                    <span className="flex-1">{localizedFindingText(f, locale)}</span>
+                    <ClaimDrillDown finding={f} locale={locale} />
                   </div>
                   {f.quote && (
-                    <blockquote className="mt-1 border-l-2 border-muted-foreground/30 pl-2 text-xs text-muted-foreground italic">
+                    <blockquote dir="auto" className="mt-1 border-s-2 border-muted-foreground/30 ps-2 text-xs text-muted-foreground italic">
                       {f.quote}
                     </blockquote>
+                  )}
+                  {f.location && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {formatAuditLocation(f.location, locale)}
+                    </p>
+                  )}
+                  {f.rewrite && (
+                    <div className="mt-2 rounded border border-emerald-300 bg-emerald-50 p-2 text-xs text-emerald-950">
+                      <p className="font-semibold">{labels.suggestedRewrite}</p>
+                      <p dir="auto" className="mt-1 whitespace-pre-wrap">
+                        {sanitizeText(f.rewrite, 500)}
+                      </p>
+                    </div>
                   )}
                 </div>
               </li>

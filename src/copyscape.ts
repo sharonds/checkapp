@@ -5,6 +5,10 @@ export interface CopyscapeMatch {
   title: string;
   wordsMatched: number;
   snippet: string;
+  matchType?: "exact" | "near_exact" | "paraphrase" | "uncertain";
+  groundingMode?: "grounded" | "mixed" | "ungrounded";
+  matchedArticleText?: string;
+  matchedSourceText?: string;
 }
 
 export interface CopyscapeResult {

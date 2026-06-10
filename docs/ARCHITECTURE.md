@@ -4,9 +4,48 @@ Technical reference for contributors and integrators.
 
 ## Overview
 
-CheckApp is a single-binary CLI that checks AI-generated articles for plagiarism before they go live. It accepts a Google Doc URL, exports the plain text, submits it to Copyscape's content-search API, and renders a scored verdict in the terminal. An optional second layer using Parallel AI's Extract API enriches each match with the specific sentences that overlap between the article and the flagged source pages.
+CheckApp is a local-first content quality application with a CLI, MCP server, and Next.js dashboard. It can check local files or public Google Docs, run configured skills such as plagiarism, fact-checking, AI detection, SEO, tone, legal, brief matching, and summary/purpose analysis, then persist local history/context data in SQLite at `~/.checkapp/history.db`.
 
-The tool is still intentionally lightweight, but the current codebase is not "no database, no server." In addition to the CLI, it includes a web dashboard, and it persists history/context data locally in SQLite at `~/.checkapp/history.db`. External cloud dependencies remain limited to the APIs it calls.
+The project is still intentionally lightweight: it does not require a hosted CheckApp backend or user authentication. External cloud dependencies are limited to configured providers such as Copyscape, Gemini, Exa, Parallel, LanguageTool, Semantic Scholar, OpenAlex, and optional LLM/vector providers. Copyscape and Parallel remain provider-specific pieces of the plagiarism flow, not the whole application architecture.
+
+---
+
+## Structured Audit Contract
+
+CheckApp supports an additive structured audit contract for fact/plagiarism coverage work. The stable public boundary remains `SkillResult[]` in `results`; audit-producing paths may also return a normal `SkillResult` with an optional versioned `AuditRecord`.
+
+The fact-check and plagiarism paths now emit structured audit data when they perform provider-backed checks. The audit layer segments the source document, records language/direction metadata for Hebrew, English, and mixed content, maps provider claims/passages back to exact document quotes where possible, and records coverage counts, skip reasons, budget stop reasons, provider attempts, evidence, confidence rationale, and suggested rewrites.
+
+Basic and Standard sync fact-checking intentionally default to four checked claims through `src/audit/budget.ts`; this preserves the existing low-cost behavior. Configurable `factAudit.standardMaxClaims`, `factAudit.deepMaxClaims`, and provider-call budget values can change selection. When a budget stops selection, structured coverage uses specific reasons such as `claim_cap` or `provider_call_budget`, and report summaries explain the skip reason.
+
+Core modules:
+
+| File | Responsibility |
+|------|---------------|
+| `src/audit/types.ts` | Versioned `AuditRecord`, finding extensions, runtime parsing, URL/error sanitizers. |
+| `src/audit/document.ts` | Deterministic document segmentation, language/direction detection, quote-to-location mapping, and rewrite helper text. |
+| `src/audit/localization.ts` | English/Hebrew labels for structured audit reports, locations, verdict text, and deterministic UI summaries. |
+| `src/audit/contribution.ts` | Compatibility layer for skills returning either plain `SkillResult`, `SkillResult & { audit }`, or `{ result, audit }`. |
+| `src/audit/coverage.ts` | Deterministic coverage aggregation helpers. |
+| `src/audit/budget.ts` | Deterministic cap/budget resolution from optional `factAudit` config. |
+| `src/audit/provider-capabilities.ts` | Conservative provider/model capability matrix. |
+| `src/audit/provider-contract.ts` | Fake-provider contract helpers for retry/error/evidence normalization. |
+| `shared/check-summary.ts` | Single public-summary projection used by dashboard list/search and MCP `list_reports`; excludes full findings, audit records, provider attempts, search queries, and article text. |
+| `shared/report-url.ts` | Shared source URL/label sanitizers used by CLI reports, exports, dashboard detail pages, and filenames. |
+
+Persistence:
+
+- `checks.audit_json` stores optional structured audit data beside `results_json`.
+- `getCheckById`, dashboard detail APIs, MCP `get_report`, and JSON paths may expose parsed `audit`.
+- Recent/list/search APIs omit full audit records and full result findings through the shared `publicCheckSummary()` projection. They expose only summary fields such as score, verdict, cost, and counts.
+- Unknown future `AuditRecord.version` values are not rendered as trusted structured audit details.
+- Report/dashboard localization is deterministic and limited to CheckApp-owned UI labels. Provider names, URLs, titles, claims, article quotes, evidence snippets, and model output are displayed in their original text with `dir="auto"` where mixed-direction content is expected.
+
+Provider safety:
+
+- Required tests use fake providers only.
+- Provider errors are sanitized before persistence or rendering.
+- Unsafe source URLs are rejected before display.
 
 ---
 
@@ -21,7 +60,9 @@ The tool is still intentionally lightweight, but the current codebase is not "no
 
 ---
 
-## Data Flow
+## Plagiarism Provider Flow
+
+The diagram below covers the Copyscape + optional Parallel plagiarism path. Other skills use their own provider adapters and are orchestrated through the shared skill registry / `SkillResult` pipeline.
 
 ```
 Google Doc URL
@@ -81,7 +122,7 @@ Google Doc URL
 
 ---
 
-## Planned New Modules
+## Implemented Plagiarism Support Modules
 
 ### `src/parallel.ts`
 
@@ -125,13 +166,25 @@ export function findMatchingPassages(
 
 ## Config Schema
 
-Stored at `~/.checkapp/config.json`. Created on first run by the setup wizard.
+Stored at `~/.checkapp/config.json` with owner-only permissions where the filesystem supports POSIX modes. Created on first run by the setup wizard or dashboard settings.
 
 ```json
 {
   "copyscapeUser": "you@example.com",
   "copyscapeKey": "your-copyscape-api-key",
-  "parallelApiKey": "pk_..."
+  "geminiApiKey": "your-gemini-api-key",
+  "factCheckTier": "standard",
+  "factCheckTierFlag": true,
+  "providers": {
+    "fact-check": { "provider": "gemini-grounded" },
+    "plagiarism": { "provider": "gemini-grounded-plagiarism" }
+  },
+  "skills": {
+    "plagiarism": true,
+    "aiDetection": true,
+    "seo": true,
+    "factCheck": true
+  }
 }
 ```
 
@@ -140,6 +193,11 @@ Stored at `~/.checkapp/config.json`. Created on first run by the setup wizard.
 | `copyscapeUser` | string | Yes | Copyscape account username (email address) |
 | `copyscapeKey` | string | Yes | Copyscape API key — found at My Account → API |
 | `parallelApiKey` | string | No | Parallel AI API key — enables passage-level evidence; omit to skip enrichment |
+| `geminiApiKey` | string | No | Gemini API key for Standard/Deep Audit fact-check, Gemini AI detection, and grounded plagiarism when selected |
+| `providers` | object | No | Per-skill provider routing; see `src/providers/registry.ts` |
+| `skills` | object | No | Per-skill enablement flags |
+| `thresholds` | object | No | Per-skill pass/warn thresholds |
+| `factCheckTier` / `factCheckTierFlag` | string / boolean | No | Opt-in tier selection for Standard/Deep Audit flows |
 
 The file is written with `JSON.stringify(config, null, 2)`. An existing config that does not include `parallelApiKey` continues to work — the field is typed as optional (`parallelApiKey?: string`) and resolves to `undefined` when absent.
 

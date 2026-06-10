@@ -1,0 +1,14 @@
+{
+  "id": "en-plagiarism-baseline",
+  "language": "en",
+  "direction": "ltr",
+  "article": "Vitamin C is a water-soluble organic compound.",
+  "expected": {
+    "claimsExtracted": 0,
+    "claimsChecked": 0,
+    "claimsSkipped": 0,
+    "issueType": "plagiarism",
+    "quote": "Vitamin C is a water-soluble organic compound.",
+    "uiLocale": "en"
+  }
+}

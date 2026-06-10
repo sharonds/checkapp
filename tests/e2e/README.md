@@ -19,17 +19,17 @@ Total: ~40 tests, runs in <5s.
 
 Boots the real Next.js dashboard against isolated temp paths under `CHECKAPP_E2E=1` and exercises the full pipeline via HTTP + in-process drivers:
 
-- `tests/e2e/browser/boot.test.ts` — dashboard comes up, serves `/` with <500 status.
-- `tests/e2e/browser/dashboard-default-off.test.ts` — default-off guardrail via `/api/config`.
+- `tests/e2e/browser/boot.test.ts` — dashboard comes up, serves `/` with a non-error status.
 - `tests/e2e/browser/dashboard-tier-routing.test.ts` — basic / standard / premium via `/api/checks` and direct `FactCheckDeepResearchSkill.initiate()`.
 - `tests/e2e/browser/cli-smokes.test.ts` — `bun src/index.tsx <article.md>` for basic, standard, and `--estimate-cost`.
 - `tests/e2e/browser/mcp-smokes.test.ts` — `check_article`, `deep_audit_article`, `get_deep_audit_result` via `handleToolCall`.
+- `tests/e2e/browser/ui-localized-audit-report.test.ts` — persisted Hebrew/mixed audit report, Hebrew plagiarism, source redaction, and English fallback rendering.
 
-Total: ~13 tests, runs in ~15s (Next.js dev boots once per scenario; one dev-server lock per dashboard dir means tests are serial).
+The browser lane uses `agent-browser` and requires a Chrome instance with a remote-debugging port, or an environment where `agent-browser` can launch one. Next.js dev boots once per scenario; one dev-server lock per dashboard dir means tests are serial.
 
 ### Live-provider (`bun run test:e2e:live`)
 
-Opt-in only. Empty directory today — tests added here must set `CHECKAPP_ALLOW_LIVE_PROVIDERS=1` explicitly and require real API keys. See `tests/e2e/live/README.md`.
+Opt-in only. Tests in this lane must set `CHECKAPP_ALLOW_LIVE_PROVIDERS=1` explicitly and require real API keys. See `tests/e2e/live/README.md`.
 
 ## Writing a new scenario
 

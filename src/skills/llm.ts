@@ -116,7 +116,7 @@ function createGeminiCaller(apiKey: string, model: string): LlmClient["call"] {
  */
 function detectPromptPhase(prompt: string): "extract" | "assess" | "other" {
   const head = prompt.slice(0, 200).toLowerCase();
-  if (head.includes("extract the") && head.includes("claim")) return "extract";
+  if (head.includes("extract") && head.includes("claim")) return "extract";
   if (head.includes("is this claim supported")) return "assess";
   return "other";
 }

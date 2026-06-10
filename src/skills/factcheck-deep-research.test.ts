@@ -69,7 +69,7 @@ describe("FactCheckDeepResearchSkill", () => {
     db.close();
   });
 
-  test("initiate attaches an interaction id to an existing pending audit", async () => {
+  test("initiate reuses an existing pending audit without starting a duplicate provider interaction", async () => {
     const db = new Database(":memory:");
     createSchema(db);
 
@@ -80,7 +80,11 @@ describe("FactCheckDeepResearchSkill", () => {
       startedAt: 10,
     });
 
-    mockFetch(async () => jsonResponse({ id: "int-created" }));
+    let createCalls = 0;
+    mockFetch(async () => {
+      createCalls++;
+      return jsonResponse({ id: "int-created" });
+    });
 
     const skill = new FactCheckDeepResearchSkill({ db, now: () => 25 });
     const result = await skill.initiate(
@@ -92,14 +96,58 @@ describe("FactCheckDeepResearchSkill", () => {
     );
 
     expect(result).toEqual({
-      interactionId: "int-created",
-      status: "in_progress",
-      estimatedCompletion: 25 + 15 * 60_000,
+      interactionId: null,
+      status: "pending",
+      estimatedCompletion: 10 + 15 * 60_000,
     });
 
-    const stored = getDeepAudit(db, "int-created");
-    expect(stored?.id).toBe(auditId);
-    expect(stored?.status).toBe("in_progress");
+    expect(createCalls).toBe(0);
+    expect(getDeepAudit(db, "int-created")).toBeNull();
+    expect(getAuditsForParent(db, "content_hash", "pending-hash")).toEqual([
+      expect.objectContaining({ id: auditId, status: "pending", interactionId: null }),
+    ]);
+
+    db.close();
+  });
+
+  test("initiate retires stale pending audits and starts a new provider interaction", async () => {
+    const db = new Database(":memory:");
+    createSchema(db);
+
+    const staleId = insertDeepAudit(db, {
+      parentType: "content_hash",
+      parentKey: "stale-pending-hash",
+      requestedBy: "mcp",
+      startedAt: 10,
+    });
+
+    let createCalls = 0;
+    mockFetch(async () => {
+      createCalls++;
+      return jsonResponse({ id: "int-created-after-stale" });
+    });
+
+    const now = 100 * 60_000;
+    const skill = new FactCheckDeepResearchSkill({ db, now: () => now });
+    const result = await skill.initiate(
+      "article text",
+      "content_hash",
+      "stale-pending-hash",
+      baseConfig,
+      "mcp",
+    );
+
+    const audits = getAuditsForParent(db, "content_hash", "stale-pending-hash");
+    expect(createCalls).toBe(1);
+    expect(result).toEqual({
+      interactionId: "int-created-after-stale",
+      status: "in_progress",
+      estimatedCompletion: now + 15 * 60_000,
+    });
+    expect(audits).toEqual([
+      expect.objectContaining({ interactionId: "int-created-after-stale", status: "in_progress" }),
+      expect.objectContaining({ id: staleId, interactionId: null, status: "stale" }),
+    ]);
 
     db.close();
   });
@@ -143,6 +191,44 @@ describe("FactCheckDeepResearchSkill", () => {
     expect(stored?.completedAt).toBe(1_000);
     expect(stored?.resultText).toContain("Everything checks out.");
     expect(stored?.resultJson).toContain("\"status\":\"completed\"");
+
+    db.close();
+  });
+
+  test("fetchResult sanitizes failed provider errors before persistence and output", async () => {
+    const db = new Database(":memory:");
+    createSchema(db);
+
+    const auditId = insertDeepAudit(db, {
+      parentType: "content_hash",
+      parentKey: "hash-failed",
+      requestedBy: "mcp",
+      startedAt: 100,
+    });
+    db.run(
+      "UPDATE deep_audits SET interaction_id = ?, status = 'in_progress' WHERE id = ?",
+      ["int-failed", auditId],
+    );
+
+    mockFetch(async () => jsonResponse({
+      id: "int-failed",
+      status: "failed",
+      error: "Bearer sk-live-secret failed token=abc123",
+    }));
+
+    const skill = new FactCheckDeepResearchSkill({ db, now: () => 1_000 });
+    const result = await skill.fetchResult("int-failed", baseConfig);
+    const body = JSON.stringify(result);
+    const stored = getDeepAudit(db, "int-failed");
+    const storedBody = JSON.stringify(stored);
+
+    expect(result?.verdict).toBe("fail");
+    expect(body).not.toContain("sk-live-secret");
+    expect(body).not.toContain("abc123");
+    expect(stored?.status).toBe("failed");
+    expect(storedBody).not.toContain("sk-live-secret");
+    expect(storedBody).not.toContain("abc123");
+    expect(storedBody).toContain("[redacted]");
 
     db.close();
   });

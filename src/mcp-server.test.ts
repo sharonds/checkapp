@@ -35,6 +35,7 @@ beforeEach(() => {
     run: db.run.bind(db),
     query: db.query.bind(db),
     prepare: db.prepare.bind(db),
+    transaction: db.transaction.bind(db),
     exec: db.exec.bind(db),
     close: () => undefined,
   } as unknown as Database;
@@ -133,6 +134,185 @@ describe("get_skills", () => {
     const text = res.content[0].type === "text" ? res.content[0].text : "";
     const ids = JSON.parse(text).map((s: any) => s.id);
     expect(ids).toEqual(expect.arrayContaining(["grammar", "academic", "selfPlagiarism"]));
+  });
+});
+
+describe("toggle_skill", () => {
+  it("rejects unknown skill ids instead of adding arbitrary config keys", async () => {
+    let writtenConfig: unknown;
+    __setMcpServerTestOverrides({
+      writeConfig: async (config) => {
+        writtenConfig = config;
+      },
+    });
+
+    const res = await handleToolCall("toggle_skill", { skillId: "not-a-real-skill", enabled: true });
+    const text = res.content[0].type === "text" ? res.content[0].text : "";
+
+    expect(text).toContain("Unknown skill");
+    expect(writtenConfig).toBeUndefined();
+  });
+
+  it("rejects prototype property skill ids", async () => {
+    let writtenConfig: unknown;
+    __setMcpServerTestOverrides({
+      writeConfig: async (config) => {
+        writtenConfig = config;
+      },
+    });
+
+    const res = await handleToolCall("toggle_skill", { skillId: "constructor", enabled: true });
+    const text = res.content[0].type === "text" ? res.content[0].text : "";
+
+    expect(text).toContain("Unknown skill");
+    expect(writtenConfig).toBeUndefined();
+  });
+});
+
+describe("list_reports", () => {
+  it("returns summaries without stored article text or full audit data", async () => {
+    insertCheck(db, {
+      source: "https://user:secret@example.com/private.md?token=abc&utm_source=x",
+      wordCount: 4,
+      results: [{
+        skillId: "fact",
+        name: "Fact Check",
+        score: 50,
+        verdict: "fail",
+        summary: "Issue found",
+        findings: [{
+          severity: "fail",
+          text: "Unsupported claim",
+          quote: "private unsupported quote",
+          sources: [{ url: "https://example.com/private", quote: "private evidence" }],
+          auditRef: "claim-private",
+          provider: "gemini",
+          model: "gemini-test",
+          searchQueries: ["private search query"],
+        }],
+        costUsd: 0,
+      } as any],
+      totalCostUsd: 0,
+      articleText: "private article body",
+      audit: {
+        version: 1,
+        auditId: "audit-private",
+        language: "en",
+        direction: "ltr",
+        coverage: {
+          wordsScanned: 4,
+          sectionsDetected: 1,
+          paragraphsScanned: 1,
+          sentencesScanned: 1,
+          claimsExtracted: 0,
+          claimsChecked: 0,
+          claimsSkipped: 0,
+          skipReasons: {},
+          plagiarismPassagesChecked: 0,
+          plagiarismPassagesSkipped: 0,
+          providerFailures: 0,
+          providerRetries: 0,
+        },
+        segments: [],
+        claims: [],
+        claimDecisions: [],
+        factAssessments: [],
+        plagiarismFindings: [],
+        providerAttempts: [],
+        createdAt: "2026-06-09T00:00:00.000Z",
+      },
+    });
+
+    const res = await handleToolCall("list_reports", { limit: 10 });
+    const text = res.content[0].type === "text" ? res.content[0].text : "";
+    const reports = JSON.parse(text);
+
+    expect(reports[0].source).toBe("https://example.com/private.md?token=%5Bredacted%5D&utm_source=x");
+    expect(reports[0].resultCount).toBe(1);
+    expect(reports[0].verdict).toBe("fail");
+    expect(reports[0].score).toBe(50);
+    expect(reports[0].results).toBeUndefined();
+    expect(reports[0].resultsJson).toBeUndefined();
+    expect(reports[0].articleText).toBeUndefined();
+    expect(reports[0].audit).toBeUndefined();
+    expect(text).not.toContain("private article body");
+    expect(text).not.toContain("audit-private");
+    expect(text).not.toContain("private unsupported quote");
+    expect(text).not.toContain("private evidence");
+    expect(text).not.toContain("claim-private");
+    expect(text).not.toContain("gemini-test");
+    expect(text).not.toContain("private search query");
+    expect(text).not.toContain("user:secret");
+    expect(text).not.toContain("token=abc");
+  });
+});
+
+describe("get_report", () => {
+  it("returns detailed report data without persisted article text by default", async () => {
+    const id = insertCheck(db, {
+      source: "report.md",
+      wordCount: 5,
+      results: [{
+        skillId: "fact",
+        name: "Fact Check",
+        score: 50,
+        verdict: "fail",
+        summary: "Issue found",
+        findings: [{ severity: "fail", text: "Unsupported", quote: "quoted claim" }],
+        costUsd: 0,
+      } as any],
+      totalCostUsd: 0,
+      articleText: "ARTICLE_TEXT_PRIVATE_MARKER_PR4 full private article body",
+      audit: {
+        version: 1,
+        auditId: "audit-detail-private",
+        language: "en",
+        direction: "ltr",
+        coverage: {
+          wordsScanned: 6,
+          sectionsDetected: 1,
+          paragraphsScanned: 1,
+          sentencesScanned: 1,
+          claimsExtracted: 1,
+          claimsChecked: 1,
+          claimsSkipped: 0,
+          skipReasons: {},
+          plagiarismPassagesChecked: 0,
+          plagiarismPassagesSkipped: 0,
+          providerFailures: 0,
+          providerRetries: 0,
+        },
+        segments: [{
+          id: "seg-1",
+          text: "ARTICLE_TEXT_PRIVATE_MARKER_PR4 full private article body",
+          paragraphIndex: 0,
+          sentenceIndex: 0,
+          startOffset: 0,
+          endOffset: 55,
+        }],
+        claims: [],
+        claimDecisions: [],
+        factAssessments: [],
+        plagiarismFindings: [],
+        providerAttempts: [],
+        createdAt: "2026-06-09T00:00:00.000Z",
+      },
+    });
+
+    const res = await handleToolCall("get_report", { id });
+    const text = res.content[0].type === "text" ? res.content[0].text : "";
+    const report = JSON.parse(text);
+
+    expect(report.results[0].findings[0].quote).toBe("quoted claim");
+    expect(report.articleText).toBeUndefined();
+    expect(report.audit.segments[0]).toMatchObject({
+      id: "seg-1",
+      text: "",
+      paragraphIndex: 0,
+      sentenceIndex: 0,
+    });
+    expect(text).not.toContain("ARTICLE_TEXT_PRIVATE_MARKER_PR4");
+    expect(text).not.toContain("full private article body");
   });
 });
 
@@ -263,6 +443,25 @@ describe("deep_audit_article", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it("redacts provider secrets in deep audit initiation errors", async () => {
+    __setMcpServerTestOverrides({
+      createDeepResearchSkill: () => ({
+        initiate: async () => {
+          throw new Error("create failed Bearer sk-live-secret token=abc123 key=gemini-secret");
+        },
+      } as unknown as FactCheckDeepResearchSkill),
+    });
+
+    const res = await handleToolCall("deep_audit_article", { article: "Fresh article text" });
+    const text = res.content[0].type === "text" ? res.content[0].text : "";
+
+    expect(res.isError).toBe(true);
+    expect(text).toContain("[redacted]");
+    expect(text).not.toContain("sk-live-secret");
+    expect(text).not.toContain("abc123");
+    expect(text).not.toContain("gemini-secret");
+  });
 });
 
 describe("get_deep_audit_result", () => {
@@ -351,5 +550,24 @@ describe("get_deep_audit_result", () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+
+  it("redacts provider secrets in deep audit poll errors", async () => {
+    __setMcpServerTestOverrides({
+      createDeepResearchSkill: () => ({
+        fetchResult: async () => {
+          throw new Error("poll failed Bearer sk-live-secret token=abc123 key=gemini-secret");
+        },
+      } as unknown as FactCheckDeepResearchSkill),
+    });
+
+    const res = await handleToolCall("get_deep_audit_result", { interactionId: "int-secret" });
+    const text = res.content[0].type === "text" ? res.content[0].text : "";
+
+    expect(res.isError).toBe(true);
+    expect(text).toContain("[redacted]");
+    expect(text).not.toContain("sk-live-secret");
+    expect(text).not.toContain("abc123");
+    expect(text).not.toContain("gemini-secret");
   });
 });

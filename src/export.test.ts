@@ -96,6 +96,34 @@ describe("generateMarkdownReport", () => {
       source: "test.md",
       wordCount: 500,
       totalCostUsd: 0.16,
+      audit: {
+        version: 1,
+        auditId: "audit-md",
+        language: "en",
+        direction: "ltr",
+        coverage: {
+          wordsScanned: 500,
+          sectionsDetected: 1,
+          paragraphsScanned: 1,
+          sentencesScanned: 2,
+          claimsExtracted: 3,
+          claimsChecked: 1,
+          claimsSkipped: 2,
+          skipReasons: { tier_cap: 2 },
+          plagiarismPassagesChecked: 0,
+          plagiarismPassagesSkipped: 0,
+          providerFailures: 0,
+          providerRetries: 0,
+          budgetStopReason: "claim_cap",
+        },
+        segments: [],
+        claims: [],
+        claimDecisions: [],
+        factAssessments: [],
+        plagiarismFindings: [],
+        providerAttempts: [],
+        createdAt: "2026-06-09T00:00:00.000Z",
+      },
       results: [{
         skillId: "fact-check-grounded",
         name: "Fact Check (Grounded)",
@@ -105,6 +133,19 @@ describe("generateMarkdownReport", () => {
         findings: [{
           severity: "warn" as const,
           text: "Unverified (medium confidence): \"Claim\" — Needs more evidence",
+          quote: "Claim",
+          confidence: "medium" as const,
+          confidenceRationale: "Only one partial source was available.",
+          rewrite: "Qualify the claim.",
+          searchQueries: ["claim evidence"],
+          location: {
+            sectionId: "section-1",
+            sectionTitle: "Intro",
+            paragraphIndex: 0,
+            sentenceIndex: 0,
+            startOffset: 10,
+            endOffset: 15,
+          },
           sources: [{ url: "https://example.com/evidence", title: "Evidence" }],
         }],
         costUsd: 0.04,
@@ -113,7 +154,109 @@ describe("generateMarkdownReport", () => {
     });
 
     expect(md).toContain("**Provider:** Gemini 3 Pro Preview + Google Search");
+    expect(md).toContain("1 claims checked — 0 unsupported, 1 unverified, 2 skipped by claim cap");
+    expect(md).toContain('> "Claim"');
+    expect(md).toContain("Location: Intro · paragraph 1 · sentence 1 · chars 10-15");
+    expect(md).toContain("Confidence: medium");
+    expect(md).toContain("Confidence rationale: Only one partial source was available.");
+    expect(md).toContain("Search: claim evidence");
+    expect(md).toContain("Suggested rewrite: Qualify the claim.");
     expect(md).toContain("Source: [Evidence](https://example.com/evidence)");
+  });
+
+  it("labels fuzzy locations as approximate in markdown exports", () => {
+    const md = generateMarkdownReport({
+      source: "fuzzy.md",
+      wordCount: 10,
+      totalCostUsd: 0.04,
+      results: [{
+        skillId: "fact-check-grounded",
+        name: "Fact Check (Grounded)",
+        score: 50,
+        verdict: "fail" as const,
+        summary: "issue",
+        findings: [{
+          severity: "error" as const,
+          text: "Unsupported claim",
+          location: {
+            sectionId: "section-1",
+            sectionTitle: "Games",
+            paragraphIndex: 0,
+            sentenceIndex: 0,
+            matchQuality: "fuzzy",
+          } as any,
+        }],
+        costUsd: 0.04,
+        provider: "gemini-grounded",
+      }],
+    });
+
+    expect(md).toContain("Approximate location: Games · paragraph 1 · sentence 1");
+  });
+
+  it("localizes Hebrew grounded finding leads and source labels in markdown exports", () => {
+    const md = generateMarkdownReport({
+      source: "he.md",
+      wordCount: 120,
+      totalCostUsd: 0.04,
+      audit: {
+        version: 1,
+        auditId: "audit-he-md",
+        language: "he",
+        direction: "rtl",
+        coverage: {
+          wordsScanned: 120,
+          sectionsDetected: 1,
+          paragraphsScanned: 1,
+          sentencesScanned: 1,
+          claimsExtracted: 1,
+          claimsChecked: 1,
+          claimsSkipped: 0,
+          skipReasons: {},
+          plagiarismPassagesChecked: 0,
+          plagiarismPassagesSkipped: 0,
+          providerFailures: 0,
+          providerRetries: 0,
+        },
+        segments: [],
+        claims: [],
+        claimDecisions: [],
+        factAssessments: [],
+        plagiarismFindings: [],
+        providerAttempts: [],
+        createdAt: "2026-06-09T00:00:00.000Z",
+      },
+      results: [{
+        skillId: "fact-check-grounded",
+        name: "Fact Check (Grounded)",
+        score: 50,
+        verdict: "fail" as const,
+        summary: "issue",
+        findings: [{
+          severity: "error" as const,
+          text: "Unsupported (high confidence): \"טענה\" — המקור סותר.",
+          status: "unsupported" as const,
+          confidence: "high" as const,
+          explanation: "המקור סותר.",
+          explanationLanguage: "he" as const,
+          sources: [{ url: "https://example.com/evidence", title: "מקור רשמי" }],
+        }],
+        costUsd: 0.04,
+        provider: "gemini-grounded",
+      }],
+    });
+
+    expect(md).toContain("# דוח איכות");
+    expect(md).toContain("**מקור:** he.md");
+    expect(md).toContain("**מילים:** 120");
+    expect(md).toContain("**עלות API:** $0.040");
+    expect(md).toContain("**ספק:** Gemini 3 Pro Preview + Google Search");
+    expect(md).toContain("לא נתמך");
+    expect(md).toContain("רמת ביטחון: גבוהה");
+    expect(md).not.toContain("Unsupported");
+    expect(md).not.toContain("**Source:**");
+    expect(md).not.toContain("**Provider:**");
+    expect(md).toContain("מקור: [מקור רשמי](https://example.com/evidence)");
   });
 
   it("includes verified info source links for passing grounded fact-check", () => {

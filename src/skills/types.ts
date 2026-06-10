@@ -1,4 +1,13 @@
 import type { Config } from "../config.ts";
+import type {
+  AuditDirection,
+  AuditLanguage,
+  AuditLocation,
+  PlagiarismFinding,
+  AuditRef,
+  AuditStatus,
+} from "../audit/types.ts";
+import type { SkillRunOutput } from "../audit/contribution.ts";
 
 export type Verdict = "pass" | "warn" | "fail" | "skipped";
 export type Severity = "info" | "warn" | "error";
@@ -31,6 +40,19 @@ export interface Finding {
   citations?: Citation[];
   claimType?: ClaimType;
   confidence?: "high" | "medium" | "low";
+  id?: string;
+  status?: AuditStatus;
+  location?: AuditLocation;
+  explanation?: string;
+  explanationLanguage?: AuditLanguage;
+  explanationDir?: AuditDirection;
+  confidenceRationale?: string;
+  searchQueries?: string[];
+  provider?: string;
+  model?: string;
+  auditRef?: AuditRef;
+  matchType?: PlagiarismFinding["matchType"];
+  groundingMode?: PlagiarismFinding["groundingMode"];
 }
 
 export interface SkillResult {
@@ -49,7 +71,7 @@ export interface SkillResult {
 export interface Skill {
   id: string;
   name: string;
-  run(text: string, config: Config): Promise<SkillResult>;
+  run(text: string, config: Config): Promise<SkillRunOutput>;
 }
 
 /**
@@ -60,7 +82,7 @@ export interface Skill {
  */
 export interface EnricherSkill extends Skill {
   readonly kind: "enricher";
-  enrich(text: string, config: Config, priorResults: SkillResult[]): Promise<SkillResult>;
+  enrich(text: string, config: Config, priorResults: SkillResult[]): Promise<SkillRunOutput>;
 }
 
 export function isEnricher(skill: Skill): skill is EnricherSkill {

@@ -1,6 +1,7 @@
 import { test, expect } from "bun:test";
 import { generateReport } from "./report.ts";
 import type { SkillResult } from "./skills/types.ts";
+import type { AuditRecord } from "./audit/types.ts";
 
 const results: SkillResult[] = [
   { skillId: "seo", name: "SEO", score: 85, verdict: "pass", summary: "Good SEO", findings: [], costUsd: 0 },
@@ -24,6 +25,415 @@ test("report contains skill names", () => {
 test("report contains the source filename", () => {
   const html = generateReport({ source: "article.md", wordCount: 800, results, totalCostUsd: 0.09 });
   expect(html).toContain("article.md");
+});
+
+test("report sanitizes credentialed source URLs in title and body", () => {
+  const html = generateReport({
+    source: "https://user:secret@example.com/article?token=abc&utm_source=x#access_token=frag-secret",
+    wordCount: 800,
+    results,
+    totalCostUsd: 0.09,
+  });
+  expect(html).toContain("https://example.com/article?token=%5Bredacted%5D&amp;utm_source=x#access_token=%5Bredacted%5D");
+  expect(html).not.toContain("user:secret");
+  expect(html).not.toContain("token=abc");
+  expect(html).not.toContain("frag-secret");
+});
+
+test("Hebrew audit reports set root language and direction", () => {
+  const audit: AuditRecord = {
+    version: 1,
+    auditId: "audit-he",
+    language: "he",
+    direction: "rtl",
+    coverage: {
+      wordsScanned: 5,
+      sectionsDetected: 1,
+      paragraphsScanned: 1,
+      sentencesScanned: 1,
+      claimsExtracted: 1,
+      claimsChecked: 1,
+      claimsSkipped: 0,
+      skipReasons: {},
+      plagiarismPassagesChecked: 0,
+      plagiarismPassagesSkipped: 0,
+      providerFailures: 0,
+      providerRetries: 0,
+    },
+    segments: [],
+    claims: [],
+    claimDecisions: [],
+    factAssessments: [],
+    plagiarismFindings: [],
+    providerAttempts: [],
+    createdAt: "2026-06-09T00:00:00.000Z",
+  };
+  const html = generateReport({
+    source: "he.md",
+    wordCount: 5,
+    results: [{
+      skillId: "fact-check-grounded",
+      name: "Fact Check (Grounded)",
+      score: 50,
+      verdict: "fail",
+      summary: "issue",
+      findings: [{
+        severity: "error",
+        text: "Unsupported (high confidence): \"המשחק Rummikub מתאים לשני שחקנים בלבד.\" — המקור הרשמי סותר את הטענה.",
+        status: "unsupported",
+        explanation: "המקור הרשמי סותר את הטענה.",
+        explanationLanguage: "he",
+        quote: "המשחק Rummikub מתאים לשני שחקנים בלבד.",
+        rewrite: "יש לנסח מחדש.",
+        sources: [{ url: "https://example.com/rummikub", title: "Rummikub official rules" }],
+        location: {
+          sectionId: "section-1",
+          sectionTitle: "משחקים",
+          paragraphIndex: 1,
+          sentenceIndex: 0,
+          startOffset: 86,
+          endOffset: 129,
+        },
+      }],
+      costUsd: 0.04,
+      provider: "gemini-grounded",
+    }],
+    totalCostUsd: 0.04,
+    audit,
+  });
+  expect(html).toContain('<html lang="he" dir="rtl">');
+  expect(html).toContain("דוח איכות");
+  expect(html).toContain("בדיקת עובדות מבוססת מקורות");
+  expect(html).toContain("1 טענות נבדקו");
+  expect(html).toContain("לא נתמך");
+  expect(html).toContain("מיקום: משחקים · פסקה 2 · משפט 1 · תווים 86-129");
+  expect(html).toContain("ניסוח מוצע");
+  expect(html).toContain("מקור");
+  expect(html).toContain("התוצאות נוצרו על ידי Google Gemini");
+  expect(html).toContain('dir="auto"');
+  expect(html).toContain("יש לנסח מחדש");
+  expect(html).not.toContain("Quality Report");
+  expect(html).not.toContain("Suggested rewrite:");
+});
+
+test("report uses logical spacing and borders for RTL-sensitive surfaces", () => {
+  const html = generateReport({
+    source: "he.md",
+    wordCount: 5,
+    results: [{
+      skillId: "fact-check-grounded",
+      name: "Fact Check (Grounded)",
+      score: 50,
+      verdict: "fail",
+      summary: "issue",
+      findings: [{
+        severity: "error",
+        text: "בעיה",
+        quote: "המשחק Rummikub מתאים לשני שחקנים בלבד.",
+        rewrite: "יש לנסח מחדש.",
+        location: { sectionId: "section-1", paragraphIndex: 0 },
+      }],
+      costUsd: 0.04,
+      provider: "gemini-grounded",
+    }],
+    totalCostUsd: 0.04,
+    audit: {
+      version: 1,
+      auditId: "audit-he-logical-css",
+      language: "he",
+      direction: "rtl",
+      coverage: {
+        wordsScanned: 5,
+        sectionsDetected: 1,
+        paragraphsScanned: 1,
+        sentencesScanned: 1,
+        claimsExtracted: 1,
+        claimsChecked: 1,
+        claimsSkipped: 0,
+        skipReasons: {},
+        plagiarismPassagesChecked: 0,
+        plagiarismPassagesSkipped: 0,
+        providerFailures: 0,
+        providerRetries: 0,
+      },
+      segments: [],
+      claims: [],
+      claimDecisions: [],
+      factAssessments: [],
+      plagiarismFindings: [],
+      providerAttempts: [],
+      createdAt: "2026-06-09T00:00:00.000Z",
+    },
+  });
+
+  expect(html).toContain("margin-inline-start");
+  expect(html).toContain("margin-inline-end");
+  expect(html).toContain("border-inline-start");
+  expect(html).toContain("padding-inline-start");
+  expect(html).toContain("text-align:end");
+  expect(html).not.toContain("border-left:");
+  expect(html).not.toContain("padding-left:");
+  expect(html).not.toContain("margin-left:");
+  expect(html).not.toContain("margin-right:");
+  expect(html).not.toContain("text-align:right");
+});
+
+test("English audit reports keep English labels", () => {
+  const audit: AuditRecord = {
+    version: 1,
+    auditId: "audit-en",
+    language: "en",
+    direction: "ltr",
+    coverage: {
+      wordsScanned: 7,
+      sectionsDetected: 1,
+      paragraphsScanned: 1,
+      sentencesScanned: 1,
+      claimsExtracted: 1,
+      claimsChecked: 1,
+      claimsSkipped: 0,
+      skipReasons: {},
+      plagiarismPassagesChecked: 0,
+      plagiarismPassagesSkipped: 0,
+      providerFailures: 0,
+      providerRetries: 0,
+    },
+    segments: [],
+    claims: [],
+    claimDecisions: [],
+    factAssessments: [],
+    plagiarismFindings: [],
+    providerAttempts: [],
+    createdAt: "2026-06-09T00:00:00.000Z",
+  };
+  const html = generateReport({
+    source: "en.md",
+    wordCount: 7,
+    results: [{
+      skillId: "fact-check-grounded",
+      name: "Fact Check (Grounded)",
+      score: 50,
+      verdict: "fail",
+      summary: "issue",
+      findings: [{
+        severity: "error",
+        text: "Unsupported (high confidence): \"The game supports two players only.\" — Official rules contradict it.",
+        status: "unsupported",
+        explanation: "Official rules contradict it.",
+        explanationLanguage: "en",
+        quote: "The game supports two players only.",
+        rewrite: "Revise the claim.",
+        location: {
+          sectionId: "section-1",
+          paragraphIndex: 0,
+          sentenceIndex: 0,
+          startOffset: 0,
+          endOffset: 35,
+        },
+      }],
+      costUsd: 0.04,
+      provider: "gemini-grounded",
+    }],
+    totalCostUsd: 0.04,
+    audit,
+  });
+  expect(html).toContain('<html lang="en" dir="ltr">');
+  expect(html).toContain("Quality Report");
+  expect(html).toContain("Fact Check (Grounded)");
+  expect(html).toContain("1 claims checked");
+  expect(html).toContain("Location: section-1 · paragraph 1 · sentence 1 · chars 0-35");
+  expect(html).toContain("Suggested rewrite");
+  expect(html).not.toContain("דוח איכות");
+});
+
+test("plagiarism report surfaces structured match type and grounding mode", () => {
+  const html = generateReport({
+    source: "plagiarism.md",
+    wordCount: 8,
+    results: [{
+      skillId: "plagiarism",
+      name: "Plagiarism Check",
+      score: 60,
+      verdict: "warn",
+      summary: "possible match",
+      findings: [{
+        severity: "warn",
+        text: "possible copied passage",
+        quote: "Near exact copied sentence.",
+        status: "plagiarism_match",
+        matchType: "near" as any,
+        groundingMode: "ungrounded" as any,
+        sources: [{ url: "https://example.com/source", title: "Source" }],
+      }],
+      costUsd: 0.04,
+      provider: "gemini-grounded-plagiarism",
+    }],
+    totalCostUsd: 0.04,
+    audit: {
+      version: 1,
+      auditId: "audit-plagiarism",
+      language: "en",
+      direction: "ltr",
+      coverage: {
+        wordsScanned: 8,
+        sectionsDetected: 1,
+        paragraphsScanned: 1,
+        sentencesScanned: 1,
+        claimsExtracted: 0,
+        claimsChecked: 0,
+        claimsSkipped: 0,
+        skipReasons: {},
+        plagiarismPassagesChecked: 1,
+        plagiarismPassagesSkipped: 0,
+        providerFailures: 0,
+        providerRetries: 0,
+      },
+      segments: [],
+      claims: [],
+      claimDecisions: [],
+      factAssessments: [],
+      plagiarismFindings: [],
+      providerAttempts: [],
+      createdAt: "2026-06-09T00:00:00.000Z",
+    },
+  });
+
+  expect(html).toContain("Match type: near");
+  expect(html).toContain("Grounding: ungrounded");
+});
+
+test("fact-check report explains budget-driven skipped claims", () => {
+  const html = generateReport({
+    source: "budget.md",
+    wordCount: 20,
+    results: [{
+      skillId: "fact-check-grounded",
+      name: "Fact Check (Grounded)",
+      score: 100,
+      verdict: "pass",
+      summary: "2 claims checked.",
+      findings: [],
+      costUsd: 0.04,
+      provider: "gemini-grounded",
+    }],
+    totalCostUsd: 0.04,
+    audit: {
+      version: 1,
+      auditId: "audit-budget",
+      language: "en",
+      direction: "ltr",
+      coverage: {
+        wordsScanned: 20,
+        sectionsDetected: 1,
+        paragraphsScanned: 1,
+        sentencesScanned: 4,
+        claimsExtracted: 5,
+        claimsChecked: 2,
+        claimsSkipped: 3,
+        skipReasons: { claim_cap: 3 },
+        budgetStopReason: "claim_cap",
+        plagiarismPassagesChecked: 0,
+        plagiarismPassagesSkipped: 0,
+        providerFailures: 0,
+        providerRetries: 0,
+      },
+      segments: [],
+      claims: [],
+      claimDecisions: [],
+      factAssessments: [],
+      plagiarismFindings: [],
+      providerAttempts: [],
+      createdAt: "2026-06-09T00:00:00.000Z",
+    },
+  });
+
+  expect(html).toContain("2 claims checked — 0 unsupported, 0 unverified, 3 skipped by claim cap");
+});
+
+test("report labels fuzzy quote locations as approximate", () => {
+  const html = generateReport({
+    source: "fuzzy.md",
+    wordCount: 8,
+    results: [{
+      skillId: "fact-check-grounded",
+      name: "Fact Check (Grounded)",
+      score: 50,
+      verdict: "fail",
+      summary: "issue",
+      provider: "gemini-grounded",
+      findings: [{
+        severity: "error",
+        text: "Unsupported claim",
+        quote: "Rummikub supports two players only.",
+        location: {
+          sectionId: "section-1",
+          sectionTitle: "Games",
+          paragraphIndex: 0,
+          sentenceIndex: 0,
+          matchQuality: "fuzzy",
+        } as any,
+      }],
+      costUsd: 0.04,
+    }],
+    totalCostUsd: 0.04,
+  });
+
+  expect(html).toContain("Approximate location: Games · paragraph 1 · sentence 1");
+  expect(html).not.toContain("chars 10-42");
+});
+
+test("mixed Hebrew-English audit uses Hebrew RTL report shell and auto-direction quotes", () => {
+  const audit: AuditRecord = {
+    version: 1,
+    auditId: "audit-mixed",
+    language: "mixed",
+    direction: "auto",
+    coverage: {
+      wordsScanned: 6,
+      sectionsDetected: 1,
+      paragraphsScanned: 1,
+      sentencesScanned: 1,
+      claimsExtracted: 1,
+      claimsChecked: 1,
+      claimsSkipped: 0,
+      skipReasons: {},
+      plagiarismPassagesChecked: 0,
+      plagiarismPassagesSkipped: 0,
+      providerFailures: 0,
+      providerRetries: 0,
+    },
+    segments: [],
+    claims: [],
+    claimDecisions: [],
+    factAssessments: [],
+    plagiarismFindings: [],
+    providerAttempts: [],
+    createdAt: "2026-06-09T00:00:00.000Z",
+  };
+  const html = generateReport({
+    source: "mixed.md",
+    wordCount: 6,
+    totalCostUsd: 0,
+    audit,
+    results: [{
+      skillId: "fact-check-grounded",
+      name: "Fact Check (Grounded)",
+      score: 50,
+      verdict: "warn",
+      summary: "issue",
+      costUsd: 0,
+      findings: [{
+        severity: "warn",
+        text: "בעיה",
+        quote: "המשחק Rummikub מתאים לשני שחקנים בלבד.",
+        rewrite: "יש לנסח מחדש.",
+        explanationLanguage: "mixed",
+      }],
+    }],
+  });
+  expect(html).toContain('<html lang="he" dir="rtl">');
+  expect(html).toContain("דוח איכות");
+  expect(html).toContain('dir="auto"');
 });
 
 test("report is self-contained (no external JS scripts)", () => {

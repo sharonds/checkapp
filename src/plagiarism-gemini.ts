@@ -230,6 +230,9 @@ function normalizeMatches(matches: GeminiPlagiarismMatch[], groundedUrls: string
           ? capConfidence(normalizeConfidence(m.confidence), "medium")
           : "low";
       const matchType = normalizeMatchType(m.matchType);
+      const groundingMode: CopyscapeMatch["groundingMode"] = grounded
+        ? "grounded"
+        : "ungrounded";
       const groundingNote = grounded
         ? "Grounded source match."
         : "Gemini reported this match without Google grounding metadata; review manually.";
@@ -237,6 +240,10 @@ function normalizeMatches(matches: GeminiPlagiarismMatch[], groundedUrls: string
         url: m.sourceUrl,
         title: m.sourceTitle || m.sourceUrl,
         wordsMatched: countWords(m.matchedArticleText),
+        matchType,
+        groundingMode,
+        matchedArticleText: m.matchedArticleText,
+        matchedSourceText: m.matchedSourceText,
         snippet: [
           `[${confidence} confidence · ${matchType.replace("_", "-")}] ${m.explanation || groundingNote}`,
           grounded ? "" : groundingNote,

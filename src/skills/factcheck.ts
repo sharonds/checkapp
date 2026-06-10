@@ -1,18 +1,31 @@
 import Exa from "exa-js";
 import type { Skill, SkillResult, Finding, ClaimType } from "./types.ts";
+import type { SkillRunOutput } from "../audit/contribution.ts";
 import type { Config } from "../config.ts";
 import { getLlmClient, parseJsonResponse } from "./llm.ts";
 import { resolveProvider } from "../providers/resolve.ts";
 import { isE2E, assertMocksOnly } from "../e2e/mode.ts";
 import { loadScenario } from "../e2e/fixtures.ts";
+import { buildAuditCoverage } from "../audit/coverage.ts";
+import { createAuditBudget, selectClaimsForAudit, shouldStopForBudget, type AuditBudgetStopReason } from "../audit/budget.ts";
+import {
+  analyzeDocument,
+  confidenceRationale,
+  createAuditRecordBase,
+  factRewriteSuggestion,
+  locateQuote,
+  toAuditClaimType,
+} from "../audit/document.ts";
+import type { AuditClaim, AuditRecord, ClaimDecision, FactAssessment, ProviderAttempt } from "../audit/types.ts";
 
 export function extractClaimsPrompt(articleText: string): string {
-  return `Extract the 4 most specific, verifiable factual claims from the article below.
+  return `Extract up to 20 specific, verifiable factual claims from across the entire article below.
 Return ONLY a JSON array of strings, no other text. Each string is one claim.
-Focus on claims about statistics, dates, scientific facts, or named entities — not opinions.
+Cover different sections of the article before adding multiple claims from the same section.
+Focus on claims about statistics, dates, scientific facts, product specs, rules, or named entities — not opinions.
 
 Article:
-${articleText.slice(0, 3000)}
+${articleText}
 
 Example output:
 ["More than one billion people are vitamin D deficient worldwide.", "Vitamin D deficiency causes rickets in children."]
@@ -40,7 +53,7 @@ export class FactCheckSkill implements Skill {
   readonly id = "fact-check";
   readonly name = "Fact Check";
 
-  async run(text: string, config: Config): Promise<SkillResult> {
+  async run(text: string, config: Config): Promise<SkillRunOutput> {
     const resolved = resolveProvider(config, "fact-check");
     if (!resolved) {
       return {
@@ -77,13 +90,15 @@ export class FactCheckSkill implements Skill {
       : null;
     const exa = exaMock ? null : new Exa(apiKey);
 
+    const documentAnalysis = analyzeDocument(text);
+
     // Step 1: extract claims
     const claimsText = await llm.call(extractClaimsPrompt(text), 1024);
 
     let claims: string[] = [];
     try {
       const parsed = parseJsonResponse<string[]>(claimsText);
-      claims = Array.isArray(parsed) ? parsed : [];
+      claims = Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string").slice(0, 20) : [];
     } catch {
       claims = [];
     }
@@ -131,13 +146,29 @@ export class FactCheckSkill implements Skill {
           });
         };
 
-    const claimResults = await Promise.all(
-      claims.slice(0, 4).map(async (claim) => {
-        const result = await search(claim);
-        costUsd += deepMode ? 0.025 : 0.007;
-        return { claim, results: result.results };
-      })
-    );
+    const budget = createAuditBudget(config, deepMode ? "premium" : "standard");
+    const claimSelection = selectClaimsForAudit(claims, budget);
+    const checkedClaims = claimSelection.checkedClaims;
+    const runtimeSkippedClaims: Array<{ claim: string; skipReason: AuditBudgetStopReason }> = [];
+    const claimResults: Array<{ claim: string; results: Awaited<ReturnType<typeof search>>["results"] }> = [];
+    const budgetStartedAt = Date.now();
+    for (const [index, claim] of checkedClaims.entries()) {
+      const stopKey = shouldStopForBudget(budget, {
+        costUsd,
+        providerCalls: claimResults.length,
+        wallClockMs: Date.now() - budgetStartedAt,
+      });
+      if (stopKey) {
+        const skipReason = budgetStopReasonFromKey(stopKey);
+        runtimeSkippedClaims.push(
+          ...checkedClaims.slice(index).map((skippedClaim) => ({ claim: skippedClaim, skipReason })),
+        );
+        break;
+      }
+      const result = await search(claim);
+      costUsd += deepMode ? 0.025 : 0.007;
+      claimResults.push({ claim, results: result.results });
+    }
 
     // Step 3: assess each claim
     const assessments: Array<{ claim: string; supported: boolean | null; note: string; claimType: ClaimType }> = [];
@@ -180,9 +211,18 @@ Reply with JSON:
       }
     }
 
-    const sourceCountMap = new Map(claimResults.map(cr => [cr.claim, cr.results.length]));
+    const auditId = `fact-${createAuditRecordBase(this.id, text).auditId}`;
+    const auditClaims: AuditClaim[] = [];
+    const claimDecisions: ClaimDecision[] = [];
+    const factAssessments: FactAssessment[] = [];
+    const providerAttempts: ProviderAttempt[] = claimResults.map((claimResult, index) => ({
+      id: `attempt-${index + 1}`,
+      provider: resolved.provider,
+      model: deepMode ? "deep-reasoning" : "auto",
+      status: "success",
+    }));
 
-    for (const { claim, supported, note, claimType } of assessments) {
+    for (const [index, { claim, supported, note, claimType }] of assessments.entries()) {
       const sources = claimResults.find(cr => cr.claim === claim)?.results ?? [];
       const sourceList = sources.slice(0, 3).map((r) => ({
         url: r.url,
@@ -193,14 +233,70 @@ Reply with JSON:
       const sourceCount = sourceList.length;
       const effectiveSupported = sourceCount === 0 && supported === true ? null : supported;
       const confidence = claimConfidence(sourceCount, effectiveSupported);
+      const located = locateQuote(text, claim, documentAnalysis);
+      const claimId = `claim-${index + 1}`;
+      const assessmentId = `assessment-${index + 1}`;
+      const status = effectiveSupported === false ? "unsupported" : effectiveSupported === null ? "unverified" : "supported";
+      const rationale = confidenceRationale(sourceCount, confidence);
+      const rewrite = status === "supported" ? undefined : factRewriteSuggestion(located.quote, located.language, effectiveSupported, note);
       const base = { sources: sourceList, confidence, claimType };
+      auditClaims.push({
+        id: claimId,
+        quote: located.quote,
+        normalizedClaim: claim,
+        type: toAuditClaimType(claimType),
+        language: located.language,
+        direction: located.direction,
+        location: located.location,
+        searchQueries: [claim],
+      });
+      claimDecisions.push({ claimId, decision: "checked" });
+      factAssessments.push({
+        id: assessmentId,
+        claimId,
+        status,
+        sources: sourceList.map((source) => ({
+          url: source.url,
+          title: source.title,
+          quote: source.quote,
+          accepted: true,
+        })),
+        explanation: note,
+        confidence,
+        confidenceRationale: rationale,
+        searchQueries: [claim],
+        provider: resolved.provider,
+        model: deepMode ? "deep-reasoning" : "auto",
+        attemptIds: [providerAttempts[index]?.id ?? `attempt-${index + 1}`],
+        language: located.language,
+        direction: located.direction,
+        rewrite,
+        rewriteLanguage: rewrite ? located.language : undefined,
+        rewriteDir: rewrite ? located.direction : undefined,
+      });
+      const auditFields = {
+        id: assessmentId,
+        status,
+        quote: located.quote,
+        location: located.location,
+        explanation: note,
+        explanationLanguage: located.language,
+        explanationDir: located.direction,
+        confidenceRationale: rationale,
+        searchQueries: [claim],
+        provider: resolved.provider,
+        model: deepMode ? "deep-reasoning" : "auto",
+        auditRef: { auditId, claimId, assessmentId },
+        rewrite,
+      } satisfies Partial<Finding>;
       if (effectiveSupported === false) {
-        findings.push({ severity: "error", text: `Unsupported (${confidence} confidence): "${claim}" — ${note}`, ...base });
+        findings.push({ severity: "error", text: `Unsupported (${confidence} confidence): "${claim}" — ${note}`, ...base, ...auditFields });
       } else if (effectiveSupported === null) {
         findings.push({
           severity: "warn",
           text: `Unverified (${confidence} confidence): "${claim}" — ${sourceCount === 0 ? "No evidence source URL was returned." : note}`,
           ...base,
+          ...auditFields,
         });
       } else {
         const citations = sources.slice(0, 2).map(r => formatCitation(r.url)).join(", ");
@@ -208,18 +304,67 @@ Reply with JSON:
           severity: "info",
           text: `Verified (${confidence} confidence): "${claim}" — ${note}${citations ? `. Cite: ${citations}` : ""}`,
           ...base,
+          ...auditFields,
         });
       }
     }
 
+    const skippedClaims = [...runtimeSkippedClaims, ...claimSelection.skippedClaims];
+    for (const [offset, skipped] of skippedClaims.entries()) {
+      const claim = skipped.claim;
+      const located = locateQuote(text, claim, documentAnalysis);
+      const claimId = `claim-${assessments.length + offset + 1}`;
+      auditClaims.push({
+        id: claimId,
+        quote: located.quote,
+        normalizedClaim: claim,
+        type: "general",
+        language: located.language,
+        direction: located.direction,
+        location: located.location,
+        searchQueries: [claim],
+      });
+      claimDecisions.push({ claimId, decision: "skipped", skipReason: skipped.skipReason });
+    }
+
     const failCount = findings.filter((f) => f.severity === "error").length;
     const warnCount = findings.filter((f) => f.severity === "warn").length;
-    const score = Math.round(100 - failCount * 25 - warnCount * 10);
-    const verdict = failCount > 0 ? "fail" : warnCount > 1 ? "warn" : "pass";
+    const noCheckedClaims = assessments.length === 0 && claims.length > 0;
+    const score = noCheckedClaims ? 60 : Math.round(100 - failCount * 25 - warnCount * 10);
+    const verdict = noCheckedClaims ? "warn" : failCount > 0 ? "fail" : warnCount > 1 ? "warn" : "pass";
     const summary = `${assessments.length} claims checked — ${failCount} unsupported, ${warnCount} unverified (via ${llm.provider})`;
 
-    return { skillId: this.id, name: this.name, score: Math.max(0, score), verdict, summary, findings, costUsd, provider: resolved.provider };
+    const baseAudit = createAuditRecordBase(this.id, text);
+    const audit: AuditRecord = {
+      ...baseAudit,
+      auditId,
+      coverage: buildAuditCoverage({
+        wordsScanned: documentAnalysis.wordsScanned,
+        sectionsDetected: documentAnalysis.sectionsDetected,
+        paragraphsScanned: documentAnalysis.paragraphsScanned,
+        sentencesScanned: documentAnalysis.sentencesScanned,
+        claimDecisions,
+        providerAttempts,
+        budgetStopReason: runtimeSkippedClaims[0]?.skipReason ?? claimSelection.budgetStopReason,
+      }),
+      claims: auditClaims,
+      claimDecisions,
+      factAssessments,
+      providerAttempts,
+    };
+    return { skillId: this.id, name: this.name, score: Math.max(0, score), verdict, summary, findings, costUsd, provider: resolved.provider, audit };
   }
+}
+
+function budgetStopReasonFromKey(key: ReturnType<typeof shouldStopForBudget>): AuditBudgetStopReason {
+  if (key === "maxUsd") return "cost_budget";
+  if (key === "maxInputTokens") return "input_token_budget";
+  if (key === "maxOutputTokens") return "output_token_budget";
+  if (key === "maxProviderCalls") return "provider_call_budget";
+  if (key === "maxWallClockMs") return "wall_clock_budget";
+  if (key === "maxProviderRetries") return "provider_retry_budget";
+  if (key === "maxProviderFailures") return "provider_failure_budget";
+  return "provider_call_budget";
 }
 
 function skippedResult(skill: FactCheckSkill, reason: string): SkillResult {

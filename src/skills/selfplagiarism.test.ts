@@ -118,4 +118,15 @@ describe("SelfPlagiarismSkill", () => {
     expect(r.verdict).toBe("warn");
     expect(r.summary).toContain("failed");
   });
+
+  test("provider failure summaries redact token-like response text", async () => {
+    mockFetch(urlRouter({
+      "openrouter.ai/api/v1/embeddings": async () => new Response("Bearer sk-live-secret-123 token=abc123", { status: 400 }),
+    }));
+
+    const r = await new SelfPlagiarismSkill().run("text", cfgBase);
+    expect(r.summary).toContain("[redacted]");
+    expect(r.summary).not.toContain("sk-live-secret");
+    expect(r.summary).not.toContain("abc123");
+  });
 });

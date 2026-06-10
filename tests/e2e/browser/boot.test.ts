@@ -21,7 +21,30 @@ describe("dashboard boot helper", () => {
           dbPath: temp.dbPath,
         });
         const res = await fetch(handle.url);
-        expect(res.status).toBeLessThan(500);
+        expect(res.status).toBeLessThan(400);
+      } finally {
+        if (handle) await handle.stop();
+        temp.cleanup();
+      }
+    },
+    90_000,
+  );
+
+  it(
+    "rejects non-loopback host headers through the running dashboard",
+    async () => {
+      const temp = allocateTempPaths();
+      temp.writeConfig({ factCheckTier: "basic", factCheckTierFlag: false });
+      temp.initDbSchema();
+      let handle;
+      try {
+        handle = await bootDashboard({
+          scenario: "basic-happy",
+          configPath: temp.configPath,
+          dbPath: temp.dbPath,
+        });
+        const res = await fetch(handle.url, { headers: { host: "public.example" } });
+        expect(res.status).toBe(403);
       } finally {
         if (handle) await handle.stop();
         temp.cleanup();

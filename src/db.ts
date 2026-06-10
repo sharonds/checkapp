@@ -1,8 +1,13 @@
 import { Database } from "bun:sqlite";
 import { homedir } from "os";
 import { join, dirname } from "path";
-import { mkdirSync } from "fs";
+import { chmodSync, mkdirSync } from "fs";
 import type { SkillResult } from "./skills/types.ts";
+import {
+  parseStoredAuditRecord,
+  serializeAuditRecord,
+  type AuditRecord,
+} from "./audit/types.ts";
 
 const DB_DIR = join(homedir(), ".checkapp");
 // CHECKAPP_DB_PATH lets tests and E2E harnesses redirect the default DB to a
@@ -20,6 +25,7 @@ export interface CheckRecord {
   results: SkillResult[];
   totalCostUsd: number;
   articleText?: string;
+  audit?: AuditRecord;
   createdAt?: string;
 }
 
@@ -50,13 +56,38 @@ export interface InsertDeepAuditInput {
   costEstimateUsd?: number;
 }
 
+export interface ClaimDeepAuditOptions {
+  staleBeforeMs?: number;
+  completedAt?: number;
+  staleMessage?: string;
+}
+
+export interface ClaimDeepAuditResult {
+  record: DeepAuditRecord;
+  created: boolean;
+}
+
 export function openDb(path = dbPath()): DB {
   if (path !== ":memory:") {
-    mkdirSync(dirname(path), { recursive: true });
+    mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+    chmodPrivate(dirname(path), 0o700);
   }
   const db = new Database(path);
+  if (path !== ":memory:") {
+    db.run("PRAGMA journal_mode = WAL");
+    db.run("PRAGMA busy_timeout = 5000");
+  }
+  if (path !== ":memory:") chmodPrivate(path, 0o600);
   createSchema(db);
   return db;
+}
+
+function chmodPrivate(path: string, mode: number): void {
+  try {
+    chmodSync(path, mode);
+  } catch {
+    // Best effort on filesystems that do not support POSIX modes.
+  }
 }
 
 export function createSchema(db: Database): void {
@@ -72,6 +103,7 @@ export function createSchema(db: Database): void {
     )
   `);
   ensureChecksArticleTextColumn(db);
+  ensureChecksAuditJsonColumn(db);
   db.run(`
     CREATE TABLE IF NOT EXISTS contexts (
       id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -106,6 +138,12 @@ export function createSchema(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_deep_audits_status_started
     ON deep_audits (status, started_at)
   `);
+  repairDuplicateActiveDeepAudits(db);
+  db.run(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_deep_audits_active_parent
+    ON deep_audits (parent_type, parent_key)
+    WHERE status IN ('pending', 'in_progress')
+  `);
 }
 
 export function insertCheck(
@@ -113,8 +151,8 @@ export function insertCheck(
   record: Omit<CheckRecord, "id" | "createdAt"> & { articleText?: string },
 ): number {
   const stmt = db.prepare(`
-    INSERT INTO checks (source, word_count, results_json, total_cost, article_text)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO checks (source, word_count, results_json, total_cost, article_text, audit_json)
+    VALUES (?, ?, ?, ?, ?, ?)
   `);
   const result = stmt.run(
     record.source,
@@ -122,6 +160,7 @@ export function insertCheck(
     JSON.stringify(record.results),
     record.totalCostUsd,
     record.articleText ?? "",
+    serializeAuditRecord(record.audit),
   );
   return result.lastInsertRowid as number;
 }
@@ -184,6 +223,7 @@ export function getCheckById(db: Database, id: number): CheckRecord | null {
     results_json: string;
     total_cost: number;
     article_text: string;
+    audit_json: string | null;
     created_at: string;
   }, [number]>(
     "SELECT * FROM checks WHERE id = ? LIMIT 1"
@@ -193,9 +233,10 @@ export function getCheckById(db: Database, id: number): CheckRecord | null {
     id: row.id,
     source: row.source,
     wordCount: row.word_count,
-    results: JSON.parse(row.results_json) as SkillResult[],
+    results: parseResultsJson(row.results_json),
     totalCostUsd: row.total_cost,
     articleText: row.article_text,
+    audit: parseStoredAuditRecord(row.audit_json),
     createdAt: row.created_at,
   };
 }
@@ -207,21 +248,31 @@ export function queryRecent(db: Database, limit: number): CheckRecord[] {
     word_count: number;
     results_json: string;
     total_cost: number;
-    article_text: string;
     created_at: string;
   }, []>(
-    "SELECT * FROM checks ORDER BY id DESC LIMIT ?"
+    `SELECT id, source, word_count, results_json, total_cost, created_at
+     FROM checks
+     ORDER BY id DESC
+     LIMIT ?`
   ).all(limit);
 
   return rows.map((row) => ({
     id: row.id,
     source: row.source,
     wordCount: row.word_count,
-    results: JSON.parse(row.results_json) as SkillResult[],
+    results: parseResultsJson(row.results_json),
     totalCostUsd: row.total_cost,
-    articleText: row.article_text,
     createdAt: row.created_at,
   }));
+}
+
+function parseResultsJson(raw: string): SkillResult[] {
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed as SkillResult[] : [];
+  } catch {
+    return [];
+  }
 }
 
 export function insertDeepAudit(db: Database, row: InsertDeepAuditInput): number {
@@ -244,6 +295,30 @@ export function insertDeepAudit(db: Database, row: InsertDeepAuditInput): number
     row.costEstimateUsd ?? 1.5,
   );
   return result.lastInsertRowid as number;
+}
+
+export function claimDeepAuditStart(
+  db: Database,
+  row: InsertDeepAuditInput,
+  options: ClaimDeepAuditOptions = {},
+): ClaimDeepAuditResult {
+  const claim = db.transaction(() => {
+    markStaleActiveDeepAudits(db, row.parentType, row.parentKey, options);
+    const active = getActiveAuditForParent(db, row.parentType, row.parentKey);
+    if (active) return { record: active, created: false };
+
+    try {
+      const id = insertDeepAudit(db, row);
+      const created = getDeepAuditById(db, id);
+      if (!created) throw new Error("Deep Audit row was not created");
+      return { record: created, created: true };
+    } catch (error) {
+      const current = getActiveAuditForParent(db, row.parentType, row.parentKey);
+      if (current) return { record: current, created: false };
+      throw error;
+    }
+  });
+  return claim();
 }
 
 export function getDeepAudit(db: Database, interactionId: string): DeepAuditRecord | null {
@@ -283,6 +358,13 @@ export function getAuditsForParent(
     ORDER BY started_at DESC, id DESC
   `).all(parentType, parentKey);
   return rows.map(mapDeepAuditRow);
+}
+
+export function getDeepAuditById(db: Database, id: number): DeepAuditRecord | null {
+  const row = db.query<DeepAuditRow, [number]>(
+    "SELECT * FROM deep_audits WHERE id = ? LIMIT 1",
+  ).get(id);
+  return row ? mapDeepAuditRow(row) : null;
 }
 
 export function updateAuditStatus(
@@ -362,6 +444,56 @@ function ensureChecksArticleTextColumn(db: Database): void {
   if (!hasArticleText) {
     db.run("ALTER TABLE checks ADD COLUMN article_text TEXT NOT NULL DEFAULT ''");
   }
+}
+
+function ensureChecksAuditJsonColumn(db: Database): void {
+  const columns = db.query<{ name: string }, []>("PRAGMA table_info(checks)").all();
+  const hasAuditJson = columns.some((column) => column.name === "audit_json");
+  if (!hasAuditJson) {
+    db.run("ALTER TABLE checks ADD COLUMN audit_json TEXT");
+  }
+}
+
+function repairDuplicateActiveDeepAudits(db: Database): void {
+  db.run(`
+    UPDATE deep_audits
+    SET
+      status = 'stale',
+      completed_at = COALESCE(completed_at, CAST(strftime('%s','now') AS INTEGER) * 1000),
+      error_message = COALESCE(error_message, 'Superseded by a newer active Deep Audit during schema repair.')
+    WHERE status IN ('pending', 'in_progress')
+      AND id NOT IN (
+        SELECT MAX(id)
+        FROM deep_audits
+        WHERE status IN ('pending', 'in_progress')
+        GROUP BY parent_type, parent_key
+      )
+  `);
+}
+
+function markStaleActiveDeepAudits(
+  db: Database,
+  parentType: DeepAuditParentType,
+  parentKey: string,
+  options: ClaimDeepAuditOptions,
+): void {
+  if (typeof options.staleBeforeMs !== "number") return;
+  const completedAt = options.completedAt ?? Date.now();
+  const staleMessage = options.staleMessage ?? "Deep Audit exceeded the stale threshold before provider interaction started.";
+  db.run(
+    `
+      UPDATE deep_audits
+      SET
+        status = 'stale',
+        completed_at = COALESCE(completed_at, ?),
+        error_message = COALESCE(error_message, ?)
+      WHERE parent_type = ?
+        AND parent_key = ?
+        AND status IN ('pending', 'in_progress')
+        AND started_at < ?
+    `,
+    [completedAt, staleMessage, parentType, parentKey, options.staleBeforeMs],
+  );
 }
 
 function mapDeepAuditRow(row: DeepAuditRow): DeepAuditRecord {

@@ -1,0 +1,14 @@
+{
+  "id": "he-fact-rummikub",
+  "language": "he",
+  "direction": "rtl",
+  "article": "## משחקים\n\nבסקירת משחקי קופסה משפחתיים בעברית יש מידע להורים שמחפשים פעילות ביתית. המשחק Rummikub מתאים לשני שחקנים בלבד.",
+  "expected": {
+    "claimsExtracted": 1,
+    "claimsChecked": 1,
+    "claimsSkipped": 0,
+    "issueType": "fact",
+    "quote": "המשחק Rummikub מתאים לשני שחקנים בלבד.",
+    "uiLocale": "he"
+  }
+}

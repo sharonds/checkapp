@@ -1,25 +1,19 @@
-const SAFE_SCHEMES = /^(https?|mailto):/i;
+import { sanitizeHttpReportUrl } from "../../../shared/report-url";
+
 // C0 control chars, minus \t (\x09), \n (\x0A), \r (\x0D). Plus DEL (\x7F).
 const CONTROL_CHARS = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g;
 
 /**
- * Return `raw` if it parses as a safe-scheme URL, else "#".
- * Blocks javascript:, data:, vbscript:, file:, etc.
+ * Return a sanitized HTTP(S) URL, else "#".
+ * Blocks javascript:, data:, vbscript:, file:, mailto:, etc.
+ * Credentials are stripped and token-like query params are redacted.
  *
  * Call this on ANY `<a href>` whose target comes from user-supplied or
  * upstream-provider data (Exa results, Semantic Scholar papers, Vectorize
  * metadata, etc).
  */
 export function safeHref(raw: unknown): string {
-  if (typeof raw !== "string" || raw.length === 0) return "#";
-  const trimmed = raw.trim();
-  if (!SAFE_SCHEMES.test(trimmed)) return "#";
-  try {
-    const u = new URL(trimmed);
-    return u.toString();
-  } catch {
-    return "#";
-  }
+  return sanitizeHttpReportUrl(raw) ?? "#";
 }
 
 /**

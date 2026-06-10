@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, test, expect } from "vitest";
-import { render, cleanup, within } from "@testing-library/react";
+import { fireEvent, render, cleanup, within, screen } from "@testing-library/react";
 import { ClaimDrillDown } from "@/components/ClaimDrillDown";
 import type { Finding } from "@/lib/normalize";
 
@@ -31,6 +31,18 @@ describe("ClaimDrillDown", () => {
     expect(within(container).getByRole("button", { name: /view suggested rewrite/i })).toBeDefined();
   });
 
+  test("renders Hebrew action label for Hebrew audit findings", () => {
+    const f: Finding = {
+      severity: "warn",
+      text: "בעיה",
+      quote: "המשחק Rummikub מתאים לשני שחקנים בלבד.",
+      rewrite: "יש לנסח מחדש.",
+      explanationLanguage: "he",
+    };
+    const { container } = render(<ClaimDrillDown finding={f} />);
+    expect(within(container).getByRole("button", { name: "הצגת ניסוח מוצע" })).toBeDefined();
+  });
+
   test("counts sources + citations in the button label", () => {
     const f: Finding = {
       severity: "warn", text: "t",
@@ -39,6 +51,40 @@ describe("ClaimDrillDown", () => {
     };
     const { container } = render(<ClaimDrillDown finding={f} />);
     expect(within(container).getByRole("button", { name: /view evidence \(3\)/i })).toBeDefined();
+  });
+
+  test("localizes Hebrew source similarity label", () => {
+    const f: Finding = {
+      severity: "warn",
+      text: "בעיה",
+      explanationLanguage: "he",
+      sources: [{ url: "https://example.com", title: "מקור", relevanceScore: 0.92 }],
+    };
+    const { container } = render(<ClaimDrillDown finding={f} />);
+    fireEvent.click(within(container).getByRole("button", { name: "הצגת ראיות (1)" }));
+
+    expect(screen.getByText("דמיון: 92%")).toBeDefined();
+    expect(document.body.textContent ?? "").not.toContain("92% similar");
+  });
+
+  test("labels fuzzy Hebrew locations as approximate in the evidence sheet", () => {
+    const f: Finding = {
+      severity: "warn",
+      text: "בעיה",
+      explanationLanguage: "he",
+      location: {
+        sectionId: "section-1",
+        sectionTitle: "משחקים",
+        paragraphIndex: 0,
+        sentenceIndex: 0,
+        matchQuality: "fuzzy",
+      } as any,
+      sources: [{ url: "https://example.com", title: "מקור" }],
+    };
+    const { container } = render(<ClaimDrillDown finding={f} />);
+    fireEvent.click(within(container).getByRole("button", { name: "הצגת ראיות (1)" }));
+
+    expect(screen.getByText("מיקום משוער: משחקים · פסקה 1 · משפט 1")).toBeDefined();
   });
 
   test("blocks javascript: hrefs via safeHref", () => {
