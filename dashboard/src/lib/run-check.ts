@@ -30,11 +30,13 @@ import { applyThreshold } from "../../../src/thresholds";
 // Import types and dashboard DB
 import type { Config } from "../../../src/config";
 import type { Skill, SkillResult } from "../../../src/skills/types";
+import type { AuditRecord } from "../../../src/audit/types";
 import { getContexts } from "./db";
 
 export interface CoreResult {
   results: SkillResult[];
   totalCostUsd: number;
+  audit?: AuditRecord;
 }
 
 export interface FactCheckSelection {
@@ -122,13 +124,13 @@ export async function runCheckCore(
   const effectiveConfig = { ...config, skills: { ...DEFAULT_SKILLS, ...(config.skills ?? {}) } };
   const skills = buildSkills(effectiveConfig, hooks);
   const registry = new SkillRegistry(skills);
-  const raw = await registry.runAll(text, effectiveConfig);
-  const results = raw.map((r) => ({
+  const raw = await registry.runAllWithAudit(text, effectiveConfig);
+  const results = raw.results.map((r) => ({
     ...r,
     verdict: applyThreshold(r.score, r.verdict, effectiveConfig.thresholds?.[r.skillId]),
   }));
   const totalCostUsd = results.reduce((s, r) => s + r.costUsd, 0);
-  return { results, totalCostUsd };
+  return { results, totalCostUsd, audit: raw.audit };
 }
 
 /**

@@ -1,0 +1,14 @@
+{
+  "id": "he-plagiarism-vitamin-c",
+  "language": "he",
+  "direction": "rtl",
+  "article": "## בריאות\n\nבכתבה רפואית לציבור הרחב מופיע הסבר בעברית. ויטמין C הוא תרכובת אורגנית מסיסה במים.",
+  "expected": {
+    "claimsExtracted": 0,
+    "claimsChecked": 0,
+    "claimsSkipped": 0,
+    "issueType": "plagiarism",
+    "quote": "ויטמין C הוא תרכובת אורגנית מסיסה במים.",
+    "uiLocale": "he"
+  }
+}

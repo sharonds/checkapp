@@ -7,6 +7,7 @@ import { insertCheck, type CheckRecord } from "./db.ts";
 import { fetchGoogleDoc, countWords } from "./gdoc.ts";
 import { runCheckCore, loadContextsIntoConfig } from "./checker-core.ts";
 import type { Skill, SkillResult } from "./skills/types.ts";
+import type { AuditRecord } from "./audit/types.ts";
 import { PlagiarismSkill } from "./skills/plagiarism.ts";
 import { AiDetectionSkill } from "./skills/aidetection.ts";
 import { SeoSkill } from "./skills/seo.ts";
@@ -28,6 +29,7 @@ export interface CheckResult {
   wordCount: number;
   results: SkillResult[];
   totalCostUsd: number;
+  audit?: AuditRecord;
 }
 
 export interface FactCheckSelection {
@@ -115,9 +117,9 @@ export async function runCheckHeadless(
     const text = options?.text ?? await fetchGoogleDoc(source);
     const wordCount = countWords(text);
     const hooks = mergeHooks(createTierTelemetryHooks(options?.telemetrySource ?? "cli"), options?.hooks);
-    const { results, totalCostUsd } = await runCheckCore(text, config, hooks);
-    const id = insertCheck(db, { source, wordCount, results, totalCostUsd, articleText: text });
-    return { id, source, wordCount, results, totalCostUsd };
+    const { results, totalCostUsd, audit } = await runCheckCore(text, config, hooks);
+    const id = insertCheck(db, { source, wordCount, results, totalCostUsd, articleText: text, audit });
+    return { id, source, wordCount, results, totalCostUsd, audit };
   } finally {
     db.close();
   }

@@ -2,6 +2,7 @@ import type { Skill, SkillResult, Finding } from "./types.ts";
 import type { Config } from "../config.ts";
 import { resolveProvider } from "../providers/resolve.ts";
 import { ltCheck } from "../providers/languagetool.ts";
+import { sanitizeProviderError } from "../audit/types.ts";
 
 const MAX_FINDINGS = 50;
 
@@ -108,7 +109,7 @@ export class GrammarSkill implements Skill {
     } catch (err) {
       return {
         skillId: this.id, name: this.name, score: 60, verdict: "warn",
-        summary: `LanguageTool check failed: ${(err as Error).message}`,
+        summary: `LanguageTool check failed: ${sanitizeProviderError((err as Error).message)}`,
         findings: [{ severity: "info", text: "LanguageTool endpoint unreachable — check network or endpoint config" }],
         costUsd: 0, provider: resolved.provider,
       };

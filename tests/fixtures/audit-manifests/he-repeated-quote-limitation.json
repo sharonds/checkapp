@@ -1,0 +1,15 @@
+{
+  "id": "he-repeated-quote-limitation",
+  "language": "he",
+  "direction": "rtl",
+  "article": "## חלק א\n\nהמשחק מתאים לשני שחקנים בלבד.\n\n## חלק ב\n\nהמשחק מתאים לשני שחקנים בלבד.",
+  "expected": {
+    "claimsExtracted": 2,
+    "claimsChecked": 2,
+    "claimsSkipped": 0,
+    "issueType": "known_limitation",
+    "quote": "המשחק מתאים לשני שחקנים בלבד.",
+    "uiLocale": "he",
+    "knownLimitation": "Repeated identical quotes resolve deterministically to the first exact match unless provider output includes source offsets."
+  }
+}

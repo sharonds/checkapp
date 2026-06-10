@@ -11,6 +11,9 @@ import { RegeneratePanel } from "@/components/regenerate-panel";
 import { FooterBar } from "@/components/footer-bar";
 import { DeepAuditPanel } from "@/components/DeepAuditPanel";
 import { formatDateTime, formatNumber } from "@/lib/format";
+import { parseStoredAuditRecord } from "../../../../../src/audit/types";
+import { AUDIT_UI, auditLocaleForLanguage } from "@/lib/audit-localization";
+import { sanitizeSourceLabel } from "../../../../../shared/report-url";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +55,11 @@ export default async function ReportDetailPage({
   }
 
   const checkTags = getTagsForCheck(check.id!);
+  const audit = parseStoredAuditRecord(check.auditJson);
+  const auditLocale = auditLocaleForLanguage(audit?.language);
+  const auditLabels = AUDIT_UI[auditLocale];
+  const auditDir = auditLocale === "he" ? "rtl" : "ltr";
+  const sourceLabel = sanitizeSourceLabel(check.source);
 
   let results: SkillResult[] = [];
   try {
@@ -99,7 +107,7 @@ export default async function ReportDetailPage({
   const dateStr = formatDateTime(check.createdAt);
 
   return (
-    <div className="flex flex-1 flex-col">
+    <div className="flex flex-1 flex-col" dir={auditDir} lang={auditLocale}>
       <div className="flex-1 space-y-8 px-8 py-10">
         {/* Back link */}
         <Link
@@ -107,7 +115,7 @@ export default async function ReportDetailPage({
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
-          Back to reports
+          {auditLabels.backToReports}
         </Link>
 
         {/* Header */}
@@ -115,10 +123,10 @@ export default async function ReportDetailPage({
           <ScoreRing score={avgScore} verdict={verdict} size={120} />
           <div className="flex-1 min-w-0 space-y-3">
             <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-semibold tracking-tight truncate">
-                {check.source}
+              <h1 className="text-2xl font-semibold tracking-tight truncate" dir="auto">
+                {sourceLabel}
               </h1>
-              <VerdictBadge verdict={verdict} />
+              <VerdictBadge verdict={verdict} locale={auditLocale} />
             </div>
 
             <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
@@ -128,7 +136,7 @@ export default async function ReportDetailPage({
               </span>
               <span className="inline-flex items-center gap-1">
                 <FileText className="h-3.5 w-3.5" />
-                {formatNumber(check.wordCount)} words
+                {formatNumber(check.wordCount)} {auditLabels.words}
               </span>
               <span className="inline-flex items-center gap-1">
                 <DollarSign className="h-3.5 w-3.5" />
@@ -138,13 +146,16 @@ export default async function ReportDetailPage({
 
             {/* Export buttons */}
             <ExportButtons
-          source={check.source}
+          source={sourceLabel}
           score={allSkipped ? null : avgScore}
           verdict={verdict}
               wordCount={check.wordCount}
               totalCost={check.totalCost}
               createdAt={check.createdAt}
               results={results}
+              auditLanguage={audit?.language}
+              auditDirection={audit?.direction}
+              auditCoverage={audit?.coverage}
             />
           </div>
         </div>
@@ -152,7 +163,7 @@ export default async function ReportDetailPage({
         {/* Tags */}
         <div>
           <h2 className="mb-2 text-sm font-medium text-muted-foreground">
-            Tags
+            {auditLabels.tags}
           </h2>
           <ReportTags checkId={check.id!} initialTags={checkTags} />
         </div>
@@ -162,18 +173,18 @@ export default async function ReportDetailPage({
         {/* Fix Issues panel */}
         {(() => {
           const hasFixableIssues = results.some(r => r.findings?.some((f: { severity?: string; quote?: string }) => (f.severity === "warn" || f.severity === "error") && f.quote));
-          return <RegeneratePanel source={check.source} hasIssues={hasFixableIssues} />;
+          return <RegeneratePanel source={sourceLabel} hasIssues={hasFixableIssues} />;
         })()}
 
         {/* Skill results */}
         {results.length > 0 && (
           <div>
             <h2 className="mb-3 text-sm font-medium text-muted-foreground">
-              Skill Results
+              {auditLabels.skillResults}
             </h2>
             <div className="space-y-4">
               {results.map((result, i) => (
-                <SkillCard key={`${result.skillId}-${i}`} result={result} />
+                <SkillCard key={`${result.skillId}-${i}`} result={result} locale={auditLocale} coverage={audit?.coverage} />
               ))}
             </div>
           </div>

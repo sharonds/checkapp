@@ -60,9 +60,9 @@ CheckApp supports four LLM providers for AI-powered skills (fact check, tone, le
 
 Set the provider via `LLM_PROVIDER` env var or the Settings page in the dashboard.
 
-### Language Support (v1.3.0)
+### Language Support
 
-CheckApp is tuned and tested for **English and Hebrew**. Other scripts (Arabic, Chinese, Japanese, Korean, Russian, etc.) are detected, but SEO tokenization, passage-matching (`MIN_WORDS` uses whitespace tokens), and sentence splitting are NOT tuned for them. Non-Latin / non-Hebrew content may produce approximate or misleading scores. Full CJK + Arabic support is planned for Phase 8.
+CheckApp is tuned and tested for **English and Hebrew**. Structured audit reports localize CheckApp-owned labels in English/Hebrew, render Hebrew reports RTL, and use automatic direction for mixed quotes/evidence. Other scripts (Arabic, Chinese, Japanese, Korean, Russian, etc.) are detected, but SEO tokenization, passage-matching (`MIN_WORDS` uses whitespace tokens), and sentence splitting are not tuned for them. Non-Latin / non-Hebrew content may produce approximate or misleading scores.
 
 ### Tone Rewrite Suggestions
 
@@ -101,7 +101,7 @@ Classifies the article's content purpose (tutorial, product announcement, case s
 
 ## Web Dashboard
 
-A local Next.js web interface started with `checkapp --ui` or `cd dashboard && bun run dev`.
+A local Next.js web interface for source checkouts. Start it with `checkapp --ui` when the sibling `dashboard/` directory is present, or directly with `cd dashboard && bun run dev`. Published npm/binary installs do not currently bundle the dashboard app.
 
 | Page | Description |
 |------|-------------|
@@ -125,7 +125,7 @@ Additional dashboard features:
 
 - **JSON API** — RESTful endpoints at `http://localhost:3000/api` for running checks, managing tags, toggling skills, and reading config. See [docs/api.md](api.md).
 - **CLI flags:**
-  - `--ui` — Start the web dashboard and open browser
+  - `--ui` — Start the web dashboard and open browser when running from a source checkout
   - `--batch <dir>` — Check all files in a directory
   - `--output <path>` — Export report to `.md` or `.html`
   - `--history` — Show recent checks from SQLite

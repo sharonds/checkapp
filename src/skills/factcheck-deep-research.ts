@@ -4,7 +4,7 @@ import {
   getActiveAuditForParent,
   getDeepAudit,
   openDb,
-  insertDeepAudit,
+  claimDeepAuditStart,
   updateAuditStatus,
   type DB,
   type DeepAuditParentType,
@@ -22,9 +22,12 @@ import { BASE, createInteraction, extractText, type InteractionResponse } from "
 import type { Skill, SkillResult } from "./types.ts";
 import { isE2E, assertMocksOnly } from "../e2e/mode.ts";
 import { loadScenario } from "../e2e/fixtures.ts";
+import { sanitizeProviderError } from "../audit/types.ts";
 
 const ESTIMATED_COMPLETION_MS = 15 * 60_000;
+const STALE_THRESHOLD_MS = 90 * 60_000;
 const DEFAULT_COST_USD = 1.5;
+const STALE_MESSAGE = "Deep Audit exceeded the 90 minute stale threshold.";
 
 export interface FactCheckDeepResearchSkillOptions {
   db?: DB;
@@ -81,13 +84,28 @@ export class FactCheckDeepResearchSkill implements Skill {
     });
 
     return this.withDb(async (db) => {
-      const active = getActiveAuditForParent(db, parentType, parentKey);
-      if (active?.interactionId) {
-        const status = active.status === "pending" ? "pending" : "in_progress";
+      const startedAt = this.now();
+      const claim = claimDeepAuditStart(
+        db,
+        {
+          parentType,
+          parentKey,
+          requestedBy,
+          startedAt,
+          costEstimateUsd: DEFAULT_COST_USD,
+        },
+        {
+          staleBeforeMs: startedAt - STALE_THRESHOLD_MS,
+          completedAt: startedAt,
+          staleMessage: STALE_MESSAGE,
+        },
+      );
+      if (!claim.created) {
+        const status = claim.record.status === "pending" ? "pending" : "in_progress";
         return {
-          interactionId: active.interactionId,
+          interactionId: claim.record.interactionId,
           status,
-          estimatedCompletion: active.startedAt + ESTIMATED_COMPLETION_MS,
+          estimatedCompletion: claim.record.startedAt + ESTIMATED_COMPLETION_MS,
         };
       }
 
@@ -97,15 +115,7 @@ export class FactCheckDeepResearchSkill implements Skill {
         throw new Error("Gemini Deep Research capability is currently unavailable");
       }
 
-      const pendingAuditId = active?.id ?? null;
-      const startedAt = this.now();
-      const auditId = pendingAuditId ?? insertDeepAudit(db, {
-        parentType,
-        parentKey,
-        requestedBy,
-        startedAt,
-        costEstimateUsd: DEFAULT_COST_USD,
-      });
+      const auditId = claim.record.id;
 
       try {
         const { id: interactionId } = isE2E()
@@ -208,11 +218,11 @@ export class FactCheckDeepResearchSkill implements Skill {
     }
 
     if (status === "failed") {
-      const error = data.error?.trim() || `Interaction ${interactionId} failed`;
+      const error = sanitizeProviderError(data.error?.trim() || "") || `Interaction ${interactionId} failed`;
       return this.withDb((db) => {
         updateAuditStatus(db, interactionId, "failed", {
           errorMessage: error,
-          resultJson: JSON.stringify(data),
+          resultJson: JSON.stringify({ ...data, error }),
           completedAt: this.now(),
         });
         const audit = getDeepAudit(db, interactionId);
@@ -367,5 +377,5 @@ function failedResult(skill: FactCheckDeepResearchSkill, error: string): SkillRe
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return sanitizeProviderError(error instanceof Error ? error.message : String(error));
 }

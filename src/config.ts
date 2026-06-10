@@ -1,8 +1,9 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from "fs";
+import { chmodSync, existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from "fs";
 import { homedir } from "os";
 import { dirname, join } from "path";
 import lockfile from "proper-lockfile";
 import type { Threshold } from "./thresholds.ts";
+import type { FactAuditConfig } from "./audit/budget.ts";
 
 export interface SkillsConfig {
   plagiarism: boolean;
@@ -32,6 +33,7 @@ export interface Config {
   llmProvider?: "minimax" | "anthropic" | "openrouter" | "gemini";
   factCheckTier?: "basic" | "standard" | "premium";
   factCheckTierFlag?: boolean;
+  factAudit?: FactAuditConfig;
   toneGuideFile?: string;
   skills: SkillsConfig;
   thresholds?: Record<string, Threshold>;
@@ -118,6 +120,7 @@ export function readConfig(): Config {
     })(),
     factCheckTier: file.factCheckTier,
     factCheckTierFlag: file.factCheckTierFlag,
+    factAudit: file.factAudit,
     toneGuideFile: process.env.TONE_GUIDE_FILE ?? file.toneGuideFile,
     skills: { ...DEFAULT_SKILLS, ...(file.skills ?? {}) },
     thresholds: file.thresholds,
@@ -127,22 +130,33 @@ export function readConfig(): Config {
 }
 
 export async function writeConfig(config: Partial<Config>): Promise<void> {
-  mkdirSync(dirname(configFile()), { recursive: true });
+  mkdirSync(dirname(configFile()), { recursive: true, mode: 0o700 });
+  chmodPrivate(dirname(configFile()), 0o700);
   // Atomic idempotent bootstrap: exclusive-create succeeds once, subsequent
   // callers get EEXIST and fall through. No TOCTOU between existsSync and write.
   try {
-    writeFileSync(configFile(), "{}", { flag: "wx" });
+    writeFileSync(configFile(), "{}", { flag: "wx", mode: 0o600 });
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
   }
+  chmodPrivate(configFile(), 0o600);
   const release = await lockfile.lock(configFile(), {
     retries: { retries: 5, minTimeout: 50, maxTimeout: 200 },
   });
   try {
     const existing = JSON.parse(readFileSync(configFile(), "utf-8")) as Config;
-    writeFileSync(configFile(), JSON.stringify({ ...existing, ...config }, null, 2));
+    writeFileSync(configFile(), JSON.stringify({ ...existing, ...config }, null, 2), { mode: 0o600 });
+    chmodPrivate(configFile(), 0o600);
   } finally {
     await release();
+  }
+}
+
+function chmodPrivate(path: string, mode: number): void {
+  try {
+    chmodSync(path, mode);
+  } catch {
+    // Best effort on filesystems that do not support POSIX modes.
   }
 }
 

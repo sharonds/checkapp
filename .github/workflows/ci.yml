@@ -29,21 +29,34 @@ jobs:
       - name: Check registry drift
         run: bun run check:registry
 
+      - name: Check docs contracts
+        run: bun run check:docs
+
+      - name: Check npm package surface
+        run: bun run check:package
+
       - name: Run CLI tests
         run: bun run test
 
       - name: Run dashboard tests
         run: cd dashboard && bunx vitest run
 
+      - name: Typecheck dashboard
+        run: cd dashboard && bunx tsc --noEmit --pretty false
+
+      - name: Build dashboard
+        run: cd dashboard && bun run build
+
       - name: Install agent-browser
         run: npm install -g agent-browser@0.26.0 && agent-browser install
+
+      - name: Run production browser E2E lane
+        run: bun run test:e2e:browser:prod
+        timeout-minutes: 5
 
       - name: Run browser E2E lane
         run: bun run test:e2e:browser
         timeout-minutes: 5
-
-      - name: Build dashboard
-        run: cd dashboard && bun run build
 
       - name: Build CLI binaries
         run: bash build.sh

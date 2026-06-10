@@ -1,6 +1,6 @@
 import { test, expect, describe, beforeEach, afterEach } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdtempSync, rmSync, existsSync } from "fs";
+import { mkdtempSync, rmSync, existsSync, statSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import {
@@ -17,10 +17,41 @@ import {
   getCheckArticleText,
   getActiveAuditForParent,
   getAuditsForParent,
+  claimDeepAuditStart,
   insertDeepAudit,
+  getCheckById,
 } from "./db.ts";
+import type { AuditRecord } from "./audit/types.ts";
 
 let db: Database;
+
+const auditRecord: AuditRecord = {
+  version: 1,
+  auditId: "audit-db",
+  language: "en",
+  direction: "ltr",
+  coverage: {
+    wordsScanned: 5,
+    sectionsDetected: 1,
+    paragraphsScanned: 1,
+    sentencesScanned: 1,
+    claimsExtracted: 1,
+    claimsChecked: 1,
+    claimsSkipped: 0,
+    skipReasons: {},
+    plagiarismPassagesChecked: 0,
+    plagiarismPassagesSkipped: 0,
+    providerFailures: 0,
+    providerRetries: 0,
+  },
+  segments: [],
+  claims: [],
+  claimDecisions: [],
+  factAssessments: [],
+  plagiarismFindings: [],
+  providerAttempts: [{ id: "p1", provider: "fake", status: "success" }],
+  createdAt: "2026-06-09T00:00:00.000Z",
+};
 
 beforeEach(() => {
   db = new Database(":memory:");
@@ -38,6 +69,27 @@ describe("openDb", () => {
     const db = openDb(nested);
     expect(existsSync(nested)).toBe(true);
     db.close();
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  test("creates owner-only database file when POSIX modes are supported", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "checkapp-db-mode-"));
+    const path = join(tmp, "history.db");
+    const opened = openDb(path);
+    opened.close();
+    expect(statSync(path).mode & 0o777).toBe(0o600);
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  test("enables WAL and a busy timeout for file-backed databases", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "checkapp-db-pragma-"));
+    const path = join(tmp, "history.db");
+    const opened = openDb(path);
+
+    expect(opened.query<{ journal_mode: string }, []>("PRAGMA journal_mode").get()?.journal_mode).toBe("wal");
+    expect(opened.query<{ timeout: number }, []>("PRAGMA busy_timeout").get()?.timeout).toBeGreaterThanOrEqual(5000);
+
+    opened.close();
     rmSync(tmp, { recursive: true, force: true });
   });
 });
@@ -63,11 +115,49 @@ describe("insertCheck", () => {
     });
 
     expect(getCheckArticleText(db, id)).toBe("Stored article text");
-    expect(queryRecent(db, 1)[0]?.articleText).toBe("Stored article text");
+    expect(queryRecent(db, 1)[0]?.articleText).toBeUndefined();
+  });
+
+  test("persists audit_json for detail reads but omits full audit from recent lists", () => {
+    const id = insertCheck(db, {
+      source: "./article.md",
+      wordCount: 5,
+      results: [],
+      totalCostUsd: 0,
+      articleText: "Stored article text",
+      audit: auditRecord,
+    });
+
+    expect(getCheckById(db, id)?.audit?.auditId).toBe("audit-db");
+    expect(getCheckById(db, id)?.audit?.providerAttempts).toHaveLength(1);
+    expect(queryRecent(db, 1)[0]?.audit).toBeUndefined();
   });
 });
 
 describe("createSchema", () => {
+  test("creates the expected checks schema contract", () => {
+    const columns = db
+      .query<{
+        name: string;
+        type: string;
+        notnull: number;
+        dflt_value: string | null;
+        pk: number;
+      }, []>("PRAGMA table_info(checks)")
+      .all();
+    const byName = new Map(columns.map((column) => [column.name, column]));
+
+    expect(byName.get("id")?.pk).toBe(1);
+    expect(byName.get("source")).toMatchObject({ type: "TEXT", notnull: 1 });
+    expect(byName.get("word_count")).toMatchObject({ type: "INTEGER", notnull: 1, dflt_value: "0" });
+    expect(byName.get("results_json")).toMatchObject({ type: "TEXT", notnull: 1, dflt_value: "'[]'" });
+    expect(byName.get("total_cost")).toMatchObject({ type: "REAL", notnull: 1, dflt_value: "0" });
+    expect(byName.get("article_text")).toMatchObject({ type: "TEXT", notnull: 1, dflt_value: "''" });
+    expect(byName.get("audit_json")).toMatchObject({ type: "TEXT", notnull: 0 });
+    expect(byName.get("created_at")?.notnull).toBe(1);
+    expect(byName.get("created_at")?.dflt_value).toContain("datetime('now')");
+  });
+
   test("adds article_text to legacy checks tables", () => {
     const legacyDb = new Database(":memory:");
     legacyDb.run(`
@@ -89,6 +179,7 @@ describe("createSchema", () => {
       .map((column) => column.name);
 
     expect(columns).toContain("article_text");
+    expect(columns).toContain("audit_json");
     legacyDb.close();
   });
 });
@@ -107,6 +198,17 @@ describe("queryRecent", () => {
       insertCheck(db, { source: `${i}.md`, wordCount: 100, results: [], totalCostUsd: 0 });
     }
     expect(queryRecent(db, 3)).toHaveLength(3);
+  });
+
+  test("tolerates malformed legacy results_json in history lists", () => {
+    db.run(`
+      INSERT INTO checks (source, word_count, results_json, total_cost)
+      VALUES ('bad-history.md', 10, '{not json', 0)
+    `);
+
+    const rows = queryRecent(db, 1);
+    expect(rows[0].source).toBe("bad-history.md");
+    expect(rows[0].results).toEqual([]);
   });
 });
 
@@ -158,12 +260,26 @@ describe("contexts", () => {
 
 describe("deep_audits", () => {
   test("returns the active audit for a parent and ignores terminal audits", () => {
-    insertDeepAudit(db, {
+    const olderId = insertDeepAudit(db, {
       parentType: "content_hash",
       parentKey: "hash-1",
       requestedBy: "mcp",
       startedAt: 100,
     });
+    db.run(
+      "UPDATE deep_audits SET interaction_id = ?, status = 'failed', completed_at = ? WHERE id = ?",
+      ["int-failed", 150, olderId],
+    );
+    const completedId = insertDeepAudit(db, {
+      parentType: "content_hash",
+      parentKey: "hash-1",
+      requestedBy: "cli",
+      startedAt: 180,
+    });
+    db.run(
+      "UPDATE deep_audits SET interaction_id = ?, status = 'completed', completed_at = ? WHERE id = ?",
+      ["int-completed", 190, completedId],
+    );
     const activeId = insertDeepAudit(db, {
       parentType: "content_hash",
       parentKey: "hash-1",
@@ -174,16 +290,6 @@ describe("deep_audits", () => {
       "UPDATE deep_audits SET interaction_id = ?, status = 'in_progress' WHERE id = ?",
       ["int-active", activeId],
     );
-    const completedId = insertDeepAudit(db, {
-      parentType: "content_hash",
-      parentKey: "hash-1",
-      requestedBy: "cli",
-      startedAt: 300,
-    });
-    db.run(
-      "UPDATE deep_audits SET interaction_id = ?, status = 'completed', completed_at = ? WHERE id = ?",
-      ["int-completed", 400, completedId],
-    );
 
     const active = getActiveAuditForParent(db, "content_hash", "hash-1");
 
@@ -191,5 +297,58 @@ describe("deep_audits", () => {
     expect(active?.interactionId).toBe("int-active");
     expect(active?.status).toBe("in_progress");
     expect(getAuditsForParent(db, "content_hash", "hash-1")).toHaveLength(3);
+  });
+
+  test("claimDeepAuditStart creates only one active audit for a parent", () => {
+    const first = claimDeepAuditStart(db, {
+      parentType: "content_hash",
+      parentKey: "claim-hash",
+      requestedBy: "mcp",
+      startedAt: 100,
+    });
+    const second = claimDeepAuditStart(db, {
+      parentType: "content_hash",
+      parentKey: "claim-hash",
+      requestedBy: "cli",
+      startedAt: 200,
+    });
+
+    expect(first.created).toBe(true);
+    expect(second.created).toBe(false);
+    expect(second.record.id).toBe(first.record.id);
+    expect(second.record.requestedBy).toBe("mcp");
+    expect(getAuditsForParent(db, "content_hash", "claim-hash")).toHaveLength(1);
+  });
+
+  test("claimDeepAuditStart retires stale pending rows before creating a new active audit", () => {
+    const stale = claimDeepAuditStart(db, {
+      parentType: "content_hash",
+      parentKey: "stale-hash",
+      requestedBy: "mcp",
+      startedAt: 100,
+    });
+    const fresh = claimDeepAuditStart(
+      db,
+      {
+        parentType: "content_hash",
+        parentKey: "stale-hash",
+        requestedBy: "dashboard",
+        startedAt: 10_000,
+      },
+      {
+        staleBeforeMs: 1_000,
+        completedAt: 10_000,
+        staleMessage: "stale pending test",
+      },
+    );
+
+    const audits = getAuditsForParent(db, "content_hash", "stale-hash");
+    expect(stale.created).toBe(true);
+    expect(fresh.created).toBe(true);
+    expect(fresh.record.id).not.toBe(stale.record.id);
+    expect(audits).toEqual([
+      expect.objectContaining({ id: fresh.record.id, status: "pending", requestedBy: "dashboard" }),
+      expect.objectContaining({ id: stale.record.id, status: "stale", errorMessage: "stale pending test" }),
+    ]);
   });
 });

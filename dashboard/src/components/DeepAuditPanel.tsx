@@ -34,6 +34,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { safeHref } from "@/lib/sanitize";
 
 interface DeepAuditPanelProps {
   reportId: number;
@@ -774,16 +775,21 @@ function renderInline(text: string, keyPrefix: string) {
     } else {
       const link = matched.match(/^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/);
       if (link) {
+        const href = safeHref(link[2]);
         parts.push(
-          <a
-            key={`${keyPrefix}-${partIndex}`}
-            href={link[2]}
-            target="_blank"
-            rel="noreferrer"
-            className="text-sky-700 underline underline-offset-2"
-          >
-            {link[1]}
-          </a>,
+          href === "#"
+            ? <span key={`${keyPrefix}-${partIndex}`}>{link[1]}</span>
+            : (
+              <a
+                key={`${keyPrefix}-${partIndex}`}
+                href={href}
+                target="_blank"
+                rel="noreferrer"
+                className="text-sky-700 underline underline-offset-2"
+              >
+                {link[1]}
+              </a>
+            ),
         );
       } else {
         parts.push(matched);

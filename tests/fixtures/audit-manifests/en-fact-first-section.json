@@ -1,0 +1,11 @@
+{
+  "id": "en-fact-first-section",
+  "language": "en",
+  "direction": "ltr",
+  "article": "The board game is for two to four players.",
+  "expected": {
+    "claimsExtracted": 1,
+    "claimsChecked": 1,
+    "claimsSkipped": 0
+  }
+}

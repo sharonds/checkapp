@@ -1,0 +1,14 @@
+{
+  "id": "mixed-he-en-game-claim",
+  "language": "he",
+  "direction": "rtl",
+  "article": "## משחקים\n\nהמשחק Rummikub מתאים לשני שחקנים בלבד.",
+  "expected": {
+    "claimsExtracted": 1,
+    "claimsChecked": 1,
+    "claimsSkipped": 0,
+    "issueType": "fact",
+    "quote": "המשחק Rummikub מתאים לשני שחקנים בלבד.",
+    "uiLocale": "he"
+  }
+}

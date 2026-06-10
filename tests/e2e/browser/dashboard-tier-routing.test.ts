@@ -31,11 +31,10 @@ async function runCheckAndFetch(handle: DashboardHandle, token: string, scenario
     throw new Error(`/api/checks POST returned ${postRes.status}: ${errText}`);
   }
   const { id } = (await postRes.json()) as { id: number };
-  const listRes = await fetch(`${handle.url}/api/checks?limit=200`);
-  const list = (await listRes.json()) as Array<{ id: number; results: Array<{ skillId: string; verdict: string; provider?: string; findings?: Array<{ text: string }> }> }>;
-  const row = list.find((r) => r.id === id);
-  if (!row) throw new Error(`inserted check id=${id} not found in /api/checks list`);
-  return { id, results: row.results };
+  const detailRes = await fetch(`${handle.url}/api/checks/${id}`);
+  const detail = (await detailRes.json()) as { results?: Array<{ skillId: string; verdict: string; provider?: string; findings?: Array<{ text: string }> }> };
+  if (!detail.results) throw new Error(`inserted check id=${id} detail did not include results`);
+  return { id, results: detail.results };
 }
 
 // Next.js 16 dev holds a single-instance lock per dashboard dir, so each
@@ -134,7 +133,7 @@ describe("dashboard — tier routing via /api/checks", () => {
         },
         async ({ handle, temp }) => {
           const rootRes = await fetch(handle.url);
-          expect(rootRes.status).toBeLessThan(500);
+          expect(rootRes.status).toBeLessThan(400);
 
           const proc = Bun.spawn(
             [

@@ -21,6 +21,8 @@ export interface DashboardHandle {
   stop: () => Promise<void>;
 }
 
+export const DASHBOARD_PROD_COMMAND = ["bun", "run", "start"] as const;
+
 function pickFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const srv = createServer();
@@ -43,7 +45,8 @@ async function waitForReady(url: string, timeoutMs: number): Promise<void> {
   while (Date.now() < deadline) {
     try {
       const res = await fetch(url, { signal: AbortSignal.timeout(1500) });
-      if (res.status < 500) return;
+      if (res.status < 400) return;
+      lastErr = new Error(`HTTP ${res.status}: ${await res.text()}`);
     } catch (err) {
       lastErr = err;
     }
@@ -58,7 +61,7 @@ export async function bootDashboardProd(opts: BootProdOptions): Promise<Dashboar
   const port = await pickFreePort();
   const url = `http://127.0.0.1:${port}`;
 
-  const proc = Bun.spawn(["bun", "run", "start", "--port", String(port)], {
+  const proc = Bun.spawn([...DASHBOARD_PROD_COMMAND, "--port", String(port)], {
     cwd: dashboardDir,
     env: {
       ...process.env,

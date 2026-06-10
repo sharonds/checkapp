@@ -6,8 +6,16 @@ describe("safeHref", () => {
     expect(safeHref("https://example.com")).toBe("https://example.com/");
     expect(safeHref("http://example.com/path?q=1")).toBe("http://example.com/path?q=1");
   });
-  test("allows mailto", () => {
-    expect(safeHref("mailto:a@b.c")).toBe("mailto:a@b.c");
+  test("blocks mailto for provider/source links", () => {
+    expect(safeHref("mailto:a@b.c")).toBe("#");
+  });
+  test("strips credentials and redacts token-like query params", () => {
+    expect(safeHref("https://user:pass@example.com/path?api_key=secret&utm_source=x")).toBe(
+      "https://example.com/path?api_key=%5Bredacted%5D&utm_source=x"
+    );
+    expect(safeHref("https://example.com/path?access-token=secret&ok=1")).toBe(
+      "https://example.com/path?access-token=%5Bredacted%5D&ok=1"
+    );
   });
   test("blocks javascript: (case-insensitive)", () => {
     expect(safeHref("javascript:alert(1)")).toBe("#");

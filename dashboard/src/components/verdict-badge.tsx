@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { localizedVerdictLabel, type AuditLocale } from "@/lib/audit-localization";
 
 const VERDICT_STYLES = {
   pass: "bg-score-pass text-white",
@@ -9,9 +10,10 @@ const VERDICT_STYLES = {
 
 interface VerdictBadgeProps {
   verdict: "pass" | "warn" | "fail" | "skipped";
+  locale?: AuditLocale;
 }
 
-export function VerdictBadge({ verdict }: VerdictBadgeProps) {
+export function VerdictBadge({ verdict, locale = "en" }: VerdictBadgeProps) {
   return (
     <span
       className={cn(
@@ -19,7 +21,7 @@ export function VerdictBadge({ verdict }: VerdictBadgeProps) {
         VERDICT_STYLES[verdict]
       )}
     >
-      {verdict.toUpperCase()}
+      {localizedVerdictLabel(verdict, locale)}
     </span>
   );
 }

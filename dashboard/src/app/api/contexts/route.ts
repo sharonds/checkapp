@@ -1,9 +1,11 @@
 import { jsonWithCors } from "@/lib/cors";
 import { getContexts, upsertContext } from "@/lib/db";
-import { guardLocalMutation } from "@/lib/guard-local";
+import { guardLocalMutation, guardLocalReadOnly } from "@/lib/guard-local";
 import { NextRequest } from "next/server";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const blocked = guardLocalReadOnly(req);
+  if (blocked) return blocked;
   try {
     const all = getContexts();
     return jsonWithCors(all);

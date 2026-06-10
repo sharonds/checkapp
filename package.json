@@ -11,10 +11,22 @@
   },
   "files": [
     "src/",
+    "!src/**/*.test.ts",
+    "!src/**/__tests__/**",
+    "!src/testing/**",
+    "shared/",
     "build.sh",
     "README.md",
     "LICENSE",
-    "AGENTS.md"
+    "AGENTS.md",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
+    "docs/api.md",
+    "docs/security.md",
+    "docs/ARCHITECTURE.md",
+    "docs/custom-skills.md",
+    "docs/features.md",
+    "docs/ROADMAP-IDEAS.md"
   ],
   "keywords": [
     "plagiarism",
@@ -42,13 +54,17 @@
     "setup": "bun src/index.tsx --setup",
     "build": "bash build.sh",
     "dev": "bun --watch src/index.tsx",
-    "test": "bun test src/*.test.ts src/skills/*.test.ts src/utils/*.test.ts src/providers/*.test.ts src/cli/*.test.ts src/cost/*.test.ts tests/e2e/*.test.ts tests/golden/*.test.ts",
+    "test": "bun test src/*.test.ts src/audit/*.test.ts src/skills/*.test.ts src/utils/*.test.ts src/providers/*.test.ts src/cli/*.test.ts src/cost/*.test.ts tests/e2e/*.test.ts tests/golden/*.test.ts",
     "test:dashboard": "cd dashboard && bunx vitest run",
     "test:e2e:browser": "bun test tests/e2e/browser/*.test.ts",
+    "test:e2e:browser:prod": "bun test tests/e2e/browser/prod-localized-report.test.ts",
     "test:e2e:live": "bun test tests/e2e/live/*.test.ts",
     "test:gemini-grounded:scenarios": "bun run scripts/validate-gemini-grounded-scenarios.ts",
     "test:all": "bun run test && bun run test:dashboard",
-    "check:registry": "bun run scripts/check-registry-parity.ts"
+    "test:release": "bun run test && bun run test:dashboard && bun run check:registry && bun run check:docs && bun run check:package && cd dashboard && bunx tsc --noEmit --pretty false && bun run build && cd .. && bun run test:e2e:browser:prod && bun run test:e2e:browser && bun run build",
+    "check:registry": "bun run scripts/check-registry-parity.ts",
+    "check:docs": "bun run scripts/check-docs-contracts.ts",
+    "check:package": "bun run scripts/check-package-surface.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.99.0",

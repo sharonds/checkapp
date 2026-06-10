@@ -18,6 +18,7 @@ import type { Config } from "./config.ts";
 import { readConfig, writeConfig } from "./config.ts";
 import { primeGeminiCapabilityHealthCheck } from "./providers/gemini-capability.ts";
 import { FactCheckDeepResearchSkill } from "./skills/factcheck-deep-research.ts";
+import { publicCheckSummary } from "../shared/check-summary.ts";
 
 const ESTIMATED_COMPLETION_MS = 15 * 60_000;
 
@@ -175,7 +176,8 @@ export async function handleToolCall(name: string, args: Record<string, unknown>
       try {
         const limit = (args.limit as number) ?? 20;
         const checks = queryRecent(db, limit);
-        return { content: [{ type: "text", text: JSON.stringify(checks, null, 2) }] };
+        const summaries = checks.map((check) => publicCheckSummary(check));
+        return { content: [{ type: "text", text: JSON.stringify(summaries, null, 2) }] };
       } finally {
         db.close();
       }
@@ -186,7 +188,8 @@ export async function handleToolCall(name: string, args: Record<string, unknown>
         const id = args.id as number;
         const check = getCheckById(db, id);
         if (!check) return { content: [{ type: "text", text: `Report ${id} not found` }], isError: true };
-        return { content: [{ type: "text", text: JSON.stringify(check, null, 2) }] };
+        const { articleText: _articleText, ...publicReport } = check;
+        return { content: [{ type: "text", text: JSON.stringify(publicReport, null, 2) }] };
       } finally {
         db.close();
       }
@@ -226,6 +229,9 @@ export async function handleToolCall(name: string, args: Record<string, unknown>
       const config = mcpServerDeps.readConfig();
       const skillId = args.skillId as string;
       const enabled = args.enabled as boolean;
+      if (!(skillId in config.skills)) {
+        return errorResponse(`Unknown skill '${skillId}'`);
+      }
       const skills = { ...config.skills, [skillId]: enabled };
       await mcpServerDeps.writeConfig({ skills });
       return { content: [{ type: "text", text: `Skill '${skillId}' ${enabled ? "enabled" : "disabled"}` }] };

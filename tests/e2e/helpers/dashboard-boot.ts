@@ -38,7 +38,8 @@ async function waitForReady(url: string, timeoutMs: number): Promise<void> {
   while (Date.now() < deadline) {
     try {
       const res = await fetch(url, { signal: AbortSignal.timeout(1500) });
-      if (res.status < 500) return;
+      if (res.status < 400) return;
+      lastErr = new Error(`HTTP ${res.status}: ${await res.text()}`);
     } catch (err) {
       lastErr = err;
     }

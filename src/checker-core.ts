@@ -6,23 +6,25 @@ import { buildSkills, type RunCheckHooks } from "./checker.ts";
 import { openDb, loadAllContexts, type DB } from "./db.ts";
 import type { Config } from "./config.ts";
 import type { SkillResult } from "./skills/types.ts";
+import type { AuditRecord } from "./audit/types.ts";
 
 export interface CoreResult {
   results: SkillResult[];
   totalCostUsd: number;
+  audit?: AuditRecord;
 }
 
 /** Pure pipeline: text + config → skill results. No DB write, no I/O beyond skills' own network calls. */
 export async function runCheckCore(text: string, config: Config, hooks?: RunCheckHooks): Promise<CoreResult> {
   const skills = buildSkills(config, hooks);
   const registry = new SkillRegistry(skills);
-  const raw = await registry.runAll(text, config);
-  const results = raw.map(r => ({
+  const raw = await registry.runAllWithAudit(text, config);
+  const results = raw.results.map(r => ({
     ...r,
     verdict: applyThreshold(r.score, r.verdict, config.thresholds?.[r.skillId]),
   }));
   const totalCostUsd = results.reduce((s, r) => s + r.costUsd, 0);
-  return { results, totalCostUsd };
+  return { results, totalCostUsd, audit: raw.audit };
 }
 
 /** Load DB contexts and return config with contexts attached. Caller owns db.close(). */

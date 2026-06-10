@@ -5,29 +5,66 @@ import { Badge } from "@/components/ui/badge";
 import { safeHref, sanitizeText } from "@/lib/sanitize";
 import type { Finding } from "@/lib/normalize";
 import { formatShortDate } from "@/lib/format";
+import { AUDIT_UI, auditLocaleForFinding, formatAuditLocation } from "@/lib/audit-localization";
+import type { AuditLocale } from "@/lib/audit-localization";
 
-interface Props { finding: Finding; }
+interface Props { finding: Finding; locale?: AuditLocale; }
 
-export function ClaimDrillDown({ finding }: Props) {
+export function ClaimDrillDown({ finding, locale: reportLocale }: Props) {
   const hasEvidence = (finding.sources?.length ?? 0) + (finding.citations?.length ?? 0) > 0;
   const hasRewrite = typeof finding.rewrite === "string" && finding.rewrite.length > 0;
-  if (!hasEvidence && !hasRewrite) return null;
+  const hasAuditContext = !!finding.location || !!finding.confidenceRationale || !!finding.searchQueries?.length;
+  if (!hasEvidence && !hasRewrite && !hasAuditContext) return null;
 
+  const locale = reportLocale ?? auditLocaleForFinding(finding);
+  const labels = AUDIT_UI[locale];
   const evidenceCount = (finding.sources?.length ?? 0) + (finding.citations?.length ?? 0);
   const buttonLabel = hasEvidence
-    ? `View evidence (${evidenceCount})`
-    : "View suggested rewrite";
+    ? labels.viewEvidence(evidenceCount)
+    : labels.viewSuggestedRewrite;
 
   return (
     <Sheet>
       <SheetTrigger render={<Button size="sm" variant="outline">{buttonLabel}</Button>} />
-      <SheetContent className="w-full sm:max-w-[520px] overflow-y-auto">
+      <SheetContent dir={locale === "he" ? "rtl" : "ltr"} className="w-full sm:max-w-[520px] overflow-y-auto">
         <SheetHeader>
           <SheetTitle>
-            {hasEvidence ? "Evidence" : "Suggested rewrite"}
+            {hasEvidence ? labels.evidence : labels.suggestedRewrite}
           </SheetTitle>
         </SheetHeader>
         <div className="mt-4 space-y-4">
+          {finding.quote && (
+            <div className="rounded border bg-muted/30 p-3">
+              <p className="text-xs font-semibold uppercase text-muted-foreground">
+                {labels.documentQuote}
+              </p>
+              <p dir="auto" className="mt-1 text-sm whitespace-pre-wrap">
+                {sanitizeText(finding.quote, 800)}
+              </p>
+            </div>
+          )}
+
+          {(finding.location || finding.confidenceRationale || finding.searchQueries?.length) && (
+            <div className="rounded border p-3 text-sm">
+              {finding.location && (
+                <p className="text-muted-foreground">
+                  {formatAuditLocation(finding.location, locale)}
+                </p>
+              )}
+              {finding.confidenceRationale && (
+                <p className="mt-2 text-muted-foreground">
+                  <span className="font-medium">{labels.confidenceRationale}: </span>
+                  {sanitizeText(finding.confidenceRationale, 500)}
+                </p>
+              )}
+              {finding.searchQueries?.length ? (
+                <p dir="auto" className="mt-2 text-xs text-muted-foreground">
+                  {labels.search}: {finding.searchQueries.map((query) => sanitizeText(query, 160)).join(" | ")}
+                </p>
+              ) : null}
+            </div>
+          )}
+
           {finding.sources?.map((s, i) => {
             const publishedLabel = s.publishedDate ? formatShortDate(s.publishedDate) : "";
             return (
@@ -41,17 +78,17 @@ export function ClaimDrillDown({ finding }: Props) {
                 {sanitizeText(s.title) || safeHref(s.url)}
               </a>
               {publishedLabel && (
-                <Badge variant="secondary" className="ml-2">
+                <Badge variant="secondary" className="ms-2">
                   {publishedLabel}
                 </Badge>
               )}
               {typeof s.relevanceScore === "number" && (
-                <Badge variant="outline" className="ml-2 text-xs">
-                  {(s.relevanceScore * 100).toFixed(0)}% similar
+                <Badge variant="outline" className="ms-2 text-xs">
+                  {labels.similarity((s.relevanceScore * 100).toFixed(0))}
                 </Badge>
               )}
               {s.quote && (
-                <p className="mt-2 text-sm italic text-muted-foreground">
+                <p dir="auto" className="mt-2 text-sm italic text-muted-foreground">
                   &ldquo;{sanitizeText(s.quote, 500)}&rdquo;
                 </p>
               )}
@@ -90,9 +127,9 @@ export function ClaimDrillDown({ finding }: Props) {
           {hasRewrite && (
             <div className="rounded border border-emerald-300 bg-emerald-50 p-3">
               <p className="text-xs font-semibold uppercase text-emerald-800">
-                Suggested rewrite
+                {labels.suggestedRewrite}
               </p>
-              <p className="mt-1 text-sm whitespace-pre-wrap">
+              <p dir="auto" className="mt-1 text-sm whitespace-pre-wrap">
                 {sanitizeText(finding.rewrite)}
               </p>
             </div>

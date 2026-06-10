@@ -34,8 +34,13 @@ interface SkillResult {
 interface Skill {
   id: string;
   name: string;
-  run(text: string, config: Config): Promise<SkillResult>;
+  run(text: string, config: Config): Promise<SkillRunOutput>;
 }
+
+type SkillRunOutput =
+  | SkillResult
+  | (SkillResult & { audit?: AuditRecord })
+  | { kind: "audit-result"; result: SkillResult; audit?: AuditRecord };
 ```
 
 **Field notes:**
@@ -45,6 +50,7 @@ interface Skill {
 - **`summary`** -- keep it short. This is the one-liner next to the skill name in terminal output. Example: `"310 words - avg 17-word sentences - readability: Medium"`.
 - **`findings`** -- the individual issues found. Each one gets rendered in the HTML report card. See the [Findings Severity Guide](#7-findings-severity-guide) for when to use each level.
 - **`costUsd`** -- set to `0` for offline skills. For LLM skills, estimate from input/output token counts. This is summed across all skills and shown in the report header.
+- **`SkillRunOutput`** -- a skill can return a plain `SkillResult` for legacy/simple checks, or the tagged wrapper `{ kind: "audit-result", result, audit }` when it contributes structured audit metadata. The `kind: "audit-result"` discriminant is **required** on the wrapper form — a kind-less `{ result, audit }` object is not recognized as a wrapper and will be mishandled. Existing custom skills that return `SkillResult` remain valid.
 
 ---
 
@@ -234,14 +240,14 @@ const DEFAULT_SKILLS: SkillsConfig = {
 
 ### Step 2: Import and add to the skills array
 
-In `src/check.tsx`, import your skill and add it to the `allSkills` array:
+In `src/checker.ts`, import your skill and add it to `buildSkills()`:
 
 ```typescript
-// src/check.tsx
+// src/checker.ts
 import { ReadabilitySkill } from "./skills/readability.ts";
 
-// Inside the run() function:
-const allSkills = [
+// Inside buildSkills(config):
+const skills = [
   config.skills.plagiarism && new PlagiarismSkill(),
   config.skills.aiDetection && new AiDetectionSkill(),
   config.skills.seo && new SeoSkill(),
@@ -417,6 +423,8 @@ Each finding has a `severity` that controls how it appears in the terminal and H
 New skills should use `resolveProvider(config, skillId)` from `src/providers/resolve.ts` rather than reading flat config fields. Register metadata in `src/providers/registry.ts` (and mirror to `dashboard/src/lib/providers.ts` — `scripts/check-registry-parity.ts` enforces parity in CI).
 
 Skills can return `Finding` entries with any combination of `sources[]` / `rewrite` / `citations[]` / `claimType` / `confidence`. The `enrichFindings()` step in the orchestrator (`src/skills/enrich.ts`) merges citations from enricher skills onto matching fact-check findings, so a single finding can carry all four outputs (the "four-output contract" asserted in `tests/e2e/phase7.test.ts`).
+
+Provider-backed fact-check and plagiarism skills may also return `{ kind: "audit-result", result, audit }`, where `result` is the normal `SkillResult` and `audit` is an `AuditRecord` (see `SkillRunOutput` in `src/audit/contribution.ts`) that the orchestrator merges into the stored structured audit record. The `kind: "audit-result"` discriminant is required — a kind-less `{ result, audit }` object is not recognized as a wrapper. Use this path only when your skill can provide stable document references such as quotes, locations, provider attempts, evidence sources, confidence rationale, or suggested rewrites. If your skill does not produce structured audit metadata, return a plain `SkillResult`.
 
 ### Enricher pattern
 

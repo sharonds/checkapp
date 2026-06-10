@@ -91,7 +91,78 @@ describe("PlagiarismSkill Copyscape results", () => {
     expect(result.verdict).toBe("warn");
     expect(result.summary).toContain("22% grounded similarity");
     expect(result.findings[0].sources?.[0].url).toBe("https://example.com/source");
+    expect(result.findings[0].sources?.[0].quote).toBe("Copied sentence from source.");
     expect(result.findings[0].confidence).toBe("high");
+    expect((result as any).audit.plagiarismFindings[0].source.quote).toBe("Copied sentence from source.");
+    expect((result as any).audit.plagiarismFindings[0].matchedText).toBe("Copied sentence from source.");
+  });
+
+  test("persists Gemini match type and grounding mode as structured audit fields", async () => {
+    globalThis.fetch = async () => ({
+      ok: true,
+      json: async () => ({
+        candidates: [{
+          content: { parts: [{ text: JSON.stringify({
+            overallSimilarityPct: 55,
+            verdict: "review",
+            confidence: "high",
+            matches: [
+              {
+                sourceUrl: "https://example.com/near",
+                sourceTitle: "Near Exact",
+                matchedArticleText: "Near exact copied sentence.",
+                matchedSourceText: "Near exact copied sentence.",
+                similarityPct: 90,
+                matchType: "near_exact",
+                confidence: "high",
+                explanation: "Near exact copied sentence.",
+              },
+              {
+                sourceUrl: "https://not-grounded.example/paraphrase",
+                sourceTitle: "Paraphrase",
+                matchedArticleText: "Paraphrased article sentence.",
+                matchedSourceText: "Similar source sentence.",
+                similarityPct: 50,
+                matchType: "paraphrase",
+                confidence: "high",
+                explanation: "Paraphrased from a source.",
+              },
+              {
+                sourceUrl: "https://example.com/uncertain",
+                sourceTitle: "Uncertain",
+                matchedArticleText: "Uncertain match sentence.",
+                similarityPct: 40,
+                matchType: "uncertain",
+                confidence: "medium",
+                explanation: "Uncertain match.",
+              },
+            ],
+          }) }] },
+          groundingMetadata: {
+            webSearchQueries: ["mixed plagiarism checks"],
+            groundingChunks: [
+              { web: { uri: "https://example.com/near", title: "Near Exact" } },
+              { web: { uri: "https://example.com/uncertain", title: "Uncertain" } },
+            ],
+          },
+        }],
+      }),
+    } as Response);
+
+    const result = await new PlagiarismSkill().run(
+      "Near exact copied sentence. Paraphrased article sentence. Uncertain match sentence.",
+      {
+        ...config,
+        geminiApiKey: "gemini-key",
+        providers: { plagiarism: { provider: "gemini-grounded-plagiarism" } },
+      }
+    );
+
+    const findings = (result as any).audit.plagiarismFindings;
+    expect(findings.map((finding: any) => finding.matchType)).toEqual(["near", "semantic", "unknown"]);
+    expect(findings.map((finding: any) => finding.groundingMode)).toEqual(["grounded", "ungrounded", "grounded"]);
+    expect(result.findings.map((finding: any) => finding.matchType)).toEqual(["near", "semantic", "unknown"]);
+    expect(result.findings.map((finding: any) => finding.groundingMode)).toEqual(["grounded", "ungrounded", "grounded"]);
   });
 
   test("uses explicit Gemini fallback when Copyscape credits are insufficient", async () => {
@@ -180,6 +251,11 @@ describe("PlagiarismSkill Copyscape results", () => {
     expect(result.verdict).toBe("fail");
     expect(result.summary).toContain("reduced-confidence Gemini similarity");
     expect(result.summary).not.toContain("grounded similarity");
+    expect(result.findings[0].quote).toBe("Copied sentence from source.");
+    expect(result.findings[0].location?.paragraphIndex).toBe(0);
+    expect(result.findings[0].rewrite).toContain("Rewrite this passage");
+    expect((result as any).audit.plagiarismFindings[0].quote).toBe("Copied sentence from source.");
+    expect((result as any).audit.plagiarismFindings[0].remediation).toContain("Rewrite this passage");
   });
 });
 

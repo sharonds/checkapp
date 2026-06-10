@@ -1,7 +1,19 @@
 import type { SkillResult } from "./skills/types.ts";
 import type { CheckRecord } from "./db.ts";
 import { formatScore, formatSkillScore, summarizeResults } from "./output-summary.ts";
+import { sanitizeEvidenceLabel, sanitizeSourceLabel } from "../shared/report-url.ts";
 import { safeReportUrl } from "./report-sanitize.ts";
+import {
+  AUDIT_UI,
+  auditLocaleForFinding,
+  auditLocaleForLanguage,
+  formatAuditLocation,
+  localizedFindingText,
+  localizedFindingStatus,
+  localizedSkillName,
+  localizedVerdictLabel,
+  type AuditLocale,
+} from "./audit/localization.ts";
 
 const VERDICT_COLOR: Record<string, string> = {
   pass: "#16a34a",
@@ -94,12 +106,15 @@ function usedProviders(results: SkillResult[]): ProviderMeta[] {
   return [...seen.values()];
 }
 
-function skillCard(r: SkillResult): string {
+function skillCard(r: SkillResult, locale: AuditLocale, audit?: CheckRecord["audit"]): string {
   const color = VERDICT_COLOR[r.verdict] ?? "#6b7280";
   const bg = VERDICT_BG[r.verdict] ?? "#f9fafb";
   const border = VERDICT_BORDER[r.verdict] ?? "#e5e7eb";
 
-  const badge = `<span style="background:${color};color:#fff;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:700;letter-spacing:0.04em">${r.verdict.toUpperCase()}</span>`;
+  const labels = AUDIT_UI[locale];
+  const badge = `<span style="background:${color};color:#fff;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:700;letter-spacing:0.04em">${escapeHtml(localizedVerdictLabel(r.verdict, locale))}</span>`;
+  const skillName = localizedSkillName(r, locale);
+  const summary = localizedSkillSummary(r, locale, audit);
 
   // Only show warn and error findings — info is noise when skills run
   const visibleFindings = r.findings.filter((f) => f.severity === "warn" || f.severity === "error" || (f.sources?.length ?? 0) > 0);
@@ -107,11 +122,18 @@ function skillCard(r: SkillResult): string {
     <ul style="margin:12px 0 0 0;padding:0;list-style:none">
       ${visibleFindings.map((f) => `
         <li style="margin-bottom:8px;padding:8px 12px;background:#fff;border-radius:6px;border:1px solid #f3f4f6;font-size:13px;color:#374151;line-height:1.5">
-          <span style="margin-right:5px">${SEVERITY_ICON[f.severity] ?? ""}</span>${escapeHtml(f.text)}
-          ${f.quote ? `<div style="margin-top:4px;padding:4px 8px;background:#f9fafb;border-left:3px solid #d1d5db;border-radius:2px;font-style:italic;font-size:12px;color:#6b7280">"${escapeHtml(f.quote.slice(0, 140))}${f.quote.length > 140 ? "…" : ""}"</div>` : ""}
-          ${f.sources?.length ? `<div style="margin-top:6px;font-size:12px;color:#4b5563">Source: ${f.sources.slice(0, 2).map((s) => {
+          <span style="margin-inline-end:5px">${SEVERITY_ICON[f.severity] ?? ""}</span>${escapeHtml(localizedFindingLead(f, locale) ?? f.text)}
+          ${f.quote ? `<div dir="auto" style="margin-top:4px;padding-block:4px;padding-inline-end:8px;padding-inline-start:8px;background:#f9fafb;border-inline-start:3px solid #d1d5db;border-radius:2px;font-style:italic;font-size:12px;color:#6b7280">"${escapeHtml(f.quote.slice(0, 220))}${f.quote.length > 220 ? "…" : ""}"</div>` : ""}
+          ${f.location ? `<div style="margin-top:4px;font-size:11px;color:#6b7280">${escapeHtml(formatAuditLocation(f.location, localeForFindingOrReport(f, locale)))}</div>` : ""}
+          ${f.matchType || f.groundingMode ? `<div style="margin-top:4px;font-size:11px;color:#6b7280">${[
+            f.matchType ? `${labels.matchType}: ${f.matchType}` : "",
+            f.groundingMode ? `${labels.grounding}: ${f.groundingMode}` : "",
+          ].filter(Boolean).map(escapeHtml).join(" · ")}</div>` : ""}
+          ${f.confidenceRationale ? `<div style="margin-top:4px;font-size:11px;color:#6b7280"><strong>${escapeHtml(labels.confidenceRationale)}:</strong> ${escapeHtml(f.confidenceRationale)}</div>` : ""}
+          ${f.rewrite ? `<div dir="auto" style="margin-top:6px;padding:6px 8px;background:#ecfdf5;border:1px solid #bbf7d0;border-radius:4px;font-size:12px;color:#065f46"><strong>${escapeHtml(labels.suggestedRewrite)}:</strong> ${escapeHtml(f.rewrite)}</div>` : ""}
+          ${f.sources?.length ? `<div style="margin-top:6px;font-size:12px;color:#4b5563">${escapeHtml(labels.source)}: ${f.sources.slice(0, 2).map((s) => {
             const safeUrl = safeReportUrl(s.url);
-            const label = escapeHtml(s.title || s.url);
+            const label = escapeHtml(sanitizeEvidenceLabel(s.title || s.url));
             return safeUrl
               ? `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:none">${label}</a>`
               : label;
@@ -122,16 +144,16 @@ function skillCard(r: SkillResult): string {
   return `<div style="background:${bg};border:1px solid ${border};border-radius:10px;padding:20px;margin-bottom:14px">
     <div style="display:flex;justify-content:space-between;align-items:flex-start">
       <div>
-        <span style="font-weight:700;font-size:15px;color:#111827">${escapeHtml(r.name)}</span>
-        <span style="margin-left:8px">${engineBadge(r)}</span>
+        <span style="font-weight:700;font-size:15px;color:#111827">${escapeHtml(skillName)}</span>
+        <span style="margin-inline-start:8px">${engineBadge(r)}</span>
       </div>
-      <span style="display:flex;align-items:center;gap:10px;flex-shrink:0;margin-left:16px">
+      <span style="display:flex;align-items:center;gap:10px;flex-shrink:0;margin-inline-start:16px">
         <span style="font-size:22px;font-weight:800;color:${color}">${escapeHtml(formatSkillScore(r))}</span>
         ${badge}
       </span>
     </div>
     ${scoreBar(r.verdict === "skipped" ? null : r.score, r.verdict)}
-    <p style="margin:8px 0 0 0;font-size:13px;color:#6b7280">${escapeHtml(r.summary)}</p>
+    <p style="margin:8px 0 0 0;font-size:13px;color:#6b7280">${escapeHtml(summary)}</p>
     ${r.error ? `<p style="margin:8px 0 0 0;font-size:12px;color:#dc2626">⚠ ${escapeHtml(r.error)}</p>` : ""}
     ${findingsHtml}
   </div>`;
@@ -141,11 +163,42 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-function overallBanner(score: number | null, verdict: string, wordCount: number, costUsd: number, now: string): string {
+function localeForFindingOrReport(f: SkillResult["findings"][number], reportLocale: AuditLocale): AuditLocale {
+  const findingLocale = auditLocaleForFinding(f);
+  return findingLocale === "he" ? "he" : reportLocale;
+}
+
+function localizedFindingLead(f: SkillResult["findings"][number], reportLocale: AuditLocale): string | undefined {
+  const locale = localeForFindingOrReport(f, reportLocale);
+  const status = localizedFindingStatus(f, locale);
+  if (!status) return undefined;
+  if (f.status === "unsupported" || f.status === "unverified" || f.status === "plagiarism_match") {
+    return localizedFindingText(f, locale);
+  }
+  if (f.explanation) return f.confidence ? `${status} (${f.confidence}): ${f.explanation}` : `${status}: ${f.explanation}`;
+  return f.confidence ? `${status} (${f.confidence})` : status;
+}
+
+function localizedSkillSummary(r: SkillResult, locale: AuditLocale, audit?: CheckRecord["audit"]): string {
+  if (r.skillId !== "fact-check-grounded" && r.skillId !== "fact-check") return r.summary;
+  const coverage = audit?.coverage;
+  if (!coverage) return r.summary;
+  const unsupported = r.findings.filter((f) => f.status === "unsupported" || f.text.toLowerCase().includes("unsupported")).length;
+  const unverified = r.findings.filter((f) => f.status === "unverified" || f.text.toLowerCase().includes("unverified")).length;
+  return AUDIT_UI[locale].checkedClaims(
+    coverage.claimsChecked,
+    unsupported,
+    unverified,
+    r.provider,
+    coverage.claimsSkipped,
+    coverage.budgetStopReason,
+  );
+}
+
+function overallBanner(score: number | null, verdict: string, wordCount: number, costUsd: number, now: string, locale: AuditLocale): string {
   const color = VERDICT_COLOR[verdict] ?? "#6b7280";
-  const label = verdict === "skipped"
-    ? "Not assessed"
-    : verdict === "pass" ? "✓ Ready for review" : verdict === "warn" ? "⚠ Needs attention" : "✕ Do not publish";
+  const labels = AUDIT_UI[locale];
+  const label = localizedVerdictLabel(verdict, locale);
   const labelBg = verdict === "skipped"
     ? "#6b728022"
     : verdict === "pass" ? "#16a34a22" : verdict === "warn" ? "#d9770622" : "#dc262622";
@@ -172,13 +225,13 @@ function overallBanner(score: number | null, verdict: string, wordCount: number,
         </div>
         <div>
           <div style="font-size:11px;letter-spacing:0.1em;color:#64748b;text-transform:uppercase;font-weight:600;margin-bottom:4px">CheckApp</div>
-          <div style="font-size:20px;font-weight:700;color:#f1f5f9;margin-bottom:8px">Quality Report</div>
+          <div style="font-size:20px;font-weight:700;color:#f1f5f9;margin-bottom:8px">${escapeHtml(labels.qualityReport)}</div>
           <span style="background:${labelBg};color:${accent};font-size:12px;font-weight:700;padding:4px 12px;border-radius:20px;border:1px solid ${accent}44">${label}</span>
         </div>
       </div>
-      <div style="text-align:right;font-size:12px;color:#64748b;line-height:2.2">
-        <div><span style="color:#94a3b8">Words</span> &nbsp;<strong style="color:#e2e8f0">${wordCount.toLocaleString()}</strong></div>
-        <div><span style="color:#94a3b8">API cost</span> &nbsp;<strong style="color:#e2e8f0">$${costUsd.toFixed(3)}</strong></div>
+      <div style="text-align:end;font-size:12px;color:#64748b;line-height:2.2">
+        <div><span style="color:#94a3b8">${escapeHtml(labels.words)}</span> &nbsp;<strong style="color:#e2e8f0">${wordCount.toLocaleString()}</strong></div>
+        <div><span style="color:#94a3b8">${escapeHtml(labels.apiCost)}</span> &nbsp;<strong style="color:#e2e8f0">$${costUsd.toFixed(3)}</strong></div>
         <div><span style="color:#94a3b8">${now}</span></div>
       </div>
     </div>
@@ -209,6 +262,9 @@ function summaryBlock(result: SkillResult): string {
 
 export function generateReport(record: Omit<CheckRecord, "id" | "createdAt"> & { createdAt?: string }): string {
   const overall = summarizeResults(record.results);
+  const locale = auditLocaleForLanguage(record.audit?.language);
+  const labels = AUDIT_UI[locale];
+  const sourceLabel = sanitizeSourceLabel(record.source);
 
   const now = record.createdAt ?? new Date().toISOString().replace("T", " ").slice(0, 16);
   const providers = usedProviders(record.results);
@@ -220,15 +276,17 @@ export function generateReport(record: Omit<CheckRecord, "id" | "createdAt"> & {
   ).join("");
   const providerNames = providers.map((p) => p.processor).join(", ");
   const providerDisclaimer = providerNames
-    ? `Results are generated by ${escapeHtml(providerNames)} and may not be complete or accurate.`
-    : "Results are generated by offline checks and may not be complete or accurate.";
+    ? labels.footerDisclaimerProviders(escapeHtml(providerNames))
+    : labels.footerDisclaimerOffline;
+  const htmlLang = locale;
+  const htmlDir = locale === "he" ? "rtl" : "ltr";
 
   return `<!DOCTYPE html>
-<html lang="en" dir="auto">
+<html lang="${htmlLang}" dir="${htmlDir}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CheckApp — ${escapeHtml(record.source)}</title>
+  <title>CheckApp — ${escapeHtml(sourceLabel)}</title>
   <style>
     * { box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f1f5f9; margin: 0; padding: 32px 16px; color: #111827; }
@@ -249,14 +307,14 @@ export function generateReport(record: Omit<CheckRecord, "id" | "createdAt"> & {
 </head>
 <body>
   <div class="container">
-    ${overallBanner(overall.score, overall.verdict, record.wordCount, record.totalCostUsd, now)}
-    <div class="source">${escapeHtml(record.source)}</div>
+    ${overallBanner(overall.score, overall.verdict, record.wordCount, record.totalCostUsd, now, locale)}
+    <div class="source">${escapeHtml(sourceLabel)}</div>
     ${(() => { const sr = record.results.find((r) => r.skillId === "summary"); return sr ? summaryBlock(sr) : ""; })()}
     <div class="powered-by">
-      <span>Powered by</span>
-      ${providerLinks || `<span>Offline checks</span>`}
+      <span>${escapeHtml(labels.poweredBy)}</span>
+      ${providerLinks || `<span>${escapeHtml(labels.offlineChecks)}</span>`}
     </div>
-    ${record.results.filter((r) => r.skillId !== "summary").map(skillCard).join("")}
+    ${record.results.filter((r) => r.skillId !== "summary").map((r) => skillCard(r, locale, record.audit)).join("")}
     <div class="footer">
       <div class="footer-top">
         <span class="footer-brand">CheckApp</span>
@@ -267,11 +325,11 @@ export function generateReport(record: Omit<CheckRecord, "id" | "createdAt"> & {
         </div>
       </div>
       <p class="footer-disclaimer">
-        This report is provided for informational purposes only under the
+        ${escapeHtml(labels.footerDisclaimerIntro)}
         <a href="https://github.com/sharonds/checkapp/blob/main/LICENSE">MIT License</a>.
         ${providerDisclaimer}
-        The authors of CheckApp make no warranties and accept no liability for decisions made based on these results.
-        Always apply your own judgement before publishing.
+        ${escapeHtml(labels.footerDisclaimerLiability)}
+        ${escapeHtml(labels.footerDisclaimerJudgement)}
       </p>
     </div>
   </div>

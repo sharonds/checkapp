@@ -129,6 +129,11 @@ describe("FactCheckSkill — Phase 7 evidence", () => {
     expect(withSources).toBeDefined();
     expect(withSources?.sources?.[0].url).toContain("example.com");
     expect(withSources?.sources?.[0].quote).toContain("73%");
+    expect(withSources?.quote).toBe("73% of remote workers experience back pain");
+    expect(withSources?.location?.paragraphIndex).toBe(0);
+    expect(withSources?.auditRef?.claimId).toBe("claim-1");
+    expect((result as any).audit.claims[0].quote).toBe("73% of remote workers experience back pain");
+    expect((result as any).audit.coverage.claimsChecked).toBe(1);
     expect(capturedOpts).toMatchObject({
       type: "auto",
       numResults: 3,
@@ -155,6 +160,10 @@ describe("FactCheckSkill — Phase 7 evidence", () => {
 
     expect(result.findings[0].severity).toBe("warn");
     expect(result.findings[0].text).toContain("No evidence source URL was returned");
+    expect(result.findings[0].rewrite).toContain("Add a reliable source");
+    expect(result.findings[0].rewrite).toContain("yes");
+    expect((result as any).audit.factAssessments[0].rewrite).toContain("Add a reliable source");
+    expect((result as any).audit.factAssessments[0].rewrite).toContain("yes");
   });
 
   test("claimType is one of the 4 enum values", async () => {
@@ -175,6 +184,42 @@ describe("FactCheckSkill — Phase 7 evidence", () => {
     const f = result.findings.find(x => x.claimType);
     expect(f).toBeDefined();
     expect(valid).toContain(f?.claimType);
+  });
+
+  test("uses factAudit.standardMaxClaims and records claim-cap skips", async () => {
+    let llmCallCount = 0;
+    let exaCalls = 0;
+    exaSearchHandler = async () => {
+      exaCalls++;
+      return {
+        results: [{
+          url: `https://example.com/${exaCalls}`,
+          title: "Evidence",
+          highlights: ["e"],
+          text: "full text",
+        }],
+      };
+    };
+    mockFetch(urlRouter({
+      "api.minimax.io": async () => {
+        llmCallCount++;
+        if (llmCallCount === 1) {
+          return anthropicContent(JSON.stringify(["Claim one.", "Claim two.", "Claim three."]));
+        }
+        return anthropicContent("{\"supported\":true,\"note\":\"ok\",\"claimType\":\"general\"}");
+      },
+    }));
+
+    const result = await new FactCheckSkill().run(
+      "Claim one. Claim two. Claim three.",
+      { ...cfgBase, factAudit: { standardMaxClaims: 2 } },
+    );
+
+    expect(exaCalls).toBe(2);
+    expect((result as any).audit.coverage.claimsChecked).toBe(2);
+    expect((result as any).audit.coverage.claimsSkipped).toBe(1);
+    expect((result as any).audit.coverage.skipReasons.claim_cap).toBe(1);
+    expect((result as any).audit.coverage.budgetStopReason).toBe("claim_cap");
   });
 
   test("no provider configured → warn verdict with info finding", async () => {

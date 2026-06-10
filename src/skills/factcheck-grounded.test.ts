@@ -119,6 +119,12 @@ describe("FactCheckGroundedSkill", () => {
       ]);
       expect(finding.sources?.[0]?.quote).toContain("2008");
       expect(finding.sources?.[0]?.title).toContain("Government.nl");
+      expect(finding.quote).toBe("Smoking laws changed in 2008.");
+      expect(finding.location?.paragraphIndex).toBe(0);
+      expect(finding.auditRef?.claimId).toBe("claim-1");
+      expect(finding.searchQueries).toContain("netherlands indoor smoking ban 2008");
+      expect((result as any).audit.factAssessments[0].provider).toBe("gemini-grounded");
+      expect((result as any).audit.claims[0].direction).toBe("ltr");
       expect(result.costUsd).toBeGreaterThan(0.01);
 
       const lines = readFileSync(process.env.CHECKAPP_AUDIT_EVENTS_PATH!, "utf-8").trim().split("\n");
@@ -137,6 +143,36 @@ describe("FactCheckGroundedSkill", () => {
         totalTokens: 133,
       });
       expect(typeof groundedEvent.payload.latencyMs).toBe("number");
+    } finally {
+      delete process.env.CHECKAPP_AUDIT_EVENTS_PATH;
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("redacts grounded provider network errors before writing audit telemetry", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "checkapp-grounded-error-events-"));
+    process.env.CHECKAPP_AUDIT_EVENTS_PATH = join(tempDir, "audit-events.jsonl");
+    mockFetch(urlRouter({
+      "api.minimax.io": async () => jsonResponse({
+        id: "msg_extract_grounded_error",
+        type: "message",
+        role: "assistant",
+        model: "MiniMax-M2.7",
+        content: [{ type: "text", text: JSON.stringify(["The claim needs checking."]) }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 10, output_tokens: 10 },
+      }),
+      "generativelanguage.googleapis.com": async () => {
+        throw new Error("request failed https://generativelanguage.googleapis.com/v1beta/models/x:generateContent?key=gemini-key token=abc123");
+      },
+    }));
+
+    try {
+      await expect(new FactCheckGroundedSkill().run("The claim needs checking.", baseConfig)).rejects.toThrow("request failed");
+      const body = readFileSync(process.env.CHECKAPP_AUDIT_EVENTS_PATH!, "utf-8");
+      expect(body).not.toContain("gemini-key");
+      expect(body).not.toContain("abc123");
+      expect(body).toContain("[redacted]");
     } finally {
       delete process.env.CHECKAPP_AUDIT_EVENTS_PATH;
       rmSync(tempDir, { recursive: true, force: true });
@@ -186,6 +222,121 @@ describe("FactCheckGroundedSkill", () => {
     expect(result.summary).toContain("via gemini-grounded");
   });
 
+  test("uses factAudit.standardMaxClaims and records claim-cap skips", async () => {
+    let assessmentCalls = 0;
+    mockFetch(urlRouter({
+      "api.minimax.io": async () => jsonResponse({
+        id: "msg_extract_many",
+        type: "message",
+        role: "assistant",
+        model: "MiniMax-M2.7",
+        content: [{
+          type: "text",
+          text: JSON.stringify(["Claim one.", "Claim two.", "Claim three.", "Claim four.", "Claim five."]),
+        }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 10, output_tokens: 10 },
+      }),
+      "generativelanguage.googleapis.com": async () => {
+        assessmentCalls++;
+        return jsonResponse({
+          candidates: [{
+            content: { parts: [{ text: JSON.stringify({ supported: true, note: "Grounded sources support the claim." }) }] },
+            groundingMetadata: {
+              webSearchQueries: [`claim ${assessmentCalls}`],
+              groundingChunks: [{ web: { uri: `https://example.com/${assessmentCalls}`, title: `Source ${assessmentCalls}` } }],
+            },
+          }],
+        });
+      },
+    }));
+
+    const result = await new FactCheckGroundedSkill().run(
+      "Claim one. Claim two. Claim three. Claim four. Claim five.",
+      { ...baseConfig, factAudit: { standardMaxClaims: 2 } },
+    );
+
+    expect(assessmentCalls).toBe(2);
+    expect((result as any).audit.coverage.claimsExtracted).toBe(5);
+    expect((result as any).audit.coverage.claimsChecked).toBe(2);
+    expect((result as any).audit.coverage.claimsSkipped).toBe(3);
+    expect((result as any).audit.coverage.skipReasons.claim_cap).toBe(3);
+    expect((result as any).audit.coverage.budgetStopReason).toBe("claim_cap");
+  });
+
+  test("stops grounded fact-check execution when the configured cost budget is reached", async () => {
+    let assessmentCalls = 0;
+    mockFetch(urlRouter({
+      "api.minimax.io": async () => jsonResponse({
+        id: "msg_extract_cost_budget",
+        type: "message",
+        role: "assistant",
+        model: "MiniMax-M2.7",
+        content: [{
+          type: "text",
+          text: JSON.stringify(["Claim one.", "Claim two.", "Claim three."]),
+        }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 10, output_tokens: 10 },
+      }),
+      "generativelanguage.googleapis.com": async () => {
+        assessmentCalls++;
+        return jsonResponse({
+          candidates: [{
+            content: { parts: [{ text: JSON.stringify({ supported: true, note: "Grounded sources support the claim." }) }] },
+            groundingMetadata: {
+              webSearchQueries: [`budget claim ${assessmentCalls}`],
+              groundingChunks: [{ web: { uri: `https://example.com/budget-${assessmentCalls}`, title: `Source ${assessmentCalls}` } }],
+            },
+          }],
+        });
+      },
+    }));
+
+    const result = await new FactCheckGroundedSkill().run(
+      "Claim one. Claim two. Claim three.",
+      { ...baseConfig, factAudit: { standardMaxClaims: 3, maxUsd: 0.04 } },
+    );
+
+    expect(assessmentCalls).toBe(1);
+    expect((result as any).audit.coverage.claimsChecked).toBe(1);
+    expect((result as any).audit.coverage.claimsSkipped).toBe(2);
+    expect((result as any).audit.coverage.skipReasons.cost_budget).toBe(2);
+    expect((result as any).audit.coverage.budgetStopReason).toBe("cost_budget");
+  });
+
+  test("uses Hebrew rewrite text for mixed Hebrew-English claims", async () => {
+    mockFetch(urlRouter({
+      "api.minimax.io": async () => jsonResponse({
+        id: "msg_extract_he",
+        type: "message",
+        role: "assistant",
+        model: "MiniMax-M2.7",
+        content: [{
+          type: "text",
+          text: JSON.stringify(["המשחק Rummikub מתאים לשני שחקנים בלבד."]),
+        }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 10, output_tokens: 10 },
+      }),
+      "generativelanguage.googleapis.com": async () => jsonResponse({
+        candidates: [{
+          content: { parts: [{ text: JSON.stringify({ supported: false, note: "המקור הרשמי מציין יותר שחקנים." }) }] },
+          groundingMetadata: {
+            webSearchQueries: ["Rummikub מספר שחקנים"],
+            groundingChunks: [{ web: { uri: "https://example.com/rummikub", title: "Rummikub" } }],
+          },
+        }],
+      }),
+    }));
+
+    const result = await new FactCheckGroundedSkill().run("המשחק Rummikub מתאים לשני שחקנים בלבד.", baseConfig);
+
+    expect(result.findings[0].rewrite).toContain("יש לנסח מחדש");
+    expect((result as any).audit.factAssessments[0].rewrite).toContain("יש לנסח מחדש");
+    expect((result as any).audit.claims[0].language).toBe("he");
+  });
+
   test("uses provider-scoped Gemini key for both grounding and claim extraction", async () => {
     let sawGeminiRequest = false;
     mockFetch(urlRouter({
@@ -194,7 +345,7 @@ describe("FactCheckGroundedSkill", () => {
         expect(req.url).toContain("provider-gemini-key");
         const body = await req.json() as any;
         const prompt = body.contents?.[0]?.parts?.[0]?.text ?? "";
-        if (prompt.includes("Extract the 4 most specific")) {
+        if (prompt.includes("Extract up to 20")) {
           return jsonResponse({
             candidates: [{
               content: {
@@ -269,5 +420,7 @@ describe("FactCheckGroundedSkill", () => {
     expect(result.verdict).toBe("pass");
     expect(result.findings[0].severity).toBe("warn");
     expect(result.findings[0].text).toContain("No grounded source URL was returned");
+    expect(result.findings[0].rewrite).toContain("The model says yes but provides no source.");
+    expect((result as any).audit.factAssessments[0].rewrite).toContain("The model says yes but provides no source.");
   });
 });

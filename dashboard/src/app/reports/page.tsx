@@ -22,6 +22,9 @@ interface ApiCheck {
   total_cost?: number;
   createdAt: string;
   created_at?: string;
+  score?: number;
+  verdict?: "pass" | "warn" | "fail" | "skipped";
+  resultCount?: number;
   results?: StoredSkillResult[];
   resultsJson?: string;
   results_json?: string;
@@ -53,6 +56,18 @@ function parseResults(check: ApiCheck): StoredSkillResult[] {
 }
 
 function toCheckRow(c: ApiCheck): CheckRow {
+  if (typeof c.score === "number" && c.verdict) {
+    return {
+      id: String(c.id),
+      source: c.source,
+      score: c.score,
+      verdict: c.verdict,
+      words: c.wordCount ?? c.word_count ?? 0,
+      costUsd: c.totalCost ?? c.total_cost ?? 0,
+      createdAt: c.createdAt ?? c.created_at ?? "",
+    };
+  }
+
   const results = parseResults(c);
   const scored = results.filter((r) => r.verdict !== "skipped");
   const scores = scored

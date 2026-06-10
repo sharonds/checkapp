@@ -4,7 +4,8 @@ import { sqliteTable, integer, text, real } from "drizzle-orm/sqlite-core";
 import { desc, eq, sql } from "drizzle-orm";
 import { homedir } from "os";
 import { dirname, join } from "path";
-import { existsSync, renameSync, mkdirSync } from "fs";
+import { chmodSync, existsSync, renameSync, mkdirSync } from "fs";
+import { publicCheckSummary } from "../../../shared/check-summary";
 
 const CONFIG_DIR = join(homedir(), ".checkapp");
 const LEGACY_DIRS = [
@@ -41,6 +42,7 @@ export const checks = sqliteTable("checks", {
   source: text("source").notNull(),
   wordCount: integer("word_count").notNull().default(0),
   resultsJson: text("results_json").notNull().default("[]"),
+  auditJson: text("audit_json"),
   totalCost: real("total_cost").notNull().default(0),
   createdAt: text("created_at").notNull(),
 });
@@ -64,8 +66,18 @@ export const contexts = sqliteTable("contexts", {
   updatedAt: text("updated_at").notNull(),
 });
 
-export type Check = typeof checks.$inferSelect;
+export type Check = Omit<typeof checks.$inferSelect, "auditJson"> & { auditJson?: string | null };
 export type Context = typeof contexts.$inferSelect;
+
+export interface InsertDashboardCheckInput {
+  source: string;
+  wordCount: number;
+  resultsJson: string;
+  auditJson: string | null;
+  totalCost: number;
+  articleText: string;
+  tags?: string[];
+}
 
 // Singleton connection
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -84,12 +96,31 @@ export function getDb() {
     if (dbPath !== ":memory:") {
       const dir = dirname(dbPath);
       if (!existsSync(dir)) {
-        mkdirSync(dir, { recursive: true });
+        mkdirSync(dir, { recursive: true, mode: 0o700 });
       }
+      chmodPrivate(dir, 0o700);
     }
     _sqlite = new Database(dbPath);
+    if (dbPath !== ":memory:") {
+      _sqlite.pragma("journal_mode = WAL");
+    }
+    _sqlite.pragma("busy_timeout = 5000");
+    if (dbPath !== ":memory:") chmodPrivate(dbPath, 0o600);
     // Create tags tables if they don't exist (the CLI may not have created them)
-    _sqlite.pragma("journal_mode = WAL");
+    _sqlite.prepare(
+      `CREATE TABLE IF NOT EXISTS checks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source TEXT NOT NULL,
+        word_count INTEGER NOT NULL DEFAULT 0,
+        results_json TEXT NOT NULL DEFAULT '[]',
+        audit_json TEXT,
+        total_cost REAL NOT NULL DEFAULT 0,
+        article_text TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`
+    ).run();
+    ensureChecksColumn(_sqlite, "article_text", "TEXT NOT NULL DEFAULT ''");
+    ensureChecksColumn(_sqlite, "audit_json", "TEXT");
     _sqlite.prepare(
       `CREATE TABLE IF NOT EXISTS tags (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE)`
     ).run();
@@ -104,6 +135,20 @@ export function getDb() {
   return _db;
 }
 
+function getSqlite(): InstanceType<typeof Database> {
+  if (!_sqlite) getDb();
+  if (!_sqlite) throw new Error("Dashboard database is not initialized");
+  return _sqlite;
+}
+
+function chmodPrivate(path: string, mode: number): void {
+  try {
+    chmodSync(path, mode);
+  } catch {
+    // Best effort on filesystems that do not support POSIX modes.
+  }
+}
+
 export function closeDb() {
   _sqlite?.close();
   _db = null;
@@ -112,12 +157,35 @@ export function closeDb() {
 
 export function getRecentChecks(limit: number) {
   const db = getDb();
-  return db.select().from(checks).orderBy(desc(checks.id)).limit(limit).all();
+  return db
+    .select({
+      id: checks.id,
+      source: checks.source,
+      wordCount: checks.wordCount,
+      resultsJson: checks.resultsJson,
+      totalCost: checks.totalCost,
+      createdAt: checks.createdAt,
+    })
+    .from(checks)
+    .orderBy(desc(checks.id))
+    .limit(limit)
+    .all();
 }
 
 export function getAllChecks() {
   const db = getDb();
-  return db.select().from(checks).orderBy(desc(checks.id)).all();
+  return db
+    .select({
+      id: checks.id,
+      source: checks.source,
+      wordCount: checks.wordCount,
+      resultsJson: checks.resultsJson,
+      totalCost: checks.totalCost,
+      createdAt: checks.createdAt,
+    })
+    .from(checks)
+    .orderBy(desc(checks.id))
+    .all();
 }
 
 export function getCheckById(id: number) {
@@ -143,11 +211,6 @@ export function getTotalStats() {
     totalChecks: row?.total_checks ?? 0,
     totalCost: row?.total_cost ?? 0,
   };
-}
-
-interface StoredSkillResult {
-  score?: number;
-  verdict?: "pass" | "warn" | "fail" | "skipped";
 }
 
 export interface DashboardParsedCheck {
@@ -189,43 +252,25 @@ function formatDateShort(date: Date): string {
   });
 }
 
-function getVerdict(score: number): "pass" | "warn" | "fail" {
-  if (score >= 75) return "pass";
-  if (score >= 50) return "warn";
-  return "fail";
-}
-
 export function buildDashboardSummary(checks: Check[], now = new Date()): DashboardSummary {
   const parsedChecks = checks.map((c) => {
-    let results: StoredSkillResult[] = [];
-    try {
-      const raw = JSON.parse(c.resultsJson);
-      results = Array.isArray(raw) ? raw : [];
-    } catch {
-      results = [];
-    }
-
-    const scored = results.filter((r) => r.verdict !== "skipped");
-    const scores = scored
-      .map((r) => r.score)
-      .filter((s): s is number => typeof s === "number");
-    const allSkipped = results.length > 0 && scored.length === 0;
-    const avgScore =
-      scores.length > 0
-        ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
-        : 0;
-    const verdict: "pass" | "warn" | "fail" | "skipped" = allSkipped
-      ? "skipped"
-      : getVerdict(avgScore);
-
-    return {
+    const summary = publicCheckSummary({
       id: c.id,
       source: c.source,
       wordCount: c.wordCount,
       totalCost: c.totalCost,
       createdAt: c.createdAt,
-      avgScore,
-      verdict,
+      resultsJson: c.resultsJson,
+    });
+
+    return {
+      id: summary.id ?? c.id,
+      source: summary.source,
+      wordCount: summary.wordCount,
+      totalCost: summary.totalCost,
+      createdAt: summary.createdAt ?? c.createdAt,
+      avgScore: summary.score,
+      verdict: summary.verdict,
     };
   });
 
@@ -279,19 +324,38 @@ export function buildDashboardSummary(checks: Check[], now = new Date()): Dashbo
 }
 
 export function addTagsToCheck(checkId: number, tagNames: string[]) {
-  const db = getDb();
-  for (const name of tagNames) {
-    db.run(sql`INSERT OR IGNORE INTO tags (name) VALUES (${name})`);
-    const tag = db
-      .select()
-      .from(tags)
-      .where(eq(tags.name, name))
-      .limit(1)
-      .all()[0];
+  insertTagsForCheck(getSqlite(), checkId, tagNames);
+}
+
+export function insertCheckWithTags(input: InsertDashboardCheckInput): number {
+  const sqlite = getSqlite();
+  const insert = sqlite.transaction((row: InsertDashboardCheckInput) => {
+    const info = sqlite.prepare(`
+      INSERT INTO checks (source, word_count, results_json, audit_json, total_cost, article_text)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      row.source,
+      row.wordCount,
+      row.resultsJson,
+      row.auditJson,
+      row.totalCost,
+      row.articleText,
+    );
+    const checkId = info.lastInsertRowid as number;
+    insertTagsForCheck(sqlite, checkId, row.tags ?? []);
+    return checkId;
+  });
+  return insert(input);
+}
+
+function insertTagsForCheck(sqlite: InstanceType<typeof Database>, checkId: number, tagNames: string[]): void {
+  for (const rawName of tagNames) {
+    const name = typeof rawName === "string" ? rawName.trim() : "";
+    if (!name) continue;
+    sqlite.prepare("INSERT OR IGNORE INTO tags (name) VALUES (?)").run(name);
+    const tag = sqlite.prepare("SELECT id FROM tags WHERE name = ? LIMIT 1").get(name) as { id: number } | undefined;
     if (tag) {
-      db.run(
-        sql`INSERT OR IGNORE INTO check_tags (check_id, tag_id) VALUES (${checkId}, ${tag.id})`
-      );
+      sqlite.prepare("INSERT OR IGNORE INTO check_tags (check_id, tag_id) VALUES (?, ?)").run(checkId, tag.id);
     }
   }
 }
@@ -315,12 +379,25 @@ export function searchChecks(query: string, tag?: string) {
   const db = getDb();
   if (tag) {
     return db.all(
-      sql`SELECT c.* FROM checks c JOIN check_tags ct ON c.id = ct.check_id JOIN tags t ON ct.tag_id = t.id WHERE t.name = ${tag} AND c.source LIKE ${"%" + query + "%"} ORDER BY c.id DESC LIMIT 50`
+      sql`SELECT c.id, c.source, c.word_count AS wordCount, c.results_json AS resultsJson, c.total_cost AS totalCost, c.created_at AS createdAt
+          FROM checks c
+          JOIN check_tags ct ON c.id = ct.check_id
+          JOIN tags t ON ct.tag_id = t.id
+          WHERE t.name = ${tag} AND c.source LIKE ${"%" + query + "%"}
+          ORDER BY c.id DESC LIMIT 50`
     ) as Check[];
   }
   return db.all(
-    sql`SELECT * FROM checks WHERE source LIKE ${"%" + query + "%"} ORDER BY id DESC LIMIT 50`
+    sql`SELECT id, source, word_count AS wordCount, results_json AS resultsJson, total_cost AS totalCost, created_at AS createdAt
+        FROM checks WHERE source LIKE ${"%" + query + "%"} ORDER BY id DESC LIMIT 50`
   ) as Check[];
+}
+
+function ensureChecksColumn(sqlite: InstanceType<typeof Database>, name: string, definition: string): void {
+  const columns = sqlite.prepare("PRAGMA table_info(checks)").all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === name)) {
+    sqlite.prepare(`ALTER TABLE checks ADD COLUMN ${name} ${definition}`).run();
+  }
 }
 
 // --- Context queries ---

@@ -2,6 +2,12 @@
 
 The web dashboard exposes a JSON API at `http://localhost:3000/api` when running locally. All endpoints return JSON with CORS headers enabled.
 
+## Access model
+
+The dashboard API is local-first and intended for loopback access only. Route handlers reject non-local hosts/origins, and forwarded headers can deny a request but cannot make a remote request trusted. Mutation routes require `X-CheckApp-CSRF` and JSON content types. The browser reads the token from `<meta name="checkapp-csrf">`; scripts can read the same value from `~/.checkapp/csrf.token` on the local machine. Do not put the dashboard behind a public reverse proxy.
+
+List/search endpoints return redacted summaries. Detail and creation endpoints may return full findings, structured audit data, quotes, article excerpts in `audit.segments[].text`, evidence snippets, provider metadata, and search queries for the selected check; treat those responses as sensitive local data.
+
 ---
 
 ## POST /api/checks
@@ -27,14 +33,22 @@ Run a new content quality check.
 **Response (201):**
 
 ```json
-{ "id": 42 }
+{
+  "id": 42,
+  "results": [ ... ],
+  "totalCostUsd": 0.18,
+  "audit": { "...": "optional structured audit data" }
+}
 ```
+
+The creation response is detail-equivalent and may include full findings, article quotes, article excerpts in `audit.segments[].text`, evidence snippets, provider metadata, search queries, and structured audit data. Treat it as sensitive. Use `GET /api/checks` or `/api/search` when you only need public summaries.
 
 **Example:**
 
 ```bash
 curl -X POST http://localhost:3000/api/checks \
   -H "Content-Type: application/json" \
+  -H "X-CheckApp-CSRF: $(cat ~/.checkapp/csrf.token)" \
   -d '{"text": "Vitamin D is essential for bone health...", "source": "health-article.md", "tags": ["health"]}'
 ```
 
@@ -58,12 +72,14 @@ List recent checks.
     "wordCount": 810,
     "totalCost": 0.18,
     "createdAt": "2026-04-15T10:30:00Z",
-    "results": [
-      { "skillId": "plagiarism", "name": "Plagiarism Check", "score": 92, "verdict": "pass", "summary": "8% similarity", "findings": [], "costUsd": 0.09 }
-    ]
+    "score": 92,
+    "verdict": "pass",
+    "resultCount": 2
   }
 ]
 ```
+
+List and search responses intentionally omit full structured audit records and full result findings. They must not expose raw internal `audit_json`, `results_json`, article quotes, evidence snippets, source passages, provider attempts, or provider/model/search metadata. Use `GET /api/checks/:id` for full detail.
 
 **Example:**
 
@@ -87,9 +103,20 @@ Get a single check with full results and tags.
   "totalCost": 0.18,
   "createdAt": "2026-04-15T10:30:00Z",
   "results": [ ... ],
+  "audit": {
+    "version": 1,
+    "auditId": "audit_abc123",
+    "language": "he",
+    "direction": "rtl",
+    "coverage": { "...": "..." }
+  },
   "tags": ["health", "q2"]
 }
 ```
+
+`audit` is optional and additive. Existing consumers should continue to rely on `results`; `audit` appears only when a check path has produced structured audit data. Additive fields may appear in `audit.version: 1` and should be ignored by clients that do not understand them. Unknown future versions should be treated as unsupported and ignored. Fact-check and plagiarism audit records include document segments, exact article quotes, locations, language/direction metadata, coverage counters, budget stop reasons such as `claim_cap`/`provider_call_budget`, evidence assessments, plagiarism matches, provider attempts, confidence rationale, grounding mode for Gemini plagiarism matches, and suggested rewrites. Detail audit payloads can include article excerpts in `segments[].text`; list/search endpoints omit them. The SQLite column `audit_json` is internal and is not part of the public API.
+
+When `audit.language` is Hebrew, CheckApp-owned dashboard and HTML report labels are localized to Hebrew and rendered RTL. API payload values are not translated: provider names, URLs, quoted article text, evidence titles, source snippets, and model-generated finding text remain in their original language.
 
 **Response (404):**
 
@@ -126,6 +153,7 @@ Add tags to an existing check.
 ```bash
 curl -X POST http://localhost:3000/api/checks/42/tags \
   -H "Content-Type: application/json" \
+  -H "X-CheckApp-CSRF: $(cat ~/.checkapp/csrf.token)" \
   -d '{"tags": ["blog", "q2"]}'
 ```
 
@@ -141,6 +169,8 @@ Search checks by text query and/or tag.
 | `tag` | string | Filter by tag name. |
 
 **Response (200):** Same shape as `GET /api/checks`.
+
+Search responses follow list-response privacy rules and omit full structured audit records.
 
 **Example:**
 
@@ -225,6 +255,7 @@ Update configuration fields. Partial updates are supported.
 ```bash
 curl -X PATCH http://localhost:3000/api/config \
   -H "Content-Type: application/json" \
+  -H "X-CheckApp-CSRF: $(cat ~/.checkapp/csrf.token)" \
   -d '{"skills": {"factCheck": true}}'
 ```
 
@@ -286,6 +317,7 @@ Toggle a skill on or off.
 ```bash
 curl -X POST http://localhost:3000/api/skills \
   -H "Content-Type: application/json" \
+  -H "X-CheckApp-CSRF: $(cat ~/.checkapp/csrf.token)" \
   -d '{"skillId": "factCheck", "enabled": true}'
 ```
 
@@ -322,6 +354,7 @@ Create or update a context document (tone guide, brief, legal policy, etc.).
 ```bash
 curl -X POST http://localhost:3000/api/contexts \
   -H "Content-Type: application/json" \
+  -H "X-CheckApp-CSRF: $(cat ~/.checkapp/csrf.token)" \
   -d '{"type": "tone-guide", "name": "Brand Voice", "content": "Write in second person..."}'
 ```
 
@@ -400,7 +433,8 @@ Remove a context document.
 **Example:**
 
 ```bash
-curl -X DELETE http://localhost:3000/api/contexts/brief
+curl -X DELETE http://localhost:3000/api/contexts/brief \
+  -H "X-CheckApp-CSRF: $(cat ~/.checkapp/csrf.token)"
 ```
 
 ---
@@ -418,6 +452,7 @@ Common status codes:
 | Code | Meaning |
 |------|---------|
 | 400 | Bad request (missing required field, text too long) |
+| 403 | Request rejected by local-only or CSRF guard |
 | 404 | Check not found |
 | 500 | Internal server error |
 

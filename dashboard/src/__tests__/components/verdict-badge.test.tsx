@@ -20,4 +20,11 @@ describe("VerdictBadge", () => {
     render(<VerdictBadge verdict="skipped" />);
     expect(document.body.textContent).toContain("SKIPPED");
   });
+
+  it("localizes Hebrew verdict labels", () => {
+    document.body.innerHTML = "";
+    render(<VerdictBadge verdict="fail" locale="he" />);
+    expect(screen.getByText("לא לפרסום")).toBeDefined();
+    expect(document.body.textContent).not.toContain("FAIL");
+  });
 });

@@ -39,6 +39,49 @@ describe("SkillRegistry", () => {
     expect(results[0].verdict).toBe("fail");
   });
 
+  test("redacts provider secrets from caught skill errors", async () => {
+    const broken: Skill = {
+      id: "broken",
+      name: "Broken",
+      async run() { throw new Error("Bearer sk-live-secret-123 failed with api_key=abc123"); },
+    };
+    const registry = new SkillRegistry([broken]);
+    const results = await registry.runAll("text", baseConfig);
+    expect(results[0].error).not.toContain("sk-live-secret-123");
+    expect(results[0].error).not.toContain("abc123");
+    expect(results[0].error).toContain("[redacted]");
+  });
+
+  test("sanitizes finding source URLs before returning registry results", async () => {
+    const noisy: Skill = {
+      id: "noisy",
+      name: "Noisy",
+      async run(): Promise<SkillResult> {
+        return {
+          skillId: "noisy",
+          name: "Noisy",
+          score: 0,
+          verdict: "fail",
+          summary: "bad source",
+          findings: [{
+            severity: "error",
+            text: "bad",
+            sources: [
+              { url: "javascript:alert(1)" },
+              { url: "https://user:secret@example.com/path?api_key=abc&utm_source=x" },
+            ],
+          }],
+          costUsd: 0,
+        };
+      },
+    };
+    const registry = new SkillRegistry([noisy]);
+    const results = await registry.runAll("text", baseConfig);
+    expect(results[0].findings[0].sources).toEqual([
+      { url: "https://example.com/path?api_key=%5Bredacted%5D&utm_source=x" },
+    ]);
+  });
+
   test("totalCost sums all skill costs", async () => {
     const expensive: Skill = {
       id: "x",

@@ -15,6 +15,31 @@ describe("normalizeFinding", () => {
     expect(x.rewrite).toBe("r");
     expect(x.citations?.[0].title).toBe("t");
   });
+  test("preserves whitelisted audit fields when present", () => {
+    const x = normalizeFinding({
+      severity: "error" as const,
+      text: "bad claim",
+      id: "finding-1",
+      status: "unsupported",
+      location: { sectionId: "s1", paragraphIndex: 2, sentenceIndex: 0, matchQuality: "fuzzy" },
+      explanation: "The source disagrees.",
+      explanationLanguage: "en",
+      explanationDir: "ltr",
+      confidenceRationale: "Official source contradicts it.",
+      searchQueries: ["official claim"],
+      provider: "gemini",
+      model: "gemini-test",
+      auditRef: { auditId: "audit-1", claimId: "claim-1" },
+      unsafeExtra: { should: "drop" },
+    });
+    expect(x.id).toBe("finding-1");
+    expect(x.status).toBe("unsupported");
+    expect(x.location?.sectionId).toBe("s1");
+    expect(x.location?.matchQuality).toBe("fuzzy");
+    expect(x.searchQueries).toEqual(["official claim"]);
+    expect(x.auditRef?.claimId).toBe("claim-1");
+    expect((x as any).unsafeExtra).toBeUndefined();
+  });
   test("coerces null to undefined so optional-chain checks work in React", () => {
     const x = normalizeFinding({ severity: "warn" as const, text: "x", sources: null as never, citations: null as never });
     expect(x.sources).toBeUndefined();

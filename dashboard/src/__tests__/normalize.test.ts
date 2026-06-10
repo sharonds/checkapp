@@ -26,6 +26,32 @@ describe("dashboard normalize mirror", () => {
     expect(f.citations).toEqual([{ title: "Real" }]);
   });
 
+  test("preserves whitelisted audit finding fields", () => {
+    const f = normalizeFinding({
+      severity: "error",
+      text: "bad claim",
+      id: "finding-1",
+      status: "unsupported",
+      location: { sectionId: "s1", paragraphIndex: 2, sentenceIndex: 0, matchQuality: "fuzzy" },
+      explanation: "The source disagrees.",
+      explanationLanguage: "en",
+      explanationDir: "ltr",
+      confidenceRationale: "Official source contradicts it.",
+      searchQueries: ["official claim"],
+      provider: "gemini",
+      model: "gemini-test",
+      auditRef: { auditId: "audit-1", claimId: "claim-1" },
+      unsafeExtra: { should: "drop" },
+    });
+    expect(f.id).toBe("finding-1");
+    expect(f.status).toBe("unsupported");
+    expect(f.location?.sectionId).toBe("s1");
+    expect(f.location?.matchQuality).toBe("fuzzy");
+    expect(f.searchQueries).toEqual(["official claim"]);
+    expect(f.auditRef?.claimId).toBe("claim-1");
+    expect((f as any).unsafeExtra).toBeUndefined();
+  });
+
   test("preserves 'skipped' verdict on skill result (issue #39)", () => {
     // Regression guard: pre-fix validVerdicts omitted 'skipped', so a stored
     // skipped skill got silently coerced to 'warn', then the report page

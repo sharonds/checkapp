@@ -2,6 +2,7 @@ import type { Skill, SkillResult, Finding, Source } from "./types.ts";
 import type { Config } from "../config.ts";
 import { resolveProvider } from "../providers/resolve.ts";
 import { embed, vectorizeQuery } from "../providers/vectorize.ts";
+import { sanitizeProviderError } from "../audit/types.ts";
 
 const SIM_THRESHOLD = 0.85;
 const SIM_ERROR_THRESHOLD = 0.95;
@@ -101,7 +102,7 @@ export class SelfPlagiarismSkill implements Skill {
     } catch (err) {
       return {
         skillId: this.id, name: this.name, score: 90, verdict: "warn",
-        summary: `Self-plagiarism check failed: ${(err as Error).message.slice(0, 200)}`,
+        summary: `Self-plagiarism check failed: ${sanitizeProviderError((err as Error).message).slice(0, 200)}`,
         findings: [{ severity: "info", text: "Check Vectorize index name, accountId, and API key permissions." }],
         costUsd: 0, provider: resolved.provider,
       };

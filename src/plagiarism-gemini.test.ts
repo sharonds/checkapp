@@ -96,6 +96,70 @@ describe("checkPlagiarismGeminiGrounded", () => {
     expect(result.matches[0].snippet).toContain("[low confidence");
   });
 
+  test("preserves structured match type and per-match grounding mode", async () => {
+    globalThis.fetch = async () => ({
+      ok: true,
+      json: async () => ({
+        candidates: [{
+          content: { parts: [{ text: JSON.stringify({
+            overallSimilarityPct: 50,
+            verdict: "review",
+            confidence: "high",
+            matches: [
+              {
+                sourceUrl: "https://example.com/near",
+                sourceTitle: "Near Exact",
+                matchedArticleText: "Near exact copied sentence.",
+                matchedSourceText: "Near exact copied sentence.",
+                similarityPct: 90,
+                matchType: "near_exact",
+                confidence: "high",
+                explanation: "Near exact copied sentence.",
+              },
+              {
+                sourceUrl: "https://not-grounded.example/paraphrase",
+                sourceTitle: "Paraphrase",
+                matchedArticleText: "Paraphrased article sentence.",
+                matchedSourceText: "Similar source sentence.",
+                similarityPct: 50,
+                matchType: "paraphrase",
+                confidence: "high",
+                explanation: "Paraphrased from a source.",
+              },
+              {
+                sourceUrl: "https://example.com/uncertain",
+                sourceTitle: "Uncertain",
+                matchedArticleText: "Uncertain match sentence.",
+                similarityPct: 40,
+                matchType: "uncertain",
+                confidence: "medium",
+                explanation: "Uncertain match.",
+              },
+            ],
+          }) }] },
+          groundingMetadata: {
+            groundingChunks: [
+              { web: { uri: "https://example.com/near", title: "Near Exact" } },
+              { web: { uri: "https://example.com/uncertain", title: "Uncertain" } },
+            ],
+          },
+        }],
+      }),
+    } as Response);
+
+    const result = await checkPlagiarismGeminiGrounded(
+      "Near exact copied sentence. Paraphrased article sentence. Uncertain match sentence.",
+      config
+    );
+
+    expect((result.matches[0] as any).matchType).toBe("near_exact");
+    expect((result.matches[0] as any).groundingMode).toBe("grounded");
+    expect((result.matches[1] as any).matchType).toBe("paraphrase");
+    expect((result.matches[1] as any).groundingMode).toBe("ungrounded");
+    expect((result.matches[2] as any).matchType).toBe("uncertain");
+    expect((result.matches[2] as any).groundingMode).toBe("grounded");
+  });
+
   test("caps ungrounded source-text overlap at medium confidence", async () => {
     globalThis.fetch = async () => ({
       ok: true,

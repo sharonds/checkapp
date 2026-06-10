@@ -25,7 +25,7 @@ Or add to your MCP config (e.g., `.claude/settings.json`):
 |------|-------------|----------------|
 | `check_article` | Run quality checks on article text | `text` |
 | `list_reports` | Browse check history | - |
-| `get_report` | Get full report by ID | `id` |
+| `get_report` | Get full report details by ID, excluding raw article text | `id` |
 | `upload_context` | Save a tone guide, brief, or legal policy | `type`, `content` |
 | `list_contexts` | View saved context documents | - |
 | `get_skills` | See which skills are enabled | - |
@@ -64,7 +64,13 @@ Or add to your MCP config (e.g., `.claude/settings.json`):
 
 ### Fact-check tiers
 
-Basic is the default fact-check tier. Standard is opt-in and only used when `factCheckTierFlag=true` and `factCheckTier="standard"` are present in config. Deep Audit is async; start it with `deep_audit_article` and poll with `get_deep_audit_result`.
+Basic is the default fact-check tier. Standard is opt-in and only used when `factCheckTierFlag=true` and `factCheckTier="standard"` are present in config. Basic and Standard sync checks default to up to 4 checked claims per article for predictable cost; `factAudit.standardMaxClaims` and provider-call budgets can change coverage, and structured audit coverage reports budget stop reasons such as `claim_cap`. Deep Audit is async; start it with `deep_audit_article` and poll with `get_deep_audit_result`.
+
+### Structured audit field
+
+`check_article` and `get_report` may include an optional `audit` object when a check path produces structured audit data. Existing agents should continue to read `results`; `audit` is additive and may be absent. Fact-check and plagiarism audits include document quote locations, language/direction metadata, evidence, confidence rationale, grounding mode for Gemini plagiarism matches, provider attempts, and suggested rewrites. Detail `audit` payloads can include article excerpts in `segments[].text` and finding quotes. HTML reports and dashboard audit drilldowns localize CheckApp-owned labels for English/Hebrew from this metadata, but agents should not assume provider names, URLs, source titles, model-generated text, or quoted article text have been translated. `list_reports` returns redacted report summaries and must not be treated as a source for full audit quotes, evidence snippets, provider/model metadata, search queries, provider attempts, `segments[].text`, or article text. `get_report` returns detail data for the selected report but still omits the raw persisted `articleText` field.
+
+The structured audit contract is versioned with `audit.version`. Additive fields may appear in version 1 and should be ignored by consumers that do not understand them. Unknown future versions should be ignored unless the agent explicitly supports them.
 
 ## CLI Commands (scripts, CI/CD, OpenClaw)
 
@@ -125,5 +131,8 @@ All data is local:
 - Check history: `~/.checkapp/history.db` (SQLite)
 - Config: `~/.checkapp/config.json`
 - Contexts: stored in the SQLite database
+- Optional structured audit data: stored locally with check history when present
 
 No remote servers. No authentication needed for local use.
+
+Configured providers may receive article text, claims, passages, search queries, source URLs, and evidence snippets as part of checks. Provider retention is governed by each provider's terms.

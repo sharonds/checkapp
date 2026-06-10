@@ -73,6 +73,17 @@ describe("GrammarSkill — LanguageTool path", () => {
     expect(r.findings.length).toBe(0);
   });
 
+  test("LanguageTool provider failure summaries redact token-like response text", async () => {
+    mockFetch(urlRouter({
+      "languagetool.org": async () => new Response("api_key=abc123 Bearer sk-live-secret-123", { status: 500 }),
+    }));
+
+    const r = await new GrammarSkill().run("text", cfgBase);
+    expect(r.summary).toContain("[redacted]");
+    expect(r.summary).not.toContain("abc123");
+    expect(r.summary).not.toContain("sk-live-secret");
+  });
+
   test("caps at 50 findings for long texts", async () => {
     const many = Array.from({ length: 80 }, (_, i) => ({
       message: `Match ${i}`, offset: i, length: 1,

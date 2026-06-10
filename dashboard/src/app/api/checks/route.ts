@@ -1,32 +1,30 @@
 import { jsonWithCors } from "@/lib/cors";
-import { addTagsToCheck, getRecentChecks } from "@/lib/db";
+import { getRecentChecks, insertCheckWithTags } from "@/lib/db";
 import { runCheckCore, loadContextsIntoConfig } from "@/lib/run-check";
 import { readAppConfig } from "@/lib/config";
-import { guardLocalMutation } from "@/lib/guard-local";
+import { guardLocalMutation, guardLocalReadOnly } from "@/lib/guard-local";
 import { emitTierSelectedEvent } from "../../../../../src/telemetry/audit-events";
+import { publicCheckSummary } from "../../../../../shared/check-summary";
 import { NextRequest } from "next/server";
-import Database from "better-sqlite3";
-import { homedir } from "os";
-import { join } from "path";
+import { sanitizeProviderError, serializeAuditRecord } from "../../../../../src/audit/types";
 
 const MAX_TEXT_LENGTH = 50_000;
-const CONFIG_DIR = join(homedir(), ".checkapp");
-// CHECKAPP_DB_PATH lets tests and E2E harnesses redirect the default DB.
-const DB_PATH = process.env.CHECKAPP_DB_PATH ?? join(CONFIG_DIR, "history.db");
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  const blocked = guardLocalReadOnly(request);
+  if (blocked) return blocked;
   try {
     const url = new URL(request.url);
     const rawLimit = Number(url.searchParams.get("limit") ?? "50");
     const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 200) : 50;
     const checks = getRecentChecks(limit);
-    const parsed = checks.map((c) => ({
+    const parsed = checks.map((c) => publicCheckSummary({
       id: c.id,
       source: c.source,
       wordCount: c.wordCount,
       totalCost: c.totalCost,
       createdAt: c.createdAt,
-      results: JSON.parse(c.resultsJson),
+      resultsJson: c.resultsJson,
     }));
     return jsonWithCors(parsed);
   } catch (err) {
@@ -37,7 +35,6 @@ export async function GET(request: Request) {
 export async function POST(req: NextRequest) {
   const blocked = guardLocalMutation(req);
   if (blocked) return blocked;
-  let sqlite: Database.Database | null = null;
   try {
     const body = await req.json();
     const { text, source, tags } = body as { text?: string; source?: string; tags?: string[] };
@@ -51,13 +48,7 @@ export async function POST(req: NextRequest) {
     const configRaw = readAppConfig() as any;
     const config = loadContextsIntoConfig(configRaw);
 
-    // Save to dashboard DB using better-sqlite3
-    sqlite = new Database(DB_PATH);
-    sqlite.pragma("journal_mode = WAL");
-
-    ensureChecksTable(sqlite);
-
-    const { results, totalCostUsd } = await runCheckCore(text, config, {
+    const { results, totalCostUsd, audit } = await runCheckCore(text, config, {
       onFactCheckTierSelected(selection) {
         emitTierSelectedEvent({
           source: "dashboard",
@@ -70,41 +61,19 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    const stmt = sqlite.prepare(`
-      INSERT INTO checks (source, word_count, results_json, total_cost, article_text)
-      VALUES (?, ?, ?, ?, ?)
-    `);
-    const info = stmt.run(sourceLabel, wordCount, JSON.stringify(results), totalCostUsd, text);
-    const id = info.lastInsertRowid as number;
+    const id = insertCheckWithTags({
+      source: sourceLabel,
+      wordCount,
+      resultsJson: JSON.stringify(results),
+      auditJson: serializeAuditRecord(audit),
+      totalCost: totalCostUsd,
+      articleText: text,
+      tags,
+    });
 
-    // Apply tags
-    if (tags?.length && id > 0) {
-      addTagsToCheck(id, tags);
-    }
-
-    return jsonWithCors({ id }, { status: 201 });
+    return jsonWithCors({ id, results, totalCostUsd, audit }, { status: 201 });
   } catch (err) {
-    return jsonWithCors({ error: err instanceof Error ? err.message : "Check failed" }, { status: 500 });
-  } finally {
-    sqlite?.close();
-  }
-}
-
-function ensureChecksTable(sqlite: Database.Database) {
-  sqlite.prepare(`
-    CREATE TABLE IF NOT EXISTS checks (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      source TEXT NOT NULL,
-      word_count INTEGER NOT NULL DEFAULT 0,
-      results_json TEXT NOT NULL DEFAULT '[]',
-      total_cost REAL NOT NULL DEFAULT 0,
-      article_text TEXT NOT NULL DEFAULT '',
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `).run();
-
-  const columns = sqlite.prepare("PRAGMA table_info(checks)").all() as Array<{ name: string }>;
-  if (!columns.some((column) => column.name === "article_text")) {
-    sqlite.prepare("ALTER TABLE checks ADD COLUMN article_text TEXT NOT NULL DEFAULT ''").run();
+    const error = sanitizeProviderError(err instanceof Error ? err.message : String(err)) || "Check failed";
+    return jsonWithCors({ error }, { status: 500 });
   }
 }
