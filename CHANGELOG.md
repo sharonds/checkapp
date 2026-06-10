@@ -28,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Grounded fact-check now uses `gemini-3.1-pro-preview` (flash fallback `gemini-3.5-flash`) — Google retired `gemini-3-pro-preview` and `gemini-3-flash-preview`, which made every grounded call fail with HTTP 404. Override with `GEMINI_MODEL_PRO` / `GEMINI_MODEL_FLASH`.
+- Empty or unparseable claim-extraction responses are now reported as provider errors instead of a false "No specific verifiable claims detected"; extraction gets 4096 output tokens so reasoning models don't truncate before answering.
+- Hebrew reports no longer render raw English confidence values (e.g. "(high)") on verified findings.
 - Sync fact-check budgets now keep Basic, Standard, and Exa deep-reasoning checks at the documented 4-claim default unless config explicitly raises the cap.
 - Fact-checks that extract claims but skip every claim due to budget now warn instead of returning a score-100 pass.
 - Retry/failure budget settings no longer preempt the first provider call when set to `0`.
