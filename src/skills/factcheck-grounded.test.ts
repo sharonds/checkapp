@@ -617,4 +617,70 @@ describe("FactCheckGroundedSkill", () => {
     expect(result.findings[0].rewrite).toContain("The model says yes but provides no source.");
     expect((result as any).audit.factAssessments[0].rewrite).toContain("The model says yes but provides no source.");
   });
+
+  describe("rate-limit retry handling", () => {
+    const minimaxExtract = (claims: string[]) => jsonResponse({
+      id: "msg_x",
+      type: "message",
+      role: "assistant",
+      model: "MiniMax-M2.7",
+      content: [{ type: "text", text: JSON.stringify(claims) }],
+      stop_reason: "end_turn",
+      usage: { input_tokens: 10, output_tokens: 10 },
+    });
+
+    const geminiOk = (supported: boolean, note: string, sources: string[]) => jsonResponse({
+      candidates: [{
+        content: { parts: [{ text: JSON.stringify({ supported, note }) }] },
+        groundingMetadata: {
+          webSearchQueries: ["query"],
+          groundingChunks: sources.map((uri) => ({ web: { uri, title: uri } })),
+        },
+      }],
+    });
+
+    function geminiSequence(responses: Array<() => Response | Promise<Response>>) {
+      let call = 0;
+      return async () => responses[Math.min(call++, responses.length - 1)]!();
+    }
+
+    test("retries Gemini 429 rate-limit responses within the retry budget", async () => {
+      process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS = "0";
+      try {
+        mockFetch(urlRouter({
+          "api.minimax.io": async () => minimaxExtract(["one claim"]),
+          "generativelanguage.googleapis.com": geminiSequence([
+            () => new Response(JSON.stringify({ error: { message: "RESOURCE_EXHAUSTED" } }), { status: 429 }),
+            () => geminiOk(true, "ok", ["https://example.com/a"]),
+          ]),
+        }));
+        const result = await new FactCheckGroundedSkill().run("one claim", baseConfig);
+        const attempts = (result as any).audit.providerAttempts;
+        expect(attempts.map((a: any) => a.status)).toEqual(["retry", "success"]);
+        expect(attempts[0].statusCode).toBe(429);
+        expect(attempts[0].retryable).toBe(true);
+        expect(result.findings.filter((f) => f.status === "provider_error")).toHaveLength(0);
+      } finally {
+        delete process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS;
+      }
+    });
+
+    test("429 honors Retry-After header capped at 30s", async () => {
+      process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS = "0";
+      try {
+        // Use a 0-second Retry-After so the test stays fast; assert via attempt metadata, not wall clock.
+        mockFetch(urlRouter({
+          "api.minimax.io": async () => minimaxExtract(["one claim"]),
+          "generativelanguage.googleapis.com": geminiSequence([
+            () => new Response("", { status: 429, headers: { "Retry-After": "0" } }),
+            () => geminiOk(true, "ok", ["https://example.com/a"]),
+          ]),
+        }));
+        const result = await new FactCheckGroundedSkill().run("one claim", baseConfig);
+        expect((result as any).audit.providerAttempts.map((a: any) => a.status)).toEqual(["retry", "success"]);
+      } finally {
+        delete process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS;
+      }
+    });
+  });
 });

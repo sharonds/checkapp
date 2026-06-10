@@ -7,7 +7,7 @@ export interface ProviderErrorLike {
   message?: string;
 }
 
-const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
+export const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
 
 export function classifyProviderError(error: ProviderErrorLike): { retryable: boolean; statusCode?: number; errorClass: string } {
   const statusCode = error.statusCode;

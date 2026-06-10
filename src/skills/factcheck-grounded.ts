@@ -19,6 +19,7 @@ import {
   locateQuote,
 } from "../audit/document.ts";
 import { sanitizeProviderError, type AuditClaim, type AuditRecord, type ClaimDecision, type FactAssessment, type ProviderAttempt } from "../audit/types.ts";
+import { RETRYABLE_STATUS_CODES } from "../audit/provider-contract.ts";
 
 interface GeminiGroundedChunk {
   web?: {
@@ -541,7 +542,7 @@ async function fetchGroundedAssessment(
 
   const latencyMs = Date.now() - startedAt;
 
-  if ((response.status === 500 || response.status === 503) && retriesLeft > 0) {
+  if (RETRYABLE_STATUS_CODES.has(response.status) && retriesLeft > 0) {
     attempts.push({
       provider: "gemini-grounded",
       model,
@@ -556,7 +557,11 @@ async function fetchGroundedAssessment(
       outputTokens: null,
       totalTokens: null,
     });
-    await sleep(groundedRetryDelayMs());
+    const retryAfterSeconds = Number(response.headers.get("retry-after"));
+    const providerDelayMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0
+      ? Math.min(retryAfterSeconds * 1000, 30_000)
+      : 0;
+    await sleep(Math.max(providerDelayMs, groundedRetryDelayMs()));
     return fetchGroundedAssessment(claim, apiKey, model, retriesLeft - 1, perClaimCost, attempts);
   }
 
