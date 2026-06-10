@@ -2,11 +2,13 @@ import { describe, expect, test } from "bun:test";
 import {
   AUDIT_UI as CLI_AUDIT_UI,
   formatAuditLocation as formatCliAuditLocation,
+  formatBudgetStopReason as formatCliBudgetStopReason,
 } from "./localization.ts";
 import { normalizeFinding as normalizeCliFinding, normalizeSkillResult as normalizeCliSkillResult } from "../skills/normalize.ts";
 import {
   AUDIT_UI as DASHBOARD_AUDIT_UI,
   formatAuditLocation as formatDashboardAuditLocation,
+  formatBudgetStopReason as formatDashboardBudgetStopReason,
 } from "../../dashboard/src/lib/audit-localization.ts";
 import {
   normalizeFinding as normalizeDashboardFinding,
@@ -117,6 +119,26 @@ describe("shared audit contract", () => {
     };
 
     expect(normalizeDashboardSkillResult(raw)).toEqual(normalizeCliSkillResult(raw));
+  });
+
+  test("CLI and dashboard formatBudgetStopReason agree for all 8 reasons in both locales", () => {
+    const reasons = [
+      "claim_cap",
+      "provider_call_budget",
+      "cost_budget",
+      "input_token_budget",
+      "output_token_budget",
+      "wall_clock_budget",
+      "provider_retry_budget",
+      "provider_failure_budget",
+    ];
+    for (const reason of reasons) {
+      for (const locale of ["en", "he"] as const) {
+        expect(formatDashboardBudgetStopReason(reason, locale)).toBe(
+          formatCliBudgetStopReason(reason, locale),
+        );
+      }
+    }
   });
 }
 );

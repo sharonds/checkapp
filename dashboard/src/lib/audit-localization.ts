@@ -98,17 +98,19 @@ export const AUDIT_UI = {
   },
 } as const;
 
+const BUDGET_STOP_REASON_LABELS: Record<string, { en: string; he: string }> = {
+  claim_cap: { en: "claim cap", he: "מכסת טענות" },
+  provider_call_budget: { en: "provider-call budget", he: "מכסת קריאות לספק" },
+  cost_budget: { en: "cost budget", he: "מכסת עלות" },
+  input_token_budget: { en: "input-token budget", he: "מכסת אסימוני קלט" },
+  output_token_budget: { en: "output-token budget", he: "מכסת אסימוני פלט" },
+  wall_clock_budget: { en: "time budget", he: "מכסת זמן" },
+  provider_retry_budget: { en: "provider-retry budget", he: "מכסת ניסיונות חוזרים" },
+  provider_failure_budget: { en: "provider-failure budget", he: "מכסת כשלי ספק" },
+};
+
 export function formatBudgetStopReason(reason: string, locale: AuditLocale): string {
-  if (locale === "he") {
-    if (reason === "claim_cap") return "מכסת טענות";
-    if (reason === "provider_call_budget") return "מכסת קריאות לספק";
-    if (reason === "cost_budget") return "מכסת עלות";
-    return reason.replace(/_/g, " ");
-  }
-  if (reason === "claim_cap") return "claim cap";
-  if (reason === "provider_call_budget") return "provider-call budget";
-  if (reason === "cost_budget") return "cost budget";
-  return reason.replace(/_/g, " ");
+  return BUDGET_STOP_REASON_LABELS[reason]?.[locale] ?? reason.replace(/_/g, " ");
 }
 
 export function localizedVerdictLabel(verdict: unknown, locale: AuditLocale): string {
