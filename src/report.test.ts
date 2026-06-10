@@ -629,6 +629,61 @@ test("empty report is not marked ready to publish", () => {
   expect(html).not.toContain("Ready to publish");
 });
 
+test("Hebrew report localizes provider_error findings (no raw English confidence)", () => {
+  const html = generateReport({
+    source: "he-provider-error.md",
+    wordCount: 5,
+    totalCostUsd: 0,
+    audit: {
+      version: 1,
+      auditId: "audit-x",
+      language: "he",
+      direction: "rtl",
+      coverage: {
+        wordsScanned: 5,
+        sectionsDetected: 1,
+        paragraphsScanned: 1,
+        sentencesScanned: 1,
+        claimsExtracted: 1,
+        claimsChecked: 1,
+        claimsSkipped: 0,
+        skipReasons: {},
+        plagiarismPassagesChecked: 0,
+        plagiarismPassagesSkipped: 0,
+        providerFailures: 1,
+        providerRetries: 0,
+      },
+      segments: [],
+      claims: [],
+      claimDecisions: [],
+      factAssessments: [],
+      plagiarismFindings: [],
+      providerAttempts: [],
+      createdAt: "2026-06-10T00:00:00.000Z",
+    },
+    results: [{
+      skillId: "fact-check-grounded",
+      name: "Fact Check (Grounded)",
+      score: 70,
+      verdict: "warn",
+      summary: "issue",
+      costUsd: 0,
+      provider: "gemini-grounded",
+      findings: [{
+        severity: "warn",
+        status: "provider_error",
+        confidence: "low",
+        text: "שגיאת ספק",
+        explanation: "Gemini grounded error: HTTP 500",
+        explanationLanguage: "he",
+      }],
+    }],
+  });
+  expect(html).toContain("שגיאת ספק");
+  expect(html).toContain("רמת ביטחון: נמוכה");
+  expect(html).not.toMatch(/\(low\)/);
+});
+
 test("passing report is marked ready for review, not guaranteed publishable", () => {
   const html = generateReport({
     source: "article.md",

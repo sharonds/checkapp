@@ -172,7 +172,7 @@ function localizedFindingLead(f: SkillResult["findings"][number], reportLocale: 
   const locale = localeForFindingOrReport(f, reportLocale);
   const status = localizedFindingStatus(f, locale);
   if (!status) return undefined;
-  if (f.status === "unsupported" || f.status === "unverified" || f.status === "plagiarism_match") {
+  if (f.status === "unsupported" || f.status === "unverified" || f.status === "plagiarism_match" || f.status === "provider_error") {
     return localizedFindingText(f, locale);
   }
   if (f.explanation) return f.confidence ? `${status} (${f.confidence}): ${f.explanation}` : `${status}: ${f.explanation}`;
