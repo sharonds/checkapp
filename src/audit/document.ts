@@ -200,12 +200,23 @@ function findExactLocatedQuote(quote: string, segments: AuditSegment[]): Located
   return undefined;
 }
 
+const CASE_FOLD_COLLATOR = new Intl.Collator(undefined, { sensitivity: "accent", usage: "search" });
+
 function findCaseInsensitiveIndex(text: string, query: string): number {
   if (!query || query.length > text.length) return -1;
-  const collator = new Intl.Collator(undefined, { sensitivity: "accent", usage: "search" });
+  // Cheap practical prefilter. It is not a complete Unicode case-fold
+  // invariant; exact indexOf is still attempted first, and unsupported pairs
+  // degrade to the existing fuzzy/token-overlap path.
+  if (
+    !text.toLowerCase().includes(query.toLowerCase()) &&
+    !text.toUpperCase().includes(query.toUpperCase())
+  ) {
+    return -1;
+  }
+  const queryFirst = query[0]!;
   for (let index = 0; index <= text.length - query.length; index++) {
-    const candidate = text.slice(index, index + query.length);
-    if (collator.compare(candidate, query) === 0) return index;
+    if (CASE_FOLD_COLLATOR.compare(text[index]!, queryFirst) !== 0) continue;
+    if (CASE_FOLD_COLLATOR.compare(text.slice(index, index + query.length), query) === 0) return index;
   }
   return -1;
 }

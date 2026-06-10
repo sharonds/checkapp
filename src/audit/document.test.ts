@@ -49,6 +49,34 @@ describe("audit document analysis", () => {
     expect(text.slice(located.location?.startOffset, located.location?.endOffset)).toBe(located.quote);
   });
 
+  test("case-insensitive locate preserves exact offsets for supported fold paths", () => {
+    const text = "straße appears first. WINS were recorded after the final.";
+    const located = locateQuote(text, "wins were recorded");
+    expect(located.quote).toBe("WINS were recorded");
+    expect(located.location?.matchQuality).toBe("exact");
+    expect(text.slice(located.location?.startOffset, located.location?.endOffset)).toBe(located.quote);
+  });
+
+  test("case-insensitive locate still matches after earlier length-changing characters", () => {
+    const text = "İstanbul hosted the event and WINS were recorded.";
+    const located = locateQuote(text, "wins were recorded");
+    expect(located?.quote).toBe("WINS were recorded");
+    expect(located?.location?.matchQuality).toBe("exact");
+  });
+
+  test("locateQuote stays under 500ms for 10 unmatched quotes on a 10k-word article", () => {
+    const words = Array.from({ length: 10_000 }, (_, i) => `word${i % 700}`);
+    const text = Array.from({ length: 500 }, (_, p) => words.slice(p * 20, p * 20 + 20).join(" ")).join("\n\n");
+    const doc = analyzeDocument(text);
+    const quotes = Array.from({ length: 10 }, (_, i) => `completely absent phrase ${i} ציטוט שאינו קיים`);
+    const start = performance.now();
+    for (const q of quotes) locateQuote(text, q, doc);
+    // Performance non-regression guard. This may already pass on PR3; keep the
+    // threshold broad enough to avoid CI noise while catching accidental O(n*m)
+    // regressions in the case-insensitive scan.
+    expect(performance.now() - start).toBeLessThan(500);
+  });
+
   test("preserves Hebrew and mixed Hebrew-English direction metadata", () => {
     const hebrew = "המשחק Rummikub מתאים לשני שחקנים בלבד. בפועל יש עוד טענה.";
     const analysis = analyzeDocument(hebrew);
