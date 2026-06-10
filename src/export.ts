@@ -83,7 +83,7 @@ export function generateMarkdownReport(record: Omit<CheckRecord, "id" | "created
 function localizedMarkdownSummary(
   result: SkillResult,
   locale: ReturnType<typeof auditLocaleForLanguage>,
-  coverage?: CheckRecord["audit"]["coverage"],
+  coverage?: NonNullable<CheckRecord["audit"]>["coverage"],
 ): string {
   if (result.skillId !== "fact-check-grounded" && result.skillId !== "fact-check") return result.summary;
   if (!coverage) return result.summary;
