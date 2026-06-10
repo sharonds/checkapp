@@ -623,6 +623,9 @@ function remainingProviderRetries(maxProviderRetries: number, providerRetriesUse
 }
 
 export function computeRetryAfterDelayMs(retryAfterHeader: string | null): number {
+  if (retryAfterHeader === null || retryAfterHeader.trim() === "") return 0;
+  // HTTP-date form (RFC 9110) is intentionally unsupported: Number() yields NaN
+  // and we fall back to the configured retry delay.
   const retryAfterSeconds = Number(retryAfterHeader);
   return Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0
     ? Math.min(retryAfterSeconds * 1000, 30_000)
