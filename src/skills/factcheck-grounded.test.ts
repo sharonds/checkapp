@@ -306,45 +306,97 @@ describe("FactCheckGroundedSkill", () => {
   });
 
   test("records Gemini retries in structured audit coverage", async () => {
+    process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS = "0";
     let assessmentCalls = 0;
-    mockFetch(urlRouter({
-      "api.minimax.io": async () => jsonResponse({
-        id: "msg_extract_retry",
-        type: "message",
-        role: "assistant",
-        model: "MiniMax-M2.7",
-        content: [{
-          type: "text",
-          text: JSON.stringify(["Claim one."]),
-        }],
-        stop_reason: "end_turn",
-        usage: { input_tokens: 10, output_tokens: 10 },
-      }),
-      "generativelanguage.googleapis.com": async () => {
-        assessmentCalls++;
-        if (assessmentCalls === 1) return new Response("temporary", { status: 503 });
-        return jsonResponse({
-          candidates: [{
-            content: { parts: [{ text: JSON.stringify({ supported: true, note: "Grounded sources support the claim." }) }] },
-            groundingMetadata: {
-              webSearchQueries: ["claim one"],
-              groundingChunks: [{ web: { uri: "https://example.com/claim", title: "Source" } }],
-            },
+    try {
+      mockFetch(urlRouter({
+        "api.minimax.io": async () => jsonResponse({
+          id: "msg_extract_retry",
+          type: "message",
+          role: "assistant",
+          model: "MiniMax-M2.7",
+          content: [{
+            type: "text",
+            text: JSON.stringify(["Claim one."]),
           }],
-        });
-      },
-    }));
+          stop_reason: "end_turn",
+          usage: { input_tokens: 10, output_tokens: 10 },
+        }),
+        "generativelanguage.googleapis.com": async () => {
+          assessmentCalls++;
+          if (assessmentCalls === 1) return new Response("temporary", { status: 503 });
+          return jsonResponse({
+            candidates: [{
+              content: { parts: [{ text: JSON.stringify({ supported: true, note: "Grounded sources support the claim." }) }] },
+              groundingMetadata: {
+                webSearchQueries: ["claim one"],
+                groundingChunks: [{ web: { uri: "https://example.com/claim", title: "Source" } }],
+              },
+            }],
+          });
+        },
+      }));
 
-    const result = await new FactCheckGroundedSkill().run("Claim one.", baseConfig);
+      const result = await new FactCheckGroundedSkill().run("Claim one.", baseConfig);
 
-    expect(assessmentCalls).toBe(2);
-    expect((result as any).audit.providerAttempts.map((attempt: any) => attempt.status)).toEqual(["retry", "success"]);
-    expect((result as any).audit.coverage.providerRetries).toBe(1);
-    expect((result as any).audit.coverage.providerFailures).toBe(0);
-    expect((result as any).audit.factAssessments[0].attemptIds).toEqual(["attempt-1", "attempt-2"]);
+      expect(assessmentCalls).toBe(2);
+      expect((result as any).audit.providerAttempts.map((attempt: any) => attempt.status)).toEqual(["retry", "success"]);
+      expect((result as any).audit.coverage.providerRetries).toBe(1);
+      expect((result as any).audit.coverage.providerFailures).toBe(0);
+      expect((result as any).audit.factAssessments[0].attemptIds).toEqual(["attempt-1", "attempt-2"]);
+    } finally {
+      delete process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS;
+    }
   });
 
-  test("does not retry Gemini 503 responses when maxProviderRetries is zero", async () => {
+  test("uses the full configured Gemini retry budget", async () => {
+    process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS = "0";
+    let assessmentCalls = 0;
+    try {
+      mockFetch(urlRouter({
+        "api.minimax.io": async () => jsonResponse({
+          id: "msg_extract_two_retries",
+          type: "message",
+          role: "assistant",
+          model: "MiniMax-M2.7",
+          content: [{
+            type: "text",
+            text: JSON.stringify(["Claim one."]),
+          }],
+          stop_reason: "end_turn",
+          usage: { input_tokens: 10, output_tokens: 10 },
+        }),
+        "generativelanguage.googleapis.com": async () => {
+          assessmentCalls++;
+          if (assessmentCalls <= 2) return new Response("temporary", { status: 503 });
+          return jsonResponse({
+            candidates: [{
+              content: { parts: [{ text: JSON.stringify({ supported: true, note: "Grounded sources support the claim." }) }] },
+              groundingMetadata: {
+                webSearchQueries: ["claim one"],
+                groundingChunks: [{ web: { uri: "https://example.com/claim", title: "Source" } }],
+              },
+            }],
+          });
+        },
+      }));
+
+      const result = await new FactCheckGroundedSkill().run(
+        "Claim one.",
+        { ...baseConfig, factAudit: { maxProviderRetries: 2 } },
+      );
+
+      expect(assessmentCalls).toBe(3);
+      expect((result as any).audit.providerAttempts.map((attempt: any) => attempt.status)).toEqual(["retry", "retry", "success"]);
+      expect((result as any).audit.coverage.providerRetries).toBe(2);
+      expect((result as any).audit.coverage.providerFailures).toBe(0);
+      expect((result as any).audit.factAssessments[0].attemptIds).toEqual(["attempt-1", "attempt-2", "attempt-3"]);
+    } finally {
+      delete process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS;
+    }
+  });
+
+  test("records provider-error audit details when Gemini retries are exhausted", async () => {
     let assessmentCalls = 0;
     mockFetch(urlRouter({
       "api.minimax.io": async () => jsonResponse({
@@ -374,12 +426,24 @@ describe("FactCheckGroundedSkill", () => {
       },
     }));
 
-    await expect(new FactCheckGroundedSkill().run(
+    const result = await new FactCheckGroundedSkill().run(
       "Claim one.",
       { ...baseConfig, factAudit: { maxProviderRetries: 0 } },
-    )).rejects.toThrow("Gemini grounded error: HTTP 503");
+    );
 
     expect(assessmentCalls).toBe(1);
+    expect(result.verdict).toBe("pass");
+    expect(result.findings[0].severity).toBe("warn");
+    expect(result.findings[0].status).toBe("provider_error");
+    expect(result.findings[0].text).toContain("Provider error");
+    expect((result as any).audit.providerAttempts.map((attempt: any) => attempt.status)).toEqual(["failed"]);
+    expect((result as any).audit.coverage.providerRetries).toBe(0);
+    expect((result as any).audit.coverage.providerFailures).toBe(1);
+    expect((result as any).audit.factAssessments[0]).toMatchObject({
+      status: "provider_error",
+      confidence: "low",
+      attemptIds: ["attempt-1"],
+    });
   });
 
   test("warns instead of passing when a budget skips every grounded claim", async () => {

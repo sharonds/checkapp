@@ -68,6 +68,7 @@ interface GroundedClaimResult {
   sources: Source[];
   webSearchQueries: string[];
   attempts: ProviderAttemptDraft[];
+  providerError?: boolean;
 }
 
 type ProviderAttemptDraft = Omit<ProviderAttempt, "id">;
@@ -218,17 +219,17 @@ export class FactCheckGroundedSkill implements Skill {
       attemptIdsByResult.set(resultIndex, ids);
     }
 
-    for (const [index, { claim, assessment, sources, webSearchQueries }] of groundedResults.entries()) {
-      const supported = sources.length === 0 && assessment.supported === true ? null : assessment.supported;
-      const confidence = claimConfidence(sources.length, supported);
+    for (const [index, { claim, assessment, sources, webSearchQueries, providerError }] of groundedResults.entries()) {
+      const supported = providerError ? null : sources.length === 0 && assessment.supported === true ? null : assessment.supported;
+      const confidence = providerError ? "low" : claimConfidence(sources.length, supported);
       const queryHint = webSearchQueries.length > 0 ? ` Search: ${webSearchQueries.slice(0, 2).join(" | ")}` : "";
       const base = { sources, confidence, claimType: "general" as ClaimType };
       const located = locateQuote(text, claim, documentAnalysis);
       const claimId = `claim-${index + 1}`;
       const assessmentId = `assessment-${index + 1}`;
-      const status = supported === false ? "unsupported" : supported === null ? "unverified" : "supported";
-      const rationale = confidenceRationale(sources.length, confidence);
-      const rewrite = status === "supported" ? undefined : factRewriteSuggestion(located.quote, located.language, supported, assessment.note);
+      const status = providerError ? "provider_error" : supported === false ? "unsupported" : supported === null ? "unverified" : "supported";
+      const rationale = providerError ? "Provider attempt failed; review manually." : confidenceRationale(sources.length, confidence);
+      const rewrite = status === "supported" || status === "provider_error" ? undefined : factRewriteSuggestion(located.quote, located.language, supported, assessment.note);
       auditClaims.push({
         id: claimId,
         quote: located.quote,
@@ -278,7 +279,14 @@ export class FactCheckGroundedSkill implements Skill {
         auditRef: { auditId, claimId, assessmentId },
         rewrite,
       } satisfies Partial<Finding>;
-      if (supported === false) {
+      if (providerError) {
+        findings.push({
+          severity: "warn",
+          text: `Provider error (${confidence} confidence): "${claim}" — ${assessment.note}${queryHint}`,
+          ...base,
+          ...auditFields,
+        });
+      } else if (supported === false) {
         findings.push({
           severity: "error",
           text: `Unsupported (${confidence} confidence): "${claim}" — ${assessment.note}${queryHint}`,
@@ -428,13 +436,22 @@ async function assessClaimGrounded(
   }
 
   assertMocksOnly("gemini-grounded");
-  const { response, attempts } = await fetchGroundedAssessment(
+  const { response, attempts, errorMessage } = await fetchGroundedAssessment(
     claim,
     apiKey,
     createGeminiCapability({ apiKey }).getModel("grounded"),
     retriesLeft,
     perClaimCost,
   );
+  if (errorMessage || !response) {
+    return {
+      assessment: { supported: null, note: errorMessage ?? "Gemini grounded provider did not return a usable response." },
+      sources: [],
+      webSearchQueries: [claim],
+      attempts,
+      providerError: true,
+    };
+  }
   const candidate = response.candidates?.[0];
   const text = (candidate?.content?.parts ?? [])
     .filter((part) => part.thought !== true)
@@ -453,8 +470,9 @@ async function assessClaimGrounded(
 }
 
 interface GeminiGroundedFetchResult {
-  response: GeminiGroundedResponse;
+  response?: GeminiGroundedResponse;
   attempts: ProviderAttemptDraft[];
+  errorMessage?: string;
 }
 
 async function fetchGroundedAssessment(
@@ -534,18 +552,19 @@ async function fetchGroundedAssessment(
       outputTokens: null,
       totalTokens: null,
     });
-    await sleep(3_000);
+    await sleep(groundedRetryDelayMs());
     return fetchGroundedAssessment(claim, apiKey, model, retriesLeft - 1, perClaimCost, attempts);
   }
 
   if (!response.ok) {
+    const errorMessage = `Gemini grounded error: HTTP ${response.status}`;
     attempts.push({
       provider: "gemini-grounded",
       model,
       status: "failed",
       retryable: false,
       statusCode: response.status,
-      errorMessage: `HTTP ${response.status}`,
+      errorMessage,
     });
     emitAttempt({
       httpStatus: response.status,
@@ -554,7 +573,7 @@ async function fetchGroundedAssessment(
       outputTokens: null,
       totalTokens: null,
     });
-    throw new Error(`Gemini grounded error: HTTP ${response.status}`);
+    return { attempts, errorMessage };
   }
 
   const data = (await response.json()) as GeminiGroundedResponse;
@@ -582,7 +601,12 @@ function sumAttemptTokens(attempts: ProviderAttemptDraft[], key: "inputTokens" |
 }
 
 function remainingProviderRetries(maxProviderRetries: number, providerRetriesUsed: number): number {
-  return Math.min(1, Math.max(0, Math.floor(maxProviderRetries) - providerRetriesUsed));
+  return Math.max(0, Math.floor(maxProviderRetries) - providerRetriesUsed);
+}
+
+function groundedRetryDelayMs(): number {
+  const configured = Number(process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS);
+  return Number.isFinite(configured) && configured >= 0 ? configured : 3_000;
 }
 
 function buildGroundedPrompt(claim: string): string {
