@@ -47,7 +47,8 @@ interface is unsupported.
 
 ## MCP error sanitization
 
-All MCP tool errors return sanitized messages. API keys and sensitive URLs are
-redacted at the MCP dispatch layer before the error text is returned to the
-calling agent, so provider credentials do not leak through tool error
-responses.
+All MCP tool errors return sanitized messages. Credentials are redacted by
+pattern (Bearer tokens, `key=`/`token=` query parameters, Gemini `AIza…` keys,
+and common `sk-`-style key formats) at the MCP dispatch layer before the error
+text is returned to the calling agent. Credentials in formats outside these
+patterns are not detected.
