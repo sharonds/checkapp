@@ -456,6 +456,10 @@ Common status codes:
 | 404 | Check not found |
 | 500 | Internal server error |
 
+### MCP tool errors
+
+All MCP tool errors return sanitized messages. Credentials are redacted by pattern (Bearer tokens, `key=`/`token=` query parameters, Gemini `AIza…` keys, and common `sk-`-style key formats) before the error text is returned to the calling agent.
+
 ---
 
 ## Finding (Phase 7+)

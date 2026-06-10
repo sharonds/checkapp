@@ -1,8 +1,8 @@
 import { isE2E } from "../e2e/mode.ts";
 
 const DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
-const DEFAULT_MODEL_PRO = "gemini-3-pro-preview";
-const DEFAULT_MODEL_FLASH = "gemini-3-flash-preview";
+const DEFAULT_MODEL_PRO = "gemini-3.1-pro-preview";
+const DEFAULT_MODEL_FLASH = "gemini-3.5-flash";
 const DEFAULT_MODEL_DEEP_RESEARCH = "deep-research-preview-04-2026";
 const DEFAULT_TIMEOUT_MS = 3_000;
 const DEFAULT_CACHE_TTL_MS = 5 * 60_000;

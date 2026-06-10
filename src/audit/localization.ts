@@ -24,6 +24,7 @@ export const AUDIT_UI = {
     chars: "chars",
     confidence: "Confidence",
     confidenceRationale: "Confidence rationale",
+    details: "Details",
     documentQuote: "Document quote",
     evidence: "Evidence",
     factCheck: "Fact Check",
@@ -62,14 +63,15 @@ export const AUDIT_UI = {
     needsAttention: "Needs attention",
     doNotPublish: "Do not publish",
     words: "Words",
-    checkedClaims: (checked: number, unsupported: number, unverified: number, provider?: string, skipped?: number, budgetStopReason?: string) =>
-      `${checked} claims checked — ${unsupported} unsupported, ${unverified} unverified${skipped ? `, ${skipped} skipped${budgetStopReason ? ` by ${formatBudgetStopReason(budgetStopReason, "en")}` : ""}` : ""}${provider ? ` (via ${provider})` : ""}`,
+    checkedClaims: (checked: number, unsupported: number, unverified: number, provider?: string, skipped?: number, budgetStopReason?: string, providerErrors?: number) =>
+      `${checked} claims checked — ${unsupported} unsupported, ${unverified} unverified${providerErrors ? `, ${providerErrors} provider errors` : ""}${skipped ? `, ${skipped} skipped${budgetStopReason ? ` by ${formatBudgetStopReason(budgetStopReason, "en")}` : ""}` : ""}${provider ? ` (via ${provider})` : ""}`,
   },
   he: {
     apiCost: "עלות API",
     chars: "תווים",
     confidence: "רמת ביטחון",
     confidenceRationale: "נימוק רמת הביטחון",
+    details: "פרטים",
     documentQuote: "ציטוט מהמסמך",
     evidence: "ראיות",
     factCheck: "בדיקת עובדות",
@@ -108,22 +110,24 @@ export const AUDIT_UI = {
     needsAttention: "דורש טיפול",
     doNotPublish: "לא לפרסום",
     words: "מילים",
-    checkedClaims: (checked: number, unsupported: number, unverified: number, provider?: string, skipped?: number, budgetStopReason?: string) =>
-      `${checked} טענות נבדקו — ${unsupported} לא נתמכו, ${unverified} לא אומתו${skipped ? `, ${skipped} דולגו${budgetStopReason ? ` בגלל ${formatBudgetStopReason(budgetStopReason, "he")}` : ""}` : ""}${provider ? ` (באמצעות ${provider})` : ""}`,
+    checkedClaims: (checked: number, unsupported: number, unverified: number, provider?: string, skipped?: number, budgetStopReason?: string, providerErrors?: number) =>
+      `${checked} טענות נבדקו — ${unsupported} לא נתמכו, ${unverified} לא אומתו${providerErrors ? `, ${providerErrors} שגיאות ספק` : ""}${skipped ? `, ${skipped} דולגו${budgetStopReason ? ` בגלל ${formatBudgetStopReason(budgetStopReason, "he")}` : ""}` : ""}${provider ? ` (באמצעות ${provider})` : ""}`,
   },
 } as const;
 
+const BUDGET_STOP_REASON_LABELS: Record<string, { en: string; he: string }> = {
+  claim_cap: { en: "claim cap", he: "מכסת טענות" },
+  provider_call_budget: { en: "provider-call budget", he: "מכסת קריאות לספק" },
+  cost_budget: { en: "cost budget", he: "מכסת עלות" },
+  input_token_budget: { en: "input-token budget", he: "מכסת אסימוני קלט" },
+  output_token_budget: { en: "output-token budget", he: "מכסת אסימוני פלט" },
+  wall_clock_budget: { en: "time budget", he: "מכסת זמן" },
+  provider_retry_budget: { en: "provider-retry budget", he: "מכסת ניסיונות חוזרים" },
+  provider_failure_budget: { en: "provider-failure budget", he: "מכסת כשלי ספק" },
+};
+
 export function formatBudgetStopReason(reason: string, locale: AuditLocale): string {
-  if (locale === "he") {
-    if (reason === "claim_cap") return "מכסת טענות";
-    if (reason === "provider_call_budget") return "מכסת קריאות לספק";
-    if (reason === "cost_budget") return "מכסת עלות";
-    return reason.replace(/_/g, " ");
-  }
-  if (reason === "claim_cap") return "claim cap";
-  if (reason === "provider_call_budget") return "provider-call budget";
-  if (reason === "cost_budget") return "cost budget";
-  return reason.replace(/_/g, " ");
+  return BUDGET_STOP_REASON_LABELS[reason]?.[locale] ?? reason.replace(/_/g, " ");
 }
 
 export function localizedSkillName(result: Pick<SkillResult, "skillId" | "name">, locale: AuditLocale): string {
@@ -158,7 +162,7 @@ export function localizedFindingStatus(finding: Pick<Finding, "status" | "confid
   if (finding.status === "unverified") return labels.unverified;
   if (finding.status === "provider_error") return labels.providerError;
   if (finding.status === "plagiarism_match") return labels.plagiarismCheck;
-  if (finding.confidence) return `${labels.confidence}: ${finding.confidence}`;
+  if (finding.confidence) return `${labels.confidence}: ${localizedConfidenceValue(finding.confidence, locale)}`;
   return undefined;
 }
 

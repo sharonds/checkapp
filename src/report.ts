@@ -53,7 +53,7 @@ const PROVIDER_LABEL: Record<string, ProviderMeta> = {
   "gemini-ai-detection": { label: "Gemini AI Detection", color: "#4285f4", href: "https://ai.google.dev", processor: "Google Gemini" },
   "gemini-grounded-plagiarism": { label: "Gemini Grounded Plagiarism", color: "#4285f4", href: "https://ai.google.dev", processor: "Google Gemini" },
   gemini: { label: "Gemini", color: "#4285f4", href: "https://ai.google.dev", processor: "Google Gemini" },
-  "gemini-grounded": { label: "Gemini 3 Pro Preview + Google Search", color: "#4285f4", href: "https://ai.google.dev", processor: "Google Gemini" },
+  "gemini-grounded": { label: "Gemini 3.1 Pro + Google Search", color: "#4285f4", href: "https://ai.google.dev", processor: "Google Gemini" },
   "gemini-deep-research": { label: "Gemini Deep Research", color: "#4285f4", href: "https://ai.google.dev", processor: "Google Gemini" },
   "exa-search": { label: "Exa AI", color: "#7c3aed", href: "https://exa.ai", processor: "Exa AI" },
   "exa-deep-reasoning": { label: "Exa AI", color: "#7c3aed", href: "https://exa.ai", processor: "Exa AI" },
@@ -172,11 +172,14 @@ function localizedFindingLead(f: SkillResult["findings"][number], reportLocale: 
   const locale = localeForFindingOrReport(f, reportLocale);
   const status = localizedFindingStatus(f, locale);
   if (!status) return undefined;
-  if (f.status === "unsupported" || f.status === "unverified" || f.status === "plagiarism_match") {
+  if (f.status === "unsupported" || f.status === "unverified" || f.status === "plagiarism_match" || f.status === "provider_error") {
     return localizedFindingText(f, locale);
   }
-  if (f.explanation) return f.confidence ? `${status} (${f.confidence}): ${f.explanation}` : `${status}: ${f.explanation}`;
-  return f.confidence ? `${status} (${f.confidence})` : status;
+  // Past the early return, `status` always came from the confidence fallback
+  // in localizedFindingStatus, so it already embeds the localized confidence —
+  // appending f.confidence again would duplicate it (and leak the raw value).
+  if (f.explanation) return `${status}: ${f.explanation}`;
+  return status;
 }
 
 function localizedSkillSummary(r: SkillResult, locale: AuditLocale, audit?: CheckRecord["audit"]): string {
@@ -184,7 +187,8 @@ function localizedSkillSummary(r: SkillResult, locale: AuditLocale, audit?: Chec
   const coverage = audit?.coverage;
   if (!coverage) return r.summary;
   const unsupported = r.findings.filter((f) => f.status === "unsupported" || f.text.toLowerCase().includes("unsupported")).length;
-  const unverified = r.findings.filter((f) => f.status === "unverified" || f.text.toLowerCase().includes("unverified")).length;
+  const providerErrors = r.findings.filter((f) => f.status === "provider_error").length;
+  const unverified = r.findings.filter((f) => f.status !== "provider_error" && (f.status === "unverified" || f.text.toLowerCase().includes("unverified"))).length;
   return AUDIT_UI[locale].checkedClaims(
     coverage.claimsChecked,
     unsupported,
@@ -192,6 +196,7 @@ function localizedSkillSummary(r: SkillResult, locale: AuditLocale, audit?: Chec
     r.provider,
     coverage.claimsSkipped,
     coverage.budgetStopReason,
+    providerErrors,
   );
 }
 

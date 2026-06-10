@@ -538,7 +538,7 @@ test("Gemini grounded fact-check report shows provider and source evidence", () 
     }],
   });
 
-  expect(html).toContain("Gemini 3 Pro Preview + Google Search");
+  expect(html).toContain("Gemini 3.1 Pro + Google Search");
   expect(html).toContain("Google Gemini");
   expect(html).toContain("https://example.com/evidence");
   expect(html).toContain("Evidence");
@@ -566,7 +566,7 @@ test("passing Gemini grounded fact-check report shows verified info source evide
     }],
   });
 
-  expect(html).toContain("Gemini 3 Pro Preview + Google Search");
+  expect(html).toContain("Gemini 3.1 Pro + Google Search");
   expect(html).toContain("https://example.com/evidence");
   expect(html).toContain("Evidence");
 });
@@ -627,6 +627,119 @@ test("empty report is not marked ready to publish", () => {
   expect(html).toContain("Not assessed");
   expect(html).toContain("N/A");
   expect(html).not.toContain("Ready to publish");
+});
+
+test("Hebrew report localizes provider_error findings (no raw English confidence)", () => {
+  const html = generateReport({
+    source: "he-provider-error.md",
+    wordCount: 5,
+    totalCostUsd: 0,
+    audit: {
+      version: 1,
+      auditId: "audit-x",
+      language: "he",
+      direction: "rtl",
+      coverage: {
+        wordsScanned: 5,
+        sectionsDetected: 1,
+        paragraphsScanned: 1,
+        sentencesScanned: 1,
+        claimsExtracted: 1,
+        claimsChecked: 1,
+        claimsSkipped: 0,
+        skipReasons: {},
+        plagiarismPassagesChecked: 0,
+        plagiarismPassagesSkipped: 0,
+        providerFailures: 1,
+        providerRetries: 0,
+      },
+      segments: [],
+      claims: [],
+      claimDecisions: [],
+      factAssessments: [],
+      plagiarismFindings: [],
+      providerAttempts: [],
+      createdAt: "2026-06-10T00:00:00.000Z",
+    },
+    results: [{
+      skillId: "fact-check-grounded",
+      name: "Fact Check (Grounded)",
+      score: 70,
+      verdict: "warn",
+      summary: "issue",
+      costUsd: 0,
+      provider: "gemini-grounded",
+      findings: [{
+        severity: "warn",
+        status: "provider_error",
+        confidence: "low",
+        text: "שגיאת ספק",
+        explanation: "Gemini grounded error: HTTP 500",
+        explanationLanguage: "he",
+      }],
+    }],
+  });
+  expect(html).toContain("שגיאת ספק");
+  expect(html).toContain("רמת ביטחון: נמוכה");
+  expect(html).not.toMatch(/\(low\)/);
+});
+
+test("Hebrew report localizes supported findings' confidence (no raw or duplicated English value)", () => {
+  // Live dogfood regression: supported findings rendered "רמת ביטחון: high (high): ..."
+  const html = generateReport({
+    source: "he-supported.md",
+    wordCount: 5,
+    totalCostUsd: 0,
+    audit: {
+      version: 1,
+      auditId: "audit-y",
+      language: "he",
+      direction: "rtl",
+      coverage: {
+        wordsScanned: 5,
+        sectionsDetected: 1,
+        paragraphsScanned: 1,
+        sentencesScanned: 1,
+        claimsExtracted: 1,
+        claimsChecked: 1,
+        claimsSkipped: 0,
+        skipReasons: {},
+        plagiarismPassagesChecked: 0,
+        plagiarismPassagesSkipped: 0,
+        providerFailures: 0,
+        providerRetries: 0,
+      },
+      segments: [],
+      claims: [],
+      claimDecisions: [],
+      factAssessments: [],
+      plagiarismFindings: [],
+      providerAttempts: [],
+      createdAt: "2026-06-10T00:00:00.000Z",
+    },
+    results: [{
+      skillId: "fact-check-grounded",
+      name: "Fact Check (Grounded)",
+      score: 90,
+      verdict: "pass",
+      summary: "ok",
+      costUsd: 0,
+      provider: "gemini-grounded",
+      findings: [{
+        severity: "info",
+        status: "supported",
+        confidence: "high",
+        text: "טענה מאומתת",
+        explanation: "המקורות מאשרים את הטענה.",
+        explanationLanguage: "he",
+        sources: [{ url: "https://example.com/source", title: "מקור" }],
+      }],
+    }],
+  });
+  expect(html).toContain("רמת ביטחון: גבוהה");
+  expect(html).not.toMatch(/רמת ביטחון: high/);
+  expect(html).not.toMatch(/\(high\)/);
+  expect(html).not.toContain("(גבוהה)");
 });
 
 test("passing report is marked ready for review, not guaranteed publishable", () => {

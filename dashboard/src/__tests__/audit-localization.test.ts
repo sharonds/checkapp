@@ -3,6 +3,7 @@ import {
   auditLocaleForFinding,
   auditLocaleForLanguage,
   formatAuditLocation,
+  formatBudgetStopReason,
   localizedFindingText,
   localizedSkillName,
 } from "@/lib/audit-localization";
@@ -32,6 +33,23 @@ describe("dashboard audit localization", () => {
   test("localizes core audit skill names", () => {
     expect(localizedSkillName({ skillId: "fact-check-grounded", name: "Fact Check (Grounded)" }, "he")).toBe("בדיקת עובדות מבוססת מקורות");
     expect(localizedSkillName({ skillId: "seo", name: "SEO" }, "he")).toBe("SEO");
+  });
+
+  test("all budget stop reasons have Hebrew labels", () => {
+    const reasons = [
+      "claim_cap",
+      "provider_call_budget",
+      "cost_budget",
+      "input_token_budget",
+      "output_token_budget",
+      "wall_clock_budget",
+      "provider_retry_budget",
+      "provider_failure_budget",
+    ];
+    for (const r of reasons) {
+      expect(formatBudgetStopReason(r, "he")).not.toMatch(/[a-z]/);
+      expect(formatBudgetStopReason(r, "en")).not.toContain("_");
+    }
   });
 
   test("localizes provider-error finding text in Hebrew drilldowns", () => {

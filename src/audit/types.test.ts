@@ -188,5 +188,9 @@ describe("audit sanitizers", () => {
     expect(sanitized).not.toContain("abc123");
     expect(sanitized).toContain("[redacted]");
   });
+
+  test("sanitizes bare Gemini keys in provider errors", () => {
+    expect(sanitizeProviderError("boom AIzaSyB1234567890abcdefghij")).not.toContain("AIzaSy");
+  });
 }
 );

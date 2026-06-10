@@ -153,7 +153,7 @@ describe("generateMarkdownReport", () => {
       }],
     });
 
-    expect(md).toContain("**Provider:** Gemini 3 Pro Preview + Google Search");
+    expect(md).toContain("**Provider:** Gemini 3.1 Pro + Google Search");
     expect(md).toContain("1 claims checked — 0 unsupported, 1 unverified, 2 skipped by claim cap");
     expect(md).toContain('> "Claim"');
     expect(md).toContain("Location: Intro · paragraph 1 · sentence 1 · chars 10-15");
@@ -162,6 +162,113 @@ describe("generateMarkdownReport", () => {
     expect(md).toContain("Search: claim evidence");
     expect(md).toContain("Suggested rewrite: Qualify the claim.");
     expect(md).toContain("Source: [Evidence](https://example.com/evidence)");
+  });
+
+  it("counts provider errors separately from unverified in markdown summaries", () => {
+    const md = generateMarkdownReport({
+      source: "test.md",
+      wordCount: 500,
+      totalCostUsd: 0.04,
+      audit: {
+        version: 1,
+        auditId: "audit-pe-md",
+        language: "en",
+        direction: "ltr",
+        coverage: {
+          wordsScanned: 500,
+          sectionsDetected: 1,
+          paragraphsScanned: 1,
+          sentencesScanned: 1,
+          claimsExtracted: 1,
+          claimsChecked: 1,
+          claimsSkipped: 0,
+          skipReasons: {},
+          plagiarismPassagesChecked: 0,
+          plagiarismPassagesSkipped: 0,
+          providerFailures: 1,
+          providerRetries: 0,
+        },
+        segments: [],
+        claims: [],
+        claimDecisions: [],
+        factAssessments: [],
+        plagiarismFindings: [],
+        providerAttempts: [],
+        createdAt: "2026-06-09T00:00:00.000Z",
+      },
+      results: [{
+        skillId: "fact-check-grounded",
+        name: "Fact Check (Grounded)",
+        score: 90,
+        verdict: "warn" as const,
+        summary: "1 claims checked — 0 unsupported, 0 unverified, 1 provider errors (via gemini-grounded)",
+        findings: [{
+          severity: "warn" as const,
+          text: "Provider error (low confidence): \"Claim\" — Gemini grounded provider did not return a usable response.",
+          status: "provider_error" as const,
+          confidence: "low" as const,
+        }],
+        costUsd: 0.04,
+        provider: "gemini-grounded",
+      }],
+    });
+
+    expect(md).toContain(", 1 provider errors");
+    expect(md).toContain("1 claims checked — 0 unsupported, 0 unverified, 1 provider errors (via gemini-grounded)");
+  });
+
+  it("counts provider errors separately from unverified in Hebrew markdown summaries", () => {
+    const md = generateMarkdownReport({
+      source: "he.md",
+      wordCount: 120,
+      totalCostUsd: 0.04,
+      audit: {
+        version: 1,
+        auditId: "audit-pe-he-md",
+        language: "he",
+        direction: "rtl",
+        coverage: {
+          wordsScanned: 120,
+          sectionsDetected: 1,
+          paragraphsScanned: 1,
+          sentencesScanned: 1,
+          claimsExtracted: 1,
+          claimsChecked: 1,
+          claimsSkipped: 0,
+          skipReasons: {},
+          plagiarismPassagesChecked: 0,
+          plagiarismPassagesSkipped: 0,
+          providerFailures: 1,
+          providerRetries: 0,
+        },
+        segments: [],
+        claims: [],
+        claimDecisions: [],
+        factAssessments: [],
+        plagiarismFindings: [],
+        providerAttempts: [],
+        createdAt: "2026-06-09T00:00:00.000Z",
+      },
+      results: [{
+        skillId: "fact-check-grounded",
+        name: "Fact Check (Grounded)",
+        score: 90,
+        verdict: "warn" as const,
+        summary: "1 claims checked — 0 unsupported, 0 unverified, 1 provider errors (via gemini-grounded)",
+        findings: [{
+          severity: "warn" as const,
+          text: "Provider error (low confidence): \"טענה\" — הקריאה לספק נכשלה.",
+          status: "provider_error" as const,
+          confidence: "low" as const,
+          explanation: "הקריאה לספק נכשלה.",
+          explanationLanguage: "he" as const,
+        }],
+        costUsd: 0.04,
+        provider: "gemini-grounded",
+      }],
+    });
+
+    expect(md).toContain(", 1 שגיאות ספק");
   });
 
   it("labels fuzzy locations as approximate in markdown exports", () => {
@@ -250,7 +357,7 @@ describe("generateMarkdownReport", () => {
     expect(md).toContain("**מקור:** he.md");
     expect(md).toContain("**מילים:** 120");
     expect(md).toContain("**עלות API:** $0.040");
-    expect(md).toContain("**ספק:** Gemini 3 Pro Preview + Google Search");
+    expect(md).toContain("**ספק:** Gemini 3.1 Pro + Google Search");
     expect(md).toContain("לא נתמך");
     expect(md).toContain("רמת ביטחון: גבוהה");
     expect(md).not.toContain("Unsupported");

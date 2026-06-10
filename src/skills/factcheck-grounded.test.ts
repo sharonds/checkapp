@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Config } from "../config.ts";
 import { jsonResponse, mockFetch, urlRouter } from "../testing/mock-fetch.ts";
-import { FactCheckGroundedSkill } from "./factcheck-grounded.ts";
+import { FactCheckGroundedSkill, computeRetryAfterDelayMs } from "./factcheck-grounded.ts";
 
 describe("FactCheckGroundedSkill", () => {
   const baseConfig: Config = {
@@ -124,6 +124,8 @@ describe("FactCheckGroundedSkill", () => {
       expect(finding.auditRef?.claimId).toBe("claim-1");
       expect(finding.searchQueries).toContain("netherlands indoor smoking ban 2008");
       expect((result as any).audit.factAssessments[0].provider).toBe("gemini-grounded");
+      // The assessment must attribute the model that actually served the call.
+      expect((result as any).audit.factAssessments[0].model).toBe((result as any).audit.providerAttempts[0].model);
       expect((result as any).audit.claims[0].direction).toBe("ltr");
       expect(result.costUsd).toBeGreaterThan(0.01);
 
@@ -135,7 +137,7 @@ describe("FactCheckGroundedSkill", () => {
       expect(groundedEvent).toBeDefined();
       expect(groundedEvent.payload).toMatchObject({
         provider: "gemini-grounded",
-        model: "gemini-3-pro-preview",
+        model: "gemini-3.1-pro-preview",
         httpStatus: 200,
         costUsd: 0.04,
         inputTokens: 111,
@@ -168,7 +170,10 @@ describe("FactCheckGroundedSkill", () => {
     }));
 
     try {
-      const result = await new FactCheckGroundedSkill().run("The claim needs checking.", baseConfig);
+      const result = await new FactCheckGroundedSkill().run(
+        "The claim needs checking.",
+        { ...baseConfig, factAudit: { maxProviderRetries: 0 } },
+      );
 
       expect(result.verdict).toBe("warn");
       expect(result.findings[0].status).toBe("provider_error");
@@ -616,5 +621,298 @@ describe("FactCheckGroundedSkill", () => {
     expect(result.findings[0].text).toContain("No grounded source URL was returned");
     expect(result.findings[0].rewrite).toContain("The model says yes but provides no source.");
     expect((result as any).audit.factAssessments[0].rewrite).toContain("The model says yes but provides no source.");
+  });
+
+  describe("rate-limit retry handling", () => {
+    const minimaxExtract = (claims: string[]) => jsonResponse({
+      id: "msg_x",
+      type: "message",
+      role: "assistant",
+      model: "MiniMax-M2.7",
+      content: [{ type: "text", text: JSON.stringify(claims) }],
+      stop_reason: "end_turn",
+      usage: { input_tokens: 10, output_tokens: 10 },
+    });
+
+    const geminiOk = (supported: boolean, note: string, sources: string[]) => jsonResponse({
+      candidates: [{
+        content: { parts: [{ text: JSON.stringify({ supported, note }) }] },
+        groundingMetadata: {
+          webSearchQueries: ["query"],
+          groundingChunks: sources.map((uri) => ({ web: { uri, title: uri } })),
+        },
+      }],
+    });
+
+    function geminiSequence(responses: Array<() => Response | Promise<Response>>) {
+      let call = 0;
+      return async () => responses[Math.min(call++, responses.length - 1)]!();
+    }
+
+    test("retries Gemini 429 rate-limit responses within the retry budget", async () => {
+      process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS = "0";
+      try {
+        mockFetch(urlRouter({
+          "api.minimax.io": async () => minimaxExtract(["one claim"]),
+          "generativelanguage.googleapis.com": geminiSequence([
+            () => new Response(JSON.stringify({ error: { message: "RESOURCE_EXHAUSTED" } }), { status: 429 }),
+            () => geminiOk(true, "ok", ["https://example.com/a"]),
+          ]),
+        }));
+        const result = await new FactCheckGroundedSkill().run("one claim", baseConfig);
+        const attempts = (result as any).audit.providerAttempts;
+        expect(attempts.map((a: any) => a.status)).toEqual(["retry", "success"]);
+        expect(attempts[0].statusCode).toBe(429);
+        expect(attempts[0].retryable).toBe(true);
+        expect(result.findings.filter((f) => f.status === "provider_error")).toHaveLength(0);
+      } finally {
+        delete process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS;
+      }
+    });
+
+    test("429 honors Retry-After header capped at 30s", async () => {
+      process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS = "0";
+      try {
+        // Use a 0-second Retry-After so the test stays fast; assert via attempt metadata, not wall clock.
+        mockFetch(urlRouter({
+          "api.minimax.io": async () => minimaxExtract(["one claim"]),
+          "generativelanguage.googleapis.com": geminiSequence([
+            () => new Response("", { status: 429, headers: { "Retry-After": "0" } }),
+            () => geminiOk(true, "ok", ["https://example.com/a"]),
+          ]),
+        }));
+        const result = await new FactCheckGroundedSkill().run("one claim", baseConfig);
+        expect((result as any).audit.providerAttempts.map((a: any) => a.status)).toEqual(["retry", "success"]);
+      } finally {
+        delete process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS;
+      }
+    });
+
+    test("retries thrown network errors within the retry budget", async () => {
+      process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS = "0";
+      try {
+        let calls = 0;
+        mockFetch(urlRouter({
+          "api.minimax.io": async () => minimaxExtract(["one claim"]),
+          "generativelanguage.googleapis.com": async () => {
+            calls++;
+            if (calls === 1) throw new Error("fetch failed: ECONNRESET");
+            return geminiOk(true, "ok", ["https://example.com/a"]);
+          },
+        }));
+        const result = await new FactCheckGroundedSkill().run("one claim", baseConfig);
+        expect((result as any).audit.providerAttempts.map((a: any) => a.status)).toEqual(["retry", "success"]);
+        expect(result.findings.filter((f) => f.status === "provider_error")).toHaveLength(0);
+      } finally {
+        delete process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS;
+      }
+    });
+
+    test("terminal attempts carry truthful retryable flags", async () => {
+      process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS = "0";
+      try {
+        // transient class, budget 1: 503 -> retry, 503 -> terminal failed but still retryable:true
+        mockFetch(urlRouter({
+          "api.minimax.io": async () => minimaxExtract(["one claim"]),
+          "generativelanguage.googleapis.com": geminiSequence([
+            () => new Response("", { status: 503 }),
+            () => new Response("", { status: 503 }),
+          ]),
+        }));
+        const first = await new FactCheckGroundedSkill().run(
+          "one claim",
+          { ...baseConfig, factAudit: { maxProviderRetries: 1 } },
+        );
+        const attempts = (first as any).audit.providerAttempts;
+        expect(attempts.map((a: any) => a.status)).toEqual(["retry", "failed"]);
+        expect(attempts[1].retryable).toBe(true); // transient class — truthful despite exhausted budget
+
+        // non-transient class: 400 -> failed, retryable:false
+        mockFetch(urlRouter({
+          "api.minimax.io": async () => minimaxExtract(["one claim"]),
+          "generativelanguage.googleapis.com": async () => new Response("", { status: 400 }),
+        }));
+        const second = await new FactCheckGroundedSkill().run("one claim", baseConfig);
+        expect((second as any).audit.providerAttempts[0].retryable).toBe(false);
+      } finally {
+        delete process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS;
+      }
+    });
+
+    test("exhausts the default retry budget: 503x3 yields retry,retry,failed", async () => {
+      process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS = "0";
+      try {
+        mockFetch(urlRouter({
+          "api.minimax.io": async () => minimaxExtract(["one claim"]),
+          "generativelanguage.googleapis.com": async () => new Response("", { status: 503 }),
+        }));
+        const result = await new FactCheckGroundedSkill().run("one claim", baseConfig); // default maxProviderRetries: 2
+        const attempts = (result as any).audit.providerAttempts;
+        expect(attempts.map((a: any) => a.status)).toEqual(["retry", "retry", "failed"]);
+        expect(attempts[2].retryable).toBe(true);
+        expect((result as any).audit.coverage.providerRetries).toBe(2);
+        expect(result.findings.filter((f) => f.status === "provider_error")).toHaveLength(1);
+        expect(result.verdict).toBe("warn");
+      } finally {
+        delete process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS;
+      }
+    });
+
+    test("retry budget is shared across claims: first flaky claim consumes it, later claims get zero retries", async () => {
+      process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS = "0";
+      try {
+        mockFetch(urlRouter({
+          "api.minimax.io": async () => minimaxExtract(["claim one", "claim two"]),
+          "generativelanguage.googleapis.com": geminiSequence([
+            () => new Response("", { status: 503 }),
+            () => new Response("", { status: 503 }),
+            () => geminiOk(true, "ok", ["https://example.com/a"]), // claim 1 succeeds after 2 retries
+            () => new Response("", { status: 503 }),               // claim 2: no budget left -> immediate provider_error
+          ]),
+        }));
+        const result = await new FactCheckGroundedSkill().run("claim one. claim two.", baseConfig);
+        const audit = (result as any).audit;
+        expect(audit.coverage.providerRetries).toBe(2);
+        expect(audit.coverage.claimsChecked).toBe(2); // provider-error claims count as checked
+        expect(result.findings.filter((f) => f.status === "provider_error")).toHaveLength(1);
+        expect(result.verdict).toBe("warn"); // no-pass-without-verification
+        const attempts = audit.providerAttempts;
+        expect(attempts.map((a: any) => a.status)).toEqual(["retry", "retry", "success", "failed"]);
+        expect(attempts[3].statusCode).toBe(503); // claim 2 terminal with zero retries
+      } finally {
+        delete process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS;
+      }
+    });
+
+    test("mixed run keeps coverage arithmetic consistent: success + provider_error + claim-cap skip", async () => {
+      process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS = "0";
+      try {
+        mockFetch(urlRouter({
+          "api.minimax.io": async () => minimaxExtract(["Claim one.", "Claim two.", "Claim three."]),
+          "generativelanguage.googleapis.com": geminiSequence([
+            () => geminiOk(true, "ok", ["https://example.com/a"]), // claim 1 verified
+            () => new Response("", { status: 503 }),               // claim 2: budget 0 -> terminal provider_error
+          ]),
+        }));
+        const result = await new FactCheckGroundedSkill().run(
+          "Claim one. Claim two. Claim three.",
+          { ...baseConfig, factAudit: { standardMaxClaims: 2, maxProviderRetries: 0 } },
+        );
+        const coverage = (result as any).audit.coverage;
+        expect(coverage.claimsChecked).toBe(2);
+        expect(coverage.claimsSkipped).toBe(1);
+        expect(coverage.claimsChecked + coverage.claimsSkipped).toBe(coverage.claimsExtracted);
+        expect(coverage.skipReasons.claim_cap).toBe(1);
+        expect(result.verdict).toBe("warn");
+      } finally {
+        delete process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS;
+      }
+    });
+
+    test("skill summary separates provider errors from unverified", async () => {
+      process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS = "0";
+      try {
+        mockFetch(urlRouter({
+          "api.minimax.io": async () => minimaxExtract(["claim one", "claim two"]),
+          "generativelanguage.googleapis.com": geminiSequence([
+            () => geminiOk(null as never, "inconclusive", ["https://example.com/a"]), // unverified
+            () => new Response("", { status: 400 }),                                  // provider_error
+          ]),
+        }));
+        const result = await new FactCheckGroundedSkill().run("claim one. claim two.", baseConfig);
+        expect(result.summary).toBe("2 claims checked — 0 unsupported, 1 unverified, 1 provider errors (via gemini-grounded)");
+      } finally {
+        delete process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS;
+      }
+    });
+
+    test("thrown network errors that exhaust the budget end as failed with truthful retryable flag", async () => {
+      process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS = "0";
+      try {
+        mockFetch(urlRouter({
+          "api.minimax.io": async () => minimaxExtract(["one claim"]),
+          "generativelanguage.googleapis.com": async () => {
+            throw new Error("fetch failed: ECONNRESET");
+          },
+        }));
+        const result = await new FactCheckGroundedSkill().run(
+          "one claim",
+          { ...baseConfig, factAudit: { maxProviderRetries: 1 } },
+        );
+        const attempts = (result as any).audit.providerAttempts;
+        expect(attempts.map((a: any) => a.status)).toEqual(["retry", "failed"]);
+        expect(attempts[1].retryable).toBe(true);
+        expect(result.findings.filter((f) => f.status === "provider_error")).toHaveLength(1);
+        expect(result.verdict).toBe("warn");
+      } finally {
+        delete process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS;
+      }
+    });
+  });
+
+  describe("claim extraction failure handling", () => {
+    const minimaxResponse = (content: unknown[]) => jsonResponse({
+      id: "msg_x",
+      type: "message",
+      role: "assistant",
+      model: "MiniMax-M2.7",
+      content,
+      stop_reason: "max_tokens",
+      usage: { input_tokens: 10, output_tokens: 10 },
+    });
+
+    test("empty extraction response reports extraction failure, not a claim-free article", async () => {
+      // Reasoning models can exhaust max_tokens inside the thinking block and
+      // return no text block at all — observed live with MiniMax-M2.7.
+      mockFetch(urlRouter({
+        "api.minimax.io": async () => minimaxResponse([{ type: "thinking", thinking: "..." }]),
+      }));
+      const result = await new FactCheckGroundedSkill().run("ירושלים היא בירת ישראל.", baseConfig);
+      expect(result.verdict).toBe("warn");
+      expect(result.summary).not.toContain("No specific verifiable claims");
+      expect(result.summary).toContain("Claim extraction failed");
+      expect(result.findings[0]?.status).toBe("provider_error");
+    });
+
+    test("unparseable extraction response reports extraction failure", async () => {
+      mockFetch(urlRouter({
+        "api.minimax.io": async () => minimaxResponse([{ type: "text", text: "I could not find any claims in this article." }]),
+      }));
+      const result = await new FactCheckGroundedSkill().run("ירושלים היא בירת ישראל.", baseConfig);
+      expect(result.verdict).toBe("warn");
+      expect(result.summary).toContain("Claim extraction failed");
+      expect(result.findings[0]?.status).toBe("provider_error");
+    });
+
+    test("a valid empty claims array still reports a claim-free article", async () => {
+      mockFetch(urlRouter({
+        "api.minimax.io": async () => minimaxResponse([{ type: "text", text: "[]" }]),
+      }));
+      const result = await new FactCheckGroundedSkill().run("סתם משפט בלי טענות.", baseConfig);
+      expect(result.verdict).toBe("warn");
+      expect(result.summary).toBe("No specific verifiable claims detected");
+    });
+  });
+
+  describe("computeRetryAfterDelayMs", () => {
+    test("caps numeric Retry-After at 30 seconds", () => {
+      expect(computeRetryAfterDelayMs("45")).toBe(30_000);
+    });
+
+    test("returns 0 for a missing header", () => {
+      expect(computeRetryAfterDelayMs(null)).toBe(0);
+    });
+
+    test("converts seconds to milliseconds", () => {
+      expect(computeRetryAfterDelayMs("2")).toBe(2_000);
+    });
+
+    test("returns 0 for HTTP-date Retry-After values", () => {
+      expect(computeRetryAfterDelayMs("Fri, 13 Jun 2026 07:00:00 GMT")).toBe(0);
+    });
+
+    test("returns 0 for negative values", () => {
+      expect(computeRetryAfterDelayMs("-5")).toBe(0);
+    });
   });
 });

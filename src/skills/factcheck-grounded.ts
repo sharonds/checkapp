@@ -4,7 +4,7 @@ import { createGeminiCapability } from "../providers/gemini-capability.ts";
 import { getProvider } from "../providers/registry.ts";
 import { resolveProvider } from "../providers/resolve.ts";
 import { emitGroundedCallEvent } from "../telemetry/audit-events.ts";
-import { getLlmClient, parseJsonResponse, LLM_MODEL } from "./llm.ts";
+import { getLlmClient, parseJsonResponse } from "./llm.ts";
 import { claimConfidence, formatCitation, extractClaimsPrompt } from "./factcheck.ts";
 import type { ClaimType, Finding, Skill, SkillResult, Source } from "./types.ts";
 import { isE2E, assertMocksOnly } from "../e2e/mode.ts";
@@ -19,6 +19,7 @@ import {
   locateQuote,
 } from "../audit/document.ts";
 import { sanitizeProviderError, type AuditClaim, type AuditRecord, type ClaimDecision, type FactAssessment, type ProviderAttempt } from "../audit/types.ts";
+import { RETRYABLE_STATUS_CODES } from "../audit/provider-contract.ts";
 
 interface GeminiGroundedChunk {
   web?: {
@@ -73,7 +74,6 @@ interface GroundedClaimResult {
 
 type ProviderAttemptDraft = Omit<ProviderAttempt, "id">;
 
-const GEMINI_GROUNDED_MODEL = LLM_MODEL.gemini;
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 
 export class FactCheckGroundedSkill implements Skill {
@@ -134,6 +134,10 @@ export class FactCheckGroundedSkill implements Skill {
       return skippedResult(this, "gemini-grounded API key missing");
     }
 
+    // Resolve the grounded model once so audit records attribute the model
+    // that actually serves the calls (the capability layer owns the choice).
+    const groundedModel = createGeminiCapability({ apiKey }).getModel("grounded");
+
     const llm = getLlmClient({ ...config, geminiApiKey: config.geminiApiKey ?? apiKey });
     if (!llm) {
       return skippedResult(this, "no LLM key configured for claim extraction");
@@ -141,6 +145,22 @@ export class FactCheckGroundedSkill implements Skill {
 
     const documentAnalysis = analyzeDocument(text);
     const claims = await extractClaims(text, llm.call);
+    if (claims === null) {
+      return {
+        skillId: this.id,
+        name: this.name,
+        score: 60,
+        verdict: "warn",
+        summary: "Claim extraction failed — claims could not be verified",
+        findings: [{
+          severity: "warn",
+          status: "provider_error",
+          text: "The claim-extraction provider returned an unusable response, so fact-checking could not run. Re-run the check or switch the LLM provider.",
+        }],
+        costUsd: 0.001,
+        provider: resolved.provider,
+      };
+    }
     if (claims.length === 0) {
       return {
         skillId: this.id,
@@ -191,6 +211,7 @@ export class FactCheckGroundedSkill implements Skill {
       const grounded = await assessClaimGrounded(
         claim,
         apiKey,
+        groundedModel,
         perClaimCost,
         remainingProviderRetries(budget.maxProviderRetries, providerRetries),
       );
@@ -256,7 +277,7 @@ export class FactCheckGroundedSkill implements Skill {
         confidenceRationale: rationale,
         searchQueries: webSearchQueries.length ? webSearchQueries : [claim],
         provider: resolved.provider,
-        model: GEMINI_GROUNDED_MODEL,
+        model: groundedModel,
         attemptIds: attemptIdsByResult.get(index) ?? [],
         language: located.language,
         direction: located.direction,
@@ -275,7 +296,7 @@ export class FactCheckGroundedSkill implements Skill {
         confidenceRationale: rationale,
         searchQueries: webSearchQueries.length ? webSearchQueries : [claim],
         provider: resolved.provider,
-        model: GEMINI_GROUNDED_MODEL,
+        model: groundedModel,
         auditRef: { auditId, claimId, assessmentId },
         rewrite,
       } satisfies Partial<Finding>;
@@ -335,7 +356,8 @@ export class FactCheckGroundedSkill implements Skill {
     const noCheckedClaims = groundedResults.length === 0 && claims.length > 0;
     const score = noCheckedClaims ? 60 : Math.round(100 - failCount * 25 - warnCount * 10);
     const verdict = noCheckedClaims ? "warn" : failCount > 0 ? "fail" : providerErrorCount > 0 ? "warn" : warnCount > 1 ? "warn" : "pass";
-    const summary = `${groundedResults.length} claims checked — ${failCount} unsupported, ${warnCount} unverified (via gemini-grounded)`;
+    const unverifiedCount = warnCount - providerErrorCount;
+    const summary = `${groundedResults.length} claims checked — ${failCount} unsupported, ${unverifiedCount} unverified${providerErrorCount > 0 ? `, ${providerErrorCount} provider errors` : ""} (via gemini-grounded)`;
 
     const result: SkillResult = {
       skillId: this.id,
@@ -378,17 +400,22 @@ function budgetStopReasonFromKey(key: ReturnType<typeof shouldStopForBudget>): A
   return "provider_call_budget";
 }
 
+// Returns null when the extraction provider produced an unusable response
+// (empty, unparseable, or non-array). Reasoning models can exhaust max_tokens
+// inside their thinking block and emit no text at all, so an empty response
+// means "extraction failed", never "the article has no claims".
 async function extractClaims(
   text: string,
   call: (prompt: string, maxTokens?: number) => Promise<string>,
-): Promise<string[]> {
-  const claimsText = await call(extractClaimsPrompt(text), 1024);
+): Promise<string[] | null> {
+  const claimsText = await call(extractClaimsPrompt(text), 4096);
+  if (!claimsText.trim()) return null;
 
   try {
     const parsed = parseJsonResponse<string[]>(claimsText);
-    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string").slice(0, 20) : [];
+    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string").slice(0, 20) : null;
   } catch {
-    return [];
+    return null;
   }
 }
 
@@ -400,6 +427,7 @@ let _e2eGroundedScenarioName: string | null = null;
 async function assessClaimGrounded(
   claim: string,
   apiKey: string,
+  groundedModel: string,
   perClaimCost: number,
   retriesLeft = 1,
 ): Promise<Omit<GroundedClaimResult, "claim">> {
@@ -417,7 +445,7 @@ async function assessClaimGrounded(
         webSearchQueries: [],
         attempts: [{
           provider: "gemini-grounded",
-          model: GEMINI_GROUNDED_MODEL,
+          model: groundedModel,
           status: "skipped",
         }],
       };
@@ -430,7 +458,7 @@ async function assessClaimGrounded(
       webSearchQueries: [mock.claim],
       attempts: [{
         provider: "gemini-grounded",
-        model: GEMINI_GROUNDED_MODEL,
+        model: groundedModel,
         status: "success",
       }],
     };
@@ -440,7 +468,7 @@ async function assessClaimGrounded(
   const { response, attempts, errorMessage } = await fetchGroundedAssessment(
     claim,
     apiKey,
-    createGeminiCapability({ apiKey }).getModel("grounded"),
+    groundedModel,
     retriesLeft,
     perClaimCost,
   );
@@ -518,30 +546,42 @@ async function fetchGroundedAssessment(
       },
     );
   } catch (error) {
-    attempts.push({
-      provider: "gemini-grounded",
-      model,
-      status: "failed",
-      retryable: true,
-      errorMessage: sanitizeProviderError(error instanceof Error ? error.message : String(error)),
-    });
+    const errorMessage = sanitizeProviderError(error instanceof Error ? error.message : String(error));
     emitAttempt({
       httpStatus: null,
       latencyMs: Date.now() - startedAt,
       inputTokens: null,
       outputTokens: null,
       totalTokens: null,
-      error: sanitizeProviderError(error instanceof Error ? error.message : String(error)),
+      error: errorMessage,
+    });
+    if (retriesLeft > 0) {
+      attempts.push({
+        provider: "gemini-grounded",
+        model,
+        status: "retry",
+        retryable: true,
+        errorMessage,
+      });
+      await sleep(groundedRetryDelayMs());
+      return fetchGroundedAssessment(claim, apiKey, model, retriesLeft - 1, perClaimCost, attempts);
+    }
+    attempts.push({
+      provider: "gemini-grounded",
+      model,
+      status: "failed",
+      retryable: true,
+      errorMessage,
     });
     return {
       attempts,
-      errorMessage: sanitizeProviderError(error instanceof Error ? error.message : String(error)) || "Gemini grounded provider request failed.",
+      errorMessage: errorMessage || "Gemini grounded provider request failed.",
     };
   }
 
   const latencyMs = Date.now() - startedAt;
 
-  if ((response.status === 500 || response.status === 503) && retriesLeft > 0) {
+  if (RETRYABLE_STATUS_CODES.has(response.status) && retriesLeft > 0) {
     attempts.push({
       provider: "gemini-grounded",
       model,
@@ -556,7 +596,7 @@ async function fetchGroundedAssessment(
       outputTokens: null,
       totalTokens: null,
     });
-    await sleep(groundedRetryDelayMs());
+    await sleep(Math.max(computeRetryAfterDelayMs(response.headers.get("retry-after")), groundedRetryDelayMs()));
     return fetchGroundedAssessment(claim, apiKey, model, retriesLeft - 1, perClaimCost, attempts);
   }
 
@@ -566,7 +606,7 @@ async function fetchGroundedAssessment(
       provider: "gemini-grounded",
       model,
       status: "failed",
-      retryable: false,
+      retryable: RETRYABLE_STATUS_CODES.has(response.status),
       statusCode: response.status,
       errorMessage,
     });
@@ -606,6 +646,16 @@ function sumAttemptTokens(attempts: ProviderAttemptDraft[], key: "inputTokens" |
 
 function remainingProviderRetries(maxProviderRetries: number, providerRetriesUsed: number): number {
   return Math.max(0, Math.floor(maxProviderRetries) - providerRetriesUsed);
+}
+
+export function computeRetryAfterDelayMs(retryAfterHeader: string | null): number {
+  if (retryAfterHeader === null || retryAfterHeader.trim() === "") return 0;
+  // HTTP-date form (RFC 9110) is intentionally unsupported: Number() yields NaN
+  // and we fall back to the configured retry delay.
+  const retryAfterSeconds = Number(retryAfterHeader);
+  return Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0
+    ? Math.min(retryAfterSeconds * 1000, 30_000)
+    : 0;
 }
 
 function groundedRetryDelayMs(): number {

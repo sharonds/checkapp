@@ -4,6 +4,7 @@ import {
   auditLocaleForFinding,
   auditLocaleForLanguage,
   formatAuditLocation,
+  formatBudgetStopReason,
   localizedFindingStatus,
   localizedFindingText,
   localizedSkillName,
@@ -43,6 +44,23 @@ describe("audit localization", () => {
     expect(localizedSkillName({ skillId: "plagiarism", name: "Plagiarism Check" }, "he")).toBe("בדיקת מקוריות");
     expect(localizedVerdictLabel("fail", "he")).toBe("לא לפרסום");
     expect(localizedFindingStatus({ status: "unsupported" }, "he")).toBe("לא נתמך");
+  });
+
+  test("all budget stop reasons have Hebrew labels", () => {
+    const reasons = [
+      "claim_cap",
+      "provider_call_budget",
+      "cost_budget",
+      "input_token_budget",
+      "output_token_budget",
+      "wall_clock_budget",
+      "provider_retry_budget",
+      "provider_failure_budget",
+    ];
+    for (const r of reasons) {
+      expect(formatBudgetStopReason(r, "he")).not.toMatch(/[a-z]/);
+      expect(formatBudgetStopReason(r, "en")).not.toContain("_");
+    }
   });
 
   test("localizes provider-error findings for Hebrew reports", () => {

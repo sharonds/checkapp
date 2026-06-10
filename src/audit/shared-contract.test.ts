@@ -2,11 +2,13 @@ import { describe, expect, test } from "bun:test";
 import {
   AUDIT_UI as CLI_AUDIT_UI,
   formatAuditLocation as formatCliAuditLocation,
+  formatBudgetStopReason as formatCliBudgetStopReason,
 } from "./localization.ts";
 import { normalizeFinding as normalizeCliFinding, normalizeSkillResult as normalizeCliSkillResult } from "../skills/normalize.ts";
 import {
   AUDIT_UI as DASHBOARD_AUDIT_UI,
   formatAuditLocation as formatDashboardAuditLocation,
+  formatBudgetStopReason as formatDashboardBudgetStopReason,
 } from "../../dashboard/src/lib/audit-localization.ts";
 import {
   normalizeFinding as normalizeDashboardFinding,
@@ -20,6 +22,7 @@ describe("shared audit contract", () => {
       "chars",
       "confidence",
       "confidenceRationale",
+      "details",
       "documentQuote",
       "evidence",
       "factCheck",
@@ -28,6 +31,7 @@ describe("shared audit contract", () => {
       "approximateLocation",
       "paragraph",
       "plagiarismCheck",
+      "providerError",
       "qualityReport",
       "search",
       "sentence",
@@ -40,8 +44,10 @@ describe("shared audit contract", () => {
       for (const key of stringKeys) {
         expect(DASHBOARD_AUDIT_UI[locale][key]).toBe(CLI_AUDIT_UI[locale][key]);
       }
-      expect(DASHBOARD_AUDIT_UI[locale].checkedClaims(4, 1, 0, "gemini-grounded", 2, "claim_cap"))
-        .toBe(CLI_AUDIT_UI[locale].checkedClaims(4, 1, 0, "gemini-grounded", 2, "claim_cap"));
+      expect(DASHBOARD_AUDIT_UI[locale].checkedClaims(4, 1, 0, "gemini-grounded", 2, "claim_cap", 1))
+        .toBe(CLI_AUDIT_UI[locale].checkedClaims(4, 1, 0, "gemini-grounded", 2, "claim_cap", 1));
+      expect(DASHBOARD_AUDIT_UI[locale].checkedClaims(2, 0, 1, "gemini-grounded", 1, "cost_budget", 1))
+        .toBe(CLI_AUDIT_UI[locale].checkedClaims(2, 0, 1, "gemini-grounded", 1, "cost_budget", 1));
     }
   });
 
@@ -113,6 +119,26 @@ describe("shared audit contract", () => {
     };
 
     expect(normalizeDashboardSkillResult(raw)).toEqual(normalizeCliSkillResult(raw));
+  });
+
+  test("CLI and dashboard formatBudgetStopReason agree for all 8 reasons in both locales", () => {
+    const reasons = [
+      "claim_cap",
+      "provider_call_budget",
+      "cost_budget",
+      "input_token_budget",
+      "output_token_budget",
+      "wall_clock_budget",
+      "provider_retry_budget",
+      "provider_failure_budget",
+    ];
+    for (const reason of reasons) {
+      for (const locale of ["en", "he"] as const) {
+        expect(formatDashboardBudgetStopReason(reason, locale)).toBe(
+          formatCliBudgetStopReason(reason, locale),
+        );
+      }
+    }
   });
 }
 );

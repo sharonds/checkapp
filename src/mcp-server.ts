@@ -27,6 +27,7 @@ const mcpServerDeps = {
   openDb,
   readConfig,
   writeConfig,
+  runCheckHeadless,
   createDeepResearchSkill: () => new FactCheckDeepResearchSkill(),
   primeGeminiCapabilityHealthCheck,
   createServer: () => new Server(
@@ -44,6 +45,7 @@ export function __resetMcpServerTestOverrides() {
   mcpServerDeps.openDb = openDb;
   mcpServerDeps.readConfig = readConfig;
   mcpServerDeps.writeConfig = writeConfig;
+  mcpServerDeps.runCheckHeadless = runCheckHeadless;
   mcpServerDeps.createDeepResearchSkill = () => new FactCheckDeepResearchSkill();
   mcpServerDeps.primeGeminiCapabilityHealthCheck = primeGeminiCapabilityHealthCheck;
   mcpServerDeps.createServer = () => new Server(
@@ -165,11 +167,19 @@ export function getToolDefinitions() {
 }
 
 export async function handleToolCall(name: string, args: Record<string, unknown>) {
+  try {
+    return await dispatchToolCall(name, args);
+  } catch (error) {
+    return errorResponse(safeErrorMessage(error));
+  }
+}
+
+async function dispatchToolCall(name: string, args: Record<string, unknown>) {
   switch (name) {
     case "check_article": {
       const text = args.text as string;
       const source = (args.source as string) ?? "mcp-check";
-      const result = await runCheckHeadless(source, { text, telemetrySource: "mcp" });
+      const result = await mcpServerDeps.runCheckHeadless(source, { text, telemetrySource: "mcp" });
       return { content: [{ type: "text", text: JSON.stringify({ ...result, audit: redactAuditRecordText(result.audit) }, null, 2) }] };
     }
     case "list_reports": {
@@ -241,7 +251,7 @@ export async function handleToolCall(name: string, args: Record<string, unknown>
       const { regenerateArticle } = await import("./regenerate.ts");
       const text = args.text as string;
       const config = args.config as any;
-      const checkResult = await runCheckHeadless("mcp-regenerate", { text, config, telemetrySource: "mcp" });
+      const checkResult = await mcpServerDeps.runCheckHeadless("mcp-regenerate", { text, config, telemetrySource: "mcp" });
       const regen = await regenerateArticle(text, checkResult.results, { config });
       return { content: [{ type: "text", text: JSON.stringify(regen, null, 2) }] };
     }

@@ -13,7 +13,7 @@ const PROVIDER_LABEL: Record<string, string> = {
   copyscape: "Copyscape",
   "gemini-ai-detection": "Gemini AI Detection",
   "gemini-grounded-plagiarism": "Gemini Grounded Plagiarism",
-  "gemini-grounded": "Gemini 3 Pro Preview + Google Search",
+  "gemini-grounded": "Gemini 3.1 Pro + Google Search",
   "gemini-deep-research": "Gemini Deep Research",
   "exa-search": "Exa Search",
   "exa-deep-reasoning": "Exa Deep Reasoning",
@@ -83,12 +83,13 @@ export function generateMarkdownReport(record: Omit<CheckRecord, "id" | "created
 function localizedMarkdownSummary(
   result: SkillResult,
   locale: ReturnType<typeof auditLocaleForLanguage>,
-  coverage?: CheckRecord["audit"]["coverage"],
+  coverage?: NonNullable<CheckRecord["audit"]>["coverage"],
 ): string {
   if (result.skillId !== "fact-check-grounded" && result.skillId !== "fact-check") return result.summary;
   if (!coverage) return result.summary;
   const unsupported = result.findings.filter((finding) => finding.status === "unsupported" || /unsupported|לא נתמך/i.test(finding.text)).length;
-  const unverified = result.findings.filter((finding) => finding.status === "unverified" || /unverified|לא אומת/i.test(finding.text)).length;
+  const providerErrors = result.findings.filter((finding) => finding.status === "provider_error").length;
+  const unverified = result.findings.filter((finding) => finding.status !== "provider_error" && (finding.status === "unverified" || /unverified|לא אומת/i.test(finding.text))).length;
   return AUDIT_UI[locale].checkedClaims(
     coverage.claimsChecked,
     unsupported,
@@ -96,6 +97,7 @@ function localizedMarkdownSummary(
     result.provider,
     coverage.claimsSkipped,
     coverage.budgetStopReason,
+    providerErrors,
   );
 }
 

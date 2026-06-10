@@ -158,7 +158,7 @@ function SkillsReference() {
       name: "Fact Check",
       engine: "Exa + LLM / Gemini Grounded",
       cost: "~$0.04 / ~$0.16",
-      desc: "Basic extracts factual claims, searches evidence via Exa, and uses the configured LLM to assess support. Standard uses Gemini 3 Pro Preview with Google Search grounding. Claims without returned source URLs are treated as unverified, not verified.",
+      desc: "Basic extracts factual claims, searches evidence via Exa, and uses the configured LLM to assess support. Standard uses Gemini 3.1 Pro with Google Search grounding. Claims without returned source URLs are treated as unverified, not verified.",
     },
     {
       name: "Tone of Voice",
