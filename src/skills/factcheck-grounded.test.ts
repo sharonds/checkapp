@@ -736,6 +736,99 @@ describe("FactCheckGroundedSkill", () => {
         delete process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS;
       }
     });
+
+    test("exhausts the default retry budget: 503x3 yields retry,retry,failed", async () => {
+      process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS = "0";
+      try {
+        mockFetch(urlRouter({
+          "api.minimax.io": async () => minimaxExtract(["one claim"]),
+          "generativelanguage.googleapis.com": async () => new Response("", { status: 503 }),
+        }));
+        const result = await new FactCheckGroundedSkill().run("one claim", baseConfig); // default maxProviderRetries: 2
+        const attempts = (result as any).audit.providerAttempts;
+        expect(attempts.map((a: any) => a.status)).toEqual(["retry", "retry", "failed"]);
+        expect(attempts[2].retryable).toBe(true);
+        expect((result as any).audit.coverage.providerRetries).toBe(2);
+        expect(result.findings.filter((f) => f.status === "provider_error")).toHaveLength(1);
+        expect(result.verdict).toBe("warn");
+      } finally {
+        delete process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS;
+      }
+    });
+
+    test("retry budget is shared across claims: first flaky claim consumes it, later claims get zero retries", async () => {
+      process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS = "0";
+      try {
+        mockFetch(urlRouter({
+          "api.minimax.io": async () => minimaxExtract(["claim one", "claim two"]),
+          "generativelanguage.googleapis.com": geminiSequence([
+            () => new Response("", { status: 503 }),
+            () => new Response("", { status: 503 }),
+            () => geminiOk(true, "ok", ["https://example.com/a"]), // claim 1 succeeds after 2 retries
+            () => new Response("", { status: 503 }),               // claim 2: no budget left -> immediate provider_error
+          ]),
+        }));
+        const result = await new FactCheckGroundedSkill().run("claim one. claim two.", baseConfig);
+        const audit = (result as any).audit;
+        expect(audit.coverage.providerRetries).toBe(2);
+        expect(audit.coverage.claimsChecked).toBe(2); // provider-error claims count as checked
+        expect(result.findings.filter((f) => f.status === "provider_error")).toHaveLength(1);
+        expect(result.verdict).toBe("warn"); // no-pass-without-verification
+        const attempts = audit.providerAttempts;
+        expect(attempts.map((a: any) => a.status)).toEqual(["retry", "retry", "success", "failed"]);
+        expect(attempts[3].statusCode).toBe(503); // claim 2 terminal with zero retries
+      } finally {
+        delete process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS;
+      }
+    });
+
+    test("mixed run keeps coverage arithmetic consistent: success + provider_error + claim-cap skip", async () => {
+      process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS = "0";
+      try {
+        mockFetch(urlRouter({
+          "api.minimax.io": async () => minimaxExtract(["Claim one.", "Claim two.", "Claim three."]),
+          "generativelanguage.googleapis.com": geminiSequence([
+            () => geminiOk(true, "ok", ["https://example.com/a"]), // claim 1 verified
+            () => new Response("", { status: 503 }),               // claim 2: budget 0 -> terminal provider_error
+          ]),
+        }));
+        const result = await new FactCheckGroundedSkill().run(
+          "Claim one. Claim two. Claim three.",
+          { ...baseConfig, factAudit: { standardMaxClaims: 2, maxProviderRetries: 0 } },
+        );
+        const coverage = (result as any).audit.coverage;
+        expect(coverage.claimsChecked).toBe(2);
+        expect(coverage.claimsSkipped).toBe(1);
+        expect(coverage.claimsChecked + coverage.claimsSkipped).toBe(coverage.claimsExtracted);
+        expect(coverage.skipReasons.claim_cap).toBe(1);
+        expect(result.verdict).toBe("warn");
+      } finally {
+        delete process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS;
+      }
+    });
+
+    test("thrown network errors that exhaust the budget end as failed with truthful retryable flag", async () => {
+      process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS = "0";
+      try {
+        mockFetch(urlRouter({
+          "api.minimax.io": async () => minimaxExtract(["one claim"]),
+          "generativelanguage.googleapis.com": async () => {
+            throw new Error("fetch failed: ECONNRESET");
+          },
+        }));
+        const result = await new FactCheckGroundedSkill().run(
+          "one claim",
+          { ...baseConfig, factAudit: { maxProviderRetries: 1 } },
+        );
+        const attempts = (result as any).audit.providerAttempts;
+        expect(attempts.map((a: any) => a.status)).toEqual(["retry", "failed"]);
+        expect(attempts[1].retryable).toBe(true);
+        expect(result.findings.filter((f) => f.status === "provider_error")).toHaveLength(1);
+        expect(result.verdict).toBe("warn");
+      } finally {
+        delete process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS;
+      }
+    });
   });
 
   describe("computeRetryAfterDelayMs", () => {
