@@ -331,9 +331,10 @@ export class FactCheckGroundedSkill implements Skill {
 
     const failCount = findings.filter((finding) => finding.severity === "error").length;
     const warnCount = findings.filter((finding) => finding.severity === "warn").length;
+    const providerErrorCount = findings.filter((finding) => finding.status === "provider_error").length;
     const noCheckedClaims = groundedResults.length === 0 && claims.length > 0;
     const score = noCheckedClaims ? 60 : Math.round(100 - failCount * 25 - warnCount * 10);
-    const verdict = noCheckedClaims ? "warn" : failCount > 0 ? "fail" : warnCount > 1 ? "warn" : "pass";
+    const verdict = noCheckedClaims ? "warn" : failCount > 0 ? "fail" : providerErrorCount > 0 ? "warn" : warnCount > 1 ? "warn" : "pass";
     const summary = `${groundedResults.length} claims checked — ${failCount} unsupported, ${warnCount} unverified (via gemini-grounded)`;
 
     const result: SkillResult = {
@@ -532,7 +533,10 @@ async function fetchGroundedAssessment(
       totalTokens: null,
       error: sanitizeProviderError(error instanceof Error ? error.message : String(error)),
     });
-    throw error;
+    return {
+      attempts,
+      errorMessage: sanitizeProviderError(error instanceof Error ? error.message : String(error)) || "Gemini grounded provider request failed.",
+    };
   }
 
   const latencyMs = Date.now() - startedAt;

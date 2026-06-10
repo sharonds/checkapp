@@ -47,6 +47,7 @@ export const AUDIT_UI = {
     skillResults: "Skill Results",
     unsupported: "Unsupported",
     unverified: "Unverified",
+    providerError: "Provider error",
     words: "Words",
     factCheck: "Fact Check",
     factCheckGrounded: "Fact Check (Grounded)",
@@ -84,6 +85,7 @@ export const AUDIT_UI = {
     skillResults: "תוצאות בדיקה",
     unsupported: "לא נתמך",
     unverified: "לא אומת",
+    providerError: "שגיאת ספק",
     words: "מילים",
     factCheck: "בדיקת עובדות",
     factCheckGrounded: "בדיקת עובדות מבוססת מקורות",
@@ -143,6 +145,11 @@ export function localizedFindingText(
     const confidence = finding.confidence ? ` (${labels.confidence}: ${localizedConfidenceValue(finding.confidence, locale)})` : "";
     const explanation = finding.explanation ? ` — ${finding.explanation}` : "";
     return `${status}${confidence}${explanation}`;
+  }
+  if (locale === "he" && finding.status === "provider_error") {
+    const confidence = finding.confidence ? ` (${labels.confidence}: ${localizedConfidenceValue(finding.confidence, locale)})` : "";
+    const explanation = finding.explanation ? ` — ${finding.explanation}` : "";
+    return `${labels.providerError}${confidence}${explanation}`;
   }
   if (locale === "he" && finding.status === "plagiarism_match") {
     const confidence = finding.confidence ? ` (${labels.confidence}: ${localizedConfidenceValue(finding.confidence, locale)})` : "";

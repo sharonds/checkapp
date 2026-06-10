@@ -58,6 +58,7 @@ export const AUDIT_UI = {
     suggestedRewrite: "Suggested rewrite",
     unsupported: "Unsupported",
     unverified: "Unverified",
+    providerError: "Provider error",
     needsAttention: "Needs attention",
     doNotPublish: "Do not publish",
     words: "Words",
@@ -103,6 +104,7 @@ export const AUDIT_UI = {
     suggestedRewrite: "ניסוח מוצע",
     unsupported: "לא נתמך",
     unverified: "לא אומת",
+    providerError: "שגיאת ספק",
     needsAttention: "דורש טיפול",
     doNotPublish: "לא לפרסום",
     words: "מילים",
@@ -154,6 +156,7 @@ export function localizedFindingStatus(finding: Pick<Finding, "status" | "confid
   const labels = AUDIT_UI[locale];
   if (finding.status === "unsupported") return labels.unsupported;
   if (finding.status === "unverified") return labels.unverified;
+  if (finding.status === "provider_error") return labels.providerError;
   if (finding.status === "plagiarism_match") return labels.plagiarismCheck;
   if (finding.confidence) return `${labels.confidence}: ${finding.confidence}`;
   return undefined;
@@ -169,6 +172,11 @@ export function localizedFindingText(
     const confidence = finding.confidence ? ` (${labels.confidence}: ${localizedConfidenceValue(finding.confidence, locale)})` : "";
     const explanation = finding.explanation ? ` — ${finding.explanation}` : "";
     return `${status}${confidence}${explanation}`;
+  }
+  if (locale === "he" && finding.status === "provider_error") {
+    const confidence = finding.confidence ? ` (${labels.confidence}: ${localizedConfidenceValue(finding.confidence, locale)})` : "";
+    const explanation = finding.explanation ? ` — ${finding.explanation}` : "";
+    return `${labels.providerError}${confidence}${explanation}`;
   }
   if (locale === "he" && finding.status === "plagiarism_match") {
     const confidence = finding.confidence ? ` (${labels.confidence}: ${localizedConfidenceValue(finding.confidence, locale)})` : "";

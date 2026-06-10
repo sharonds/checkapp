@@ -5,6 +5,7 @@ import {
   auditLocaleForLanguage,
   formatAuditLocation,
   localizedFindingStatus,
+  localizedFindingText,
   localizedSkillName,
   localizedVerdictLabel,
 } from "./localization.ts";
@@ -42,5 +43,16 @@ describe("audit localization", () => {
     expect(localizedSkillName({ skillId: "plagiarism", name: "Plagiarism Check" }, "he")).toBe("בדיקת מקוריות");
     expect(localizedVerdictLabel("fail", "he")).toBe("לא לפרסום");
     expect(localizedFindingStatus({ status: "unsupported" }, "he")).toBe("לא נתמך");
+  });
+
+  test("localizes provider-error findings for Hebrew reports", () => {
+    expect(localizedFindingStatus({ status: "provider_error" }, "he")).toBe("שגיאת ספק");
+    expect(localizedFindingText({
+      text: "Provider error (low confidence): claim",
+      status: "provider_error",
+      confidence: "low",
+      explanation: "יש לבדוק ידנית.",
+      explanationLanguage: "he",
+    }, "he")).toBe("שגיאת ספק (רמת ביטחון: נמוכה) — יש לבדוק ידנית.");
   });
 });

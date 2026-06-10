@@ -3,6 +3,7 @@ import {
   auditLocaleForFinding,
   auditLocaleForLanguage,
   formatAuditLocation,
+  localizedFindingText,
   localizedSkillName,
 } from "@/lib/audit-localization";
 
@@ -31,5 +32,15 @@ describe("dashboard audit localization", () => {
   test("localizes core audit skill names", () => {
     expect(localizedSkillName({ skillId: "fact-check-grounded", name: "Fact Check (Grounded)" }, "he")).toBe("בדיקת עובדות מבוססת מקורות");
     expect(localizedSkillName({ skillId: "seo", name: "SEO" }, "he")).toBe("SEO");
+  });
+
+  test("localizes provider-error finding text in Hebrew drilldowns", () => {
+    expect(localizedFindingText({
+      text: "Provider error (low confidence): claim",
+      status: "provider_error",
+      confidence: "low",
+      explanation: "יש לבדוק ידנית.",
+      explanationLanguage: "he",
+    }, "he")).toBe("שגיאת ספק (רמת ביטחון: נמוכה) — יש לבדוק ידנית.");
   });
 });

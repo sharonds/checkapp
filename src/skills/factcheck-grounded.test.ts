@@ -168,7 +168,18 @@ describe("FactCheckGroundedSkill", () => {
     }));
 
     try {
-      await expect(new FactCheckGroundedSkill().run("The claim needs checking.", baseConfig)).rejects.toThrow("request failed");
+      const result = await new FactCheckGroundedSkill().run("The claim needs checking.", baseConfig);
+
+      expect(result.verdict).toBe("warn");
+      expect(result.findings[0].status).toBe("provider_error");
+      expect(result.findings[0].text).not.toContain("gemini-key");
+      expect(result.findings[0].text).not.toContain("abc123");
+      expect((result as any).audit.providerAttempts.map((attempt: any) => attempt.status)).toEqual(["failed"]);
+      expect((result as any).audit.coverage.providerFailures).toBe(1);
+      expect((result as any).audit.factAssessments[0]).toMatchObject({
+        status: "provider_error",
+        attemptIds: ["attempt-1"],
+      });
       const body = readFileSync(process.env.CHECKAPP_AUDIT_EVENTS_PATH!, "utf-8");
       expect(body).not.toContain("gemini-key");
       expect(body).not.toContain("abc123");
@@ -432,7 +443,7 @@ describe("FactCheckGroundedSkill", () => {
     );
 
     expect(assessmentCalls).toBe(1);
-    expect(result.verdict).toBe("pass");
+    expect(result.verdict).toBe("warn");
     expect(result.findings[0].severity).toBe("warn");
     expect(result.findings[0].status).toBe("provider_error");
     expect(result.findings[0].text).toContain("Provider error");
