@@ -63,7 +63,7 @@ describe("GET /api/checks/:id", () => {
       'audit-detail.md',
       10,
       '[]',
-      '{"version":1,"auditId":"audit-detail","language":"en","direction":"ltr","coverage":{"wordsScanned":10,"sectionsDetected":1,"paragraphsScanned":1,"sentencesScanned":1,"claimsExtracted":0,"claimsChecked":0,"claimsSkipped":0,"skipReasons":{},"plagiarismPassagesChecked":0,"plagiarismPassagesSkipped":0,"providerFailures":0,"providerRetries":0},"segments":[],"claims":[],"claimDecisions":[],"factAssessments":[],"plagiarismFindings":[],"providerAttempts":[],"createdAt":"2026-06-09T00:00:00.000Z"}',
+      '{"version":1,"auditId":"audit-detail","language":"en","direction":"ltr","coverage":{"wordsScanned":10,"sectionsDetected":1,"paragraphsScanned":1,"sentencesScanned":1,"claimsExtracted":0,"claimsChecked":0,"claimsSkipped":0,"skipReasons":{},"plagiarismPassagesChecked":0,"plagiarismPassagesSkipped":0,"providerFailures":0,"providerRetries":0},"segments":[{"id":"seg-1","text":"DASHBOARD_PRIVATE_ARTICLE_SEGMENT","paragraphIndex":0,"sentenceIndex":0,"startOffset":0,"endOffset":33}],"claims":[],"claimDecisions":[],"factAssessments":[],"plagiarismFindings":[],"providerAttempts":[],"createdAt":"2026-06-09T00:00:00.000Z"}',
       0
     )`);
 
@@ -71,6 +71,13 @@ describe("GET /api/checks/:id", () => {
     const body = await res.json();
 
     expect(body.audit.auditId).toBe("audit-detail");
+    expect(body.audit.segments[0]).toMatchObject({
+      id: "seg-1",
+      text: "",
+      paragraphIndex: 0,
+      sentenceIndex: 0,
+    });
+    expect(JSON.stringify(body)).not.toContain("DASHBOARD_PRIVATE_ARTICLE_SEGMENT");
     expect(body.auditJson).toBeUndefined();
     expect(body.resultsJson).toBeUndefined();
   });

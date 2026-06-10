@@ -19,6 +19,7 @@ import { readConfig, writeConfig } from "./config.ts";
 import { primeGeminiCapabilityHealthCheck } from "./providers/gemini-capability.ts";
 import { FactCheckDeepResearchSkill } from "./skills/factcheck-deep-research.ts";
 import { publicCheckSummary } from "../shared/check-summary.ts";
+import { redactAuditRecordText, sanitizeProviderError } from "./audit/types.ts";
 
 const ESTIMATED_COMPLETION_MS = 15 * 60_000;
 
@@ -169,7 +170,7 @@ export async function handleToolCall(name: string, args: Record<string, unknown>
       const text = args.text as string;
       const source = (args.source as string) ?? "mcp-check";
       const result = await runCheckHeadless(source, { text, telemetrySource: "mcp" });
-      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      return { content: [{ type: "text", text: JSON.stringify({ ...result, audit: redactAuditRecordText(result.audit) }, null, 2) }] };
     }
     case "list_reports": {
       const db = mcpServerDeps.openDb();
@@ -189,7 +190,7 @@ export async function handleToolCall(name: string, args: Record<string, unknown>
         const check = getCheckById(db, id);
         if (!check) return { content: [{ type: "text", text: `Report ${id} not found` }], isError: true };
         const { articleText: _articleText, ...publicReport } = check;
-        return { content: [{ type: "text", text: JSON.stringify(publicReport, null, 2) }] };
+        return { content: [{ type: "text", text: JSON.stringify({ ...publicReport, audit: redactAuditRecordText(publicReport.audit) }, null, 2) }] };
       } finally {
         db.close();
       }
@@ -292,7 +293,7 @@ export async function handleToolCall(name: string, args: Record<string, unknown>
         const result = await skill.initiate(text, parentType, parentKey, config, "mcp");
         return jsonResponse(result);
       } catch (error) {
-        return errorResponse(error instanceof Error ? error.message : String(error));
+        return errorResponse(safeErrorMessage(error));
       } finally {
         db.close();
       }
@@ -322,7 +323,7 @@ export async function handleToolCall(name: string, args: Record<string, unknown>
           result,
         });
       } catch (error) {
-        return errorResponse(error instanceof Error ? error.message : String(error));
+        return errorResponse(safeErrorMessage(error));
       }
     }
     default:
@@ -351,6 +352,10 @@ function jsonResponse(payload: unknown) {
 
 function errorResponse(message: string) {
   return { content: [{ type: "text" as const, text: message }], isError: true };
+}
+
+function safeErrorMessage(error: unknown): string {
+  return sanitizeProviderError(error instanceof Error ? error.message : String(error)) || "Operation failed";
 }
 
 export async function startMcpServer() {

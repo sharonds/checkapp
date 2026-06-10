@@ -248,6 +248,40 @@ describe("get_report", () => {
       } as any],
       totalCostUsd: 0,
       articleText: "ARTICLE_TEXT_PRIVATE_MARKER_PR4 full private article body",
+      audit: {
+        version: 1,
+        auditId: "audit-detail-private",
+        language: "en",
+        direction: "ltr",
+        coverage: {
+          wordsScanned: 6,
+          sectionsDetected: 1,
+          paragraphsScanned: 1,
+          sentencesScanned: 1,
+          claimsExtracted: 1,
+          claimsChecked: 1,
+          claimsSkipped: 0,
+          skipReasons: {},
+          plagiarismPassagesChecked: 0,
+          plagiarismPassagesSkipped: 0,
+          providerFailures: 0,
+          providerRetries: 0,
+        },
+        segments: [{
+          id: "seg-1",
+          text: "ARTICLE_TEXT_PRIVATE_MARKER_PR4 full private article body",
+          paragraphIndex: 0,
+          sentenceIndex: 0,
+          startOffset: 0,
+          endOffset: 55,
+        }],
+        claims: [],
+        claimDecisions: [],
+        factAssessments: [],
+        plagiarismFindings: [],
+        providerAttempts: [],
+        createdAt: "2026-06-09T00:00:00.000Z",
+      },
     });
 
     const res = await handleToolCall("get_report", { id });
@@ -256,6 +290,12 @@ describe("get_report", () => {
 
     expect(report.results[0].findings[0].quote).toBe("quoted claim");
     expect(report.articleText).toBeUndefined();
+    expect(report.audit.segments[0]).toMatchObject({
+      id: "seg-1",
+      text: "",
+      paragraphIndex: 0,
+      sentenceIndex: 0,
+    });
     expect(text).not.toContain("ARTICLE_TEXT_PRIVATE_MARKER_PR4");
     expect(text).not.toContain("full private article body");
   });
@@ -388,6 +428,25 @@ describe("deep_audit_article", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it("redacts provider secrets in deep audit initiation errors", async () => {
+    __setMcpServerTestOverrides({
+      createDeepResearchSkill: () => ({
+        initiate: async () => {
+          throw new Error("create failed Bearer sk-live-secret token=abc123 key=gemini-secret");
+        },
+      } as unknown as FactCheckDeepResearchSkill),
+    });
+
+    const res = await handleToolCall("deep_audit_article", { article: "Fresh article text" });
+    const text = res.content[0].type === "text" ? res.content[0].text : "";
+
+    expect(res.isError).toBe(true);
+    expect(text).toContain("[redacted]");
+    expect(text).not.toContain("sk-live-secret");
+    expect(text).not.toContain("abc123");
+    expect(text).not.toContain("gemini-secret");
+  });
 });
 
 describe("get_deep_audit_result", () => {
@@ -476,5 +535,24 @@ describe("get_deep_audit_result", () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+
+  it("redacts provider secrets in deep audit poll errors", async () => {
+    __setMcpServerTestOverrides({
+      createDeepResearchSkill: () => ({
+        fetchResult: async () => {
+          throw new Error("poll failed Bearer sk-live-secret token=abc123 key=gemini-secret");
+        },
+      } as unknown as FactCheckDeepResearchSkill),
+    });
+
+    const res = await handleToolCall("get_deep_audit_result", { interactionId: "int-secret" });
+    const text = res.content[0].type === "text" ? res.content[0].text : "";
+
+    expect(res.isError).toBe(true);
+    expect(text).toContain("[redacted]");
+    expect(text).not.toContain("sk-live-secret");
+    expect(text).not.toContain("abc123");
+    expect(text).not.toContain("gemini-secret");
   });
 });

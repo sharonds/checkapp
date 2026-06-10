@@ -40,8 +40,12 @@ assert(
   "SECURITY.md must list OpenAlex as the academic citation provider",
 );
 assert(
-  agents.includes("segments[].text") && api.includes("segments[].text"),
-  "AGENTS.md and docs/api.md must warn that detail audit payloads can include segments[].text article excerpts",
+  agents.includes("redact `segments[].text`") && api.includes("redact `audit.segments[].text`"),
+  "AGENTS.md and docs/api.md must document public segment text redaction",
+);
+assert(
+  !api.includes("article excerpts in `audit.segments[].text`"),
+  "docs/api.md must not claim public API responses include audit.segments[].text article excerpts",
 );
 
 if (!process.exitCode) {

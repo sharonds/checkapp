@@ -1,7 +1,7 @@
 import { jsonWithCors } from "@/lib/cors";
 import { getCheckById, getTagsForCheck } from "@/lib/db";
 import { guardLocalReadOnly } from "@/lib/guard-local";
-import { parseStoredAuditRecord } from "../../../../../../src/audit/types";
+import { parseStoredAuditRecord, redactAuditRecordText } from "../../../../../../src/audit/types";
 import { NextRequest } from "next/server";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -19,7 +19,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       totalCost: check.totalCost,
       createdAt: check.createdAt,
       results: parseResultsJson(check.resultsJson),
-      audit: parseStoredAuditRecord(check.auditJson),
+      audit: redactAuditRecordText(parseStoredAuditRecord(check.auditJson)),
       tags,
     });
   } catch (err) {

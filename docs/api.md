@@ -6,7 +6,7 @@ The web dashboard exposes a JSON API at `http://localhost:3000/api` when running
 
 The dashboard API is local-first and intended for loopback access only. Route handlers reject non-local hosts/origins, and forwarded headers can deny a request but cannot make a remote request trusted. Mutation routes require `X-CheckApp-CSRF` and JSON content types. The browser reads the token from `<meta name="checkapp-csrf">`; scripts can read the same value from `~/.checkapp/csrf.token` on the local machine. Do not put the dashboard behind a public reverse proxy.
 
-List/search endpoints return redacted summaries. Detail and creation endpoints may return full findings, structured audit data, quotes, article excerpts in `audit.segments[].text`, evidence snippets, provider metadata, and search queries for the selected check; treat those responses as sensitive local data.
+List/search endpoints return redacted summaries. Detail and creation endpoints may return full findings, structured audit data, finding quotes, evidence snippets, provider metadata, and search queries for the selected check; treat those responses as sensitive local data. Public API responses preserve audit segment metadata for locations, but redact `audit.segments[].text` to avoid returning the full article body.
 
 ---
 
@@ -41,7 +41,7 @@ Run a new content quality check.
 }
 ```
 
-The creation response is detail-equivalent and may include full findings, article quotes, article excerpts in `audit.segments[].text`, evidence snippets, provider metadata, search queries, and structured audit data. Treat it as sensitive. Use `GET /api/checks` or `/api/search` when you only need public summaries.
+The creation response is detail-equivalent and may include full findings, finding-level article quotes, evidence snippets, provider metadata, search queries, and structured audit data. Treat it as sensitive. Public API responses redact `audit.segments[].text`; use `GET /api/checks` or `/api/search` when you only need public summaries.
 
 **Example:**
 
@@ -114,7 +114,7 @@ Get a single check with full results and tags.
 }
 ```
 
-`audit` is optional and additive. Existing consumers should continue to rely on `results`; `audit` appears only when a check path has produced structured audit data. Additive fields may appear in `audit.version: 1` and should be ignored by clients that do not understand them. Unknown future versions should be treated as unsupported and ignored. Fact-check and plagiarism audit records include document segments, exact article quotes, locations, language/direction metadata, coverage counters, budget stop reasons such as `claim_cap`/`provider_call_budget`, evidence assessments, plagiarism matches, provider attempts, confidence rationale, grounding mode for Gemini plagiarism matches, and suggested rewrites. Detail audit payloads can include article excerpts in `segments[].text`; list/search endpoints omit them. The SQLite column `audit_json` is internal and is not part of the public API.
+`audit` is optional and additive. Existing consumers should continue to rely on `results`; `audit` appears only when a check path has produced structured audit data. Additive fields may appear in `audit.version: 1` and should be ignored by clients that do not understand them. Unknown future versions should be treated as unsupported and ignored. Fact-check and plagiarism audit records include document segment metadata, exact finding quotes, locations, language/direction metadata, coverage counters, budget stop reasons such as `claim_cap`/`provider_call_budget`, evidence assessments, plagiarism matches, provider attempts, confidence rationale, grounding mode for Gemini plagiarism matches, and suggested rewrites. Public API responses redact `segments[].text` while keeping segment IDs, paragraph/sentence indexes, offsets, language, and direction. The SQLite column `audit_json` is internal and is not part of the public API.
 
 When `audit.language` is Hebrew, CheckApp-owned dashboard and HTML report labels are localized to Hebrew and rendered RTL. API payload values are not translated: provider names, URLs, quoted article text, evidence titles, source snippets, and model-generated finding text remain in their original language.
 

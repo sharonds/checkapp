@@ -257,6 +257,14 @@ export function serializeAuditRecord(audit: AuditRecord | null | undefined): str
   return parsed.ok ? JSON.stringify(parsed.value) : null;
 }
 
+export function redactAuditRecordText(audit: AuditRecord | null | undefined): AuditRecord | undefined {
+  if (!audit) return undefined;
+  return {
+    ...audit,
+    segments: audit.segments.map((segment) => ({ ...segment, text: "" })),
+  };
+}
+
 export function sanitizeAuditUrl(url: string): string | null {
   try {
     const parsed = new URL(url);
