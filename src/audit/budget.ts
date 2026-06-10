@@ -53,7 +53,7 @@ export interface SelectedAuditClaims {
 
 const DEFAULT_FACT_AUDIT: Required<FactAuditConfig> = {
   standardMaxClaims: 4,
-  deepMaxClaims: 80,
+  deepMaxClaims: 4,
   maxUsd: 2,
   maxInputTokens: 120_000,
   maxOutputTokens: 24_000,
@@ -109,8 +109,6 @@ function getZeroBudgetStopReason(budget: AuditBudget): AuditBudgetStopReason | u
   if (budget.maxInputTokens <= 0) return "input_token_budget";
   if (budget.maxOutputTokens <= 0) return "output_token_budget";
   if (budget.maxWallClockMs <= 0) return "wall_clock_budget";
-  if (budget.maxProviderRetries <= 0) return "provider_retry_budget";
-  if (budget.maxProviderFailures <= 0) return "provider_failure_budget";
   return undefined;
 }
 
@@ -120,7 +118,7 @@ export function shouldStopForBudget(budget: AuditBudget, usage: AuditBudgetUsage
   if ((usage.outputTokens ?? 0) >= budget.maxOutputTokens) return "maxOutputTokens";
   if ((usage.providerCalls ?? 0) >= budget.maxProviderCalls) return "maxProviderCalls";
   if ((usage.wallClockMs ?? 0) >= budget.maxWallClockMs) return "maxWallClockMs";
-  if ((usage.providerRetries ?? 0) >= budget.maxProviderRetries) return "maxProviderRetries";
-  if ((usage.providerFailures ?? 0) >= budget.maxProviderFailures) return "maxProviderFailures";
+  if ((usage.providerRetries ?? 0) > budget.maxProviderRetries) return "maxProviderRetries";
+  if ((usage.providerFailures ?? 0) > budget.maxProviderFailures) return "maxProviderFailures";
   return null;
 }

@@ -38,10 +38,11 @@ describe("provider contract", () => {
       provider: "gemini",
       status: "failed",
       statusCode: 503,
-      errorMessage: "Bearer sk-live-secret failed token=abc123",
+      errorMessage: "Bearer sk-live-secret failed token=abc123 Gemini returned AIzaSyARealLookingGeminiKey1234567890",
     });
     expect(attempt.errorMessage).not.toContain("sk-live-secret");
     expect(attempt.errorMessage).not.toContain("abc123");
+    expect(attempt.errorMessage).not.toContain("AIzaSyARealLookingGeminiKey1234567890");
     expect(attempt.retryable).toBe(true);
   });
 });

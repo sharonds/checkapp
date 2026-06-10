@@ -161,6 +161,8 @@ describe("PlagiarismSkill Copyscape results", () => {
     const findings = (result as any).audit.plagiarismFindings;
     expect(findings.map((finding: any) => finding.matchType)).toEqual(["near", "semantic", "unknown"]);
     expect(findings.map((finding: any) => finding.groundingMode)).toEqual(["grounded", "ungrounded", "grounded"]);
+    expect(findings.map((finding: any) => finding.confidence)).toEqual(result.findings.map((finding: any) => finding.confidence));
+    expect(findings[1].confidenceRationale).toContain("review manually");
     expect(result.findings.map((finding: any) => finding.matchType)).toEqual(["near", "semantic", "unknown"]);
     expect(result.findings.map((finding: any) => finding.groundingMode)).toEqual(["grounded", "ungrounded", "grounded"]);
   });

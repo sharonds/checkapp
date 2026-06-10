@@ -222,6 +222,64 @@ describe("FactCheckSkill — Phase 7 evidence", () => {
     expect((result as any).audit.coverage.budgetStopReason).toBe("claim_cap");
   });
 
+  test("filters non-string extracted claims before provider calls", async () => {
+    let llmCallCount = 0;
+    const exaQueries: unknown[] = [];
+    exaSearchHandler = async (q) => {
+      exaQueries.push(q);
+      return {
+        results: [{
+          url: `https://example.com/${exaQueries.length}`,
+          title: "Evidence",
+          highlights: ["e"],
+          text: "full text",
+        }],
+      };
+    };
+    mockFetch(urlRouter({
+      "api.minimax.io": async () => {
+        llmCallCount++;
+        if (llmCallCount === 1) {
+          return anthropicContent(JSON.stringify(["Claim one.", 123, null, { text: "bad" }, "Claim two."]));
+        }
+        return anthropicContent("{\"supported\":true,\"note\":\"ok\",\"claimType\":\"general\"}");
+      },
+    }));
+
+    const result = await new FactCheckSkill().run("Claim one. Claim two.", cfgBase);
+
+    expect(exaQueries).toEqual(["Claim one.", "Claim two."]);
+    expect((result as any).audit.coverage.claimsExtracted).toBe(2);
+  });
+
+  test("warns instead of passing when a budget skips every extracted claim", async () => {
+    let llmCallCount = 0;
+    let exaCalls = 0;
+    exaSearchHandler = async () => {
+      exaCalls++;
+      return { results: [] };
+    };
+    mockFetch(urlRouter({
+      "api.minimax.io": async () => {
+        llmCallCount++;
+        if (llmCallCount === 1) return anthropicContent(JSON.stringify(["Claim one.", "Claim two."]));
+        return anthropicContent("{\"supported\":true,\"note\":\"ok\",\"claimType\":\"general\"}");
+      },
+    }));
+
+    const result = await new FactCheckSkill().run(
+      "Claim one. Claim two.",
+      { ...cfgBase, factAudit: { standardMaxClaims: 2, maxUsd: 0 } },
+    );
+
+    expect(exaCalls).toBe(0);
+    expect(result.verdict).toBe("warn");
+    expect(result.score).toBeLessThan(100);
+    expect(result.summary).toContain("0 claims checked");
+    expect((result as any).audit.coverage.claimsChecked).toBe(0);
+    expect((result as any).audit.coverage.claimsSkipped).toBe(2);
+  });
+
   test("no provider configured → warn verdict with info finding", async () => {
     const { exaApiKey, ...cfgNoExa } = cfgBase;
     const result = await new FactCheckSkill().run("claim", cfgNoExa as Config);

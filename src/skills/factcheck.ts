@@ -98,7 +98,7 @@ export class FactCheckSkill implements Skill {
     let claims: string[] = [];
     try {
       const parsed = parseJsonResponse<string[]>(claimsText);
-      claims = Array.isArray(parsed) ? parsed : [];
+      claims = Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string").slice(0, 20) : [];
     } catch {
       claims = [];
     }
@@ -329,8 +329,9 @@ Reply with JSON:
 
     const failCount = findings.filter((f) => f.severity === "error").length;
     const warnCount = findings.filter((f) => f.severity === "warn").length;
-    const score = Math.round(100 - failCount * 25 - warnCount * 10);
-    const verdict = failCount > 0 ? "fail" : warnCount > 1 ? "warn" : "pass";
+    const noCheckedClaims = assessments.length === 0 && claims.length > 0;
+    const score = noCheckedClaims ? 60 : Math.round(100 - failCount * 25 - warnCount * 10);
+    const verdict = noCheckedClaims ? "warn" : failCount > 0 ? "fail" : warnCount > 1 ? "warn" : "pass";
     const summary = `${assessments.length} claims checked — ${failCount} unsupported, ${warnCount} unverified (via ${llm.provider})`;
 
     const baseAudit = createAuditRecordBase(this.id, text);

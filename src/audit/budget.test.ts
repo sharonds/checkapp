@@ -23,6 +23,11 @@ describe("audit budget", () => {
     expect(budget.maxClaims).toBe(60);
   });
 
+  test("keeps premium sync checks capped by default unless explicitly configured", () => {
+    const budget = createAuditBudget({} as any, "premium");
+    expect(budget.maxClaims).toBe(4);
+  });
+
   test("selects checked and skipped claims with a claim-cap stop reason", () => {
     const budget = createAuditBudget({
       factAudit: { standardMaxClaims: 2, maxProviderCalls: 10 },
@@ -57,6 +62,19 @@ describe("audit budget", () => {
       { claim: "two", skipReason: "cost_budget" },
     ]);
     expect(selected.budgetStopReason).toBe("cost_budget");
+  });
+
+  test("zero retry and failure budgets do not preempt the first provider call", () => {
+    const budget = createAuditBudget({
+      factAudit: { standardMaxClaims: 3, maxProviderRetries: 0, maxProviderFailures: 0 },
+    } as any, "standard");
+    const selected = selectClaimsForAudit(["one", "two"], budget);
+
+    expect(selected.checkedClaims).toEqual(["one", "two"]);
+    expect(selected.skippedClaims).toEqual([]);
+    expect(shouldStopForBudget(budget, { providerRetries: 0, providerFailures: 0 })).toBeNull();
+    expect(shouldStopForBudget(budget, { providerRetries: 1, providerFailures: 0 })).toBe("maxProviderRetries");
+    expect(shouldStopForBudget(budget, { providerRetries: 0, providerFailures: 1 })).toBe("maxProviderFailures");
   });
 
   test("returns deterministic stop reasons", () => {

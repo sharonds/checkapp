@@ -152,6 +152,21 @@ describe("toggle_skill", () => {
     expect(text).toContain("Unknown skill");
     expect(writtenConfig).toBeUndefined();
   });
+
+  it("rejects prototype property skill ids", async () => {
+    let writtenConfig: unknown;
+    __setMcpServerTestOverrides({
+      writeConfig: async (config) => {
+        writtenConfig = config;
+      },
+    });
+
+    const res = await handleToolCall("toggle_skill", { skillId: "constructor", enabled: true });
+    const text = res.content[0].type === "text" ? res.content[0].text : "";
+
+    expect(text).toContain("Unknown skill");
+    expect(writtenConfig).toBeUndefined();
+  });
 });
 
 describe("list_reports", () => {

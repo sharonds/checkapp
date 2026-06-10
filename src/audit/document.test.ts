@@ -39,6 +39,16 @@ describe("audit document analysis", () => {
     expect(located.location?.endOffset).toBeUndefined();
   });
 
+  test("case-insensitive exact matching keeps offsets aligned when earlier characters fold to multiple code units", () => {
+    const text = "İstanbul reports: WINS were recorded after the final.";
+    const analysis = analyzeDocument(text);
+    const located = locateQuote(text, "wins were recorded", analysis);
+
+    expect(located.quote).toBe("WINS were recorded");
+    expect(located.location?.matchQuality).toBe("exact");
+    expect(text.slice(located.location?.startOffset, located.location?.endOffset)).toBe(located.quote);
+  });
+
   test("preserves Hebrew and mixed Hebrew-English direction metadata", () => {
     const hebrew = "המשחק Rummikub מתאים לשני שחקנים בלבד. בפועל יש עוד טענה.";
     const analysis = analyzeDocument(hebrew);

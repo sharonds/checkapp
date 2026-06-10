@@ -30,7 +30,7 @@ const mcpServerDeps = {
   createDeepResearchSkill: () => new FactCheckDeepResearchSkill(),
   primeGeminiCapabilityHealthCheck,
   createServer: () => new Server(
-    { name: "checkapp", version: "1.2.0" },
+    { name: "checkapp", version: "1.4.0" },
     { capabilities: { tools: {} } }
   ),
   createTransport: () => new StdioServerTransport(),
@@ -47,7 +47,7 @@ export function __resetMcpServerTestOverrides() {
   mcpServerDeps.createDeepResearchSkill = () => new FactCheckDeepResearchSkill();
   mcpServerDeps.primeGeminiCapabilityHealthCheck = primeGeminiCapabilityHealthCheck;
   mcpServerDeps.createServer = () => new Server(
-    { name: "checkapp", version: "1.2.0" },
+    { name: "checkapp", version: "1.4.0" },
     { capabilities: { tools: {} } }
   );
   mcpServerDeps.createTransport = () => new StdioServerTransport();
@@ -230,7 +230,7 @@ export async function handleToolCall(name: string, args: Record<string, unknown>
       const config = mcpServerDeps.readConfig();
       const skillId = args.skillId as string;
       const enabled = args.enabled as boolean;
-      if (!(skillId in config.skills)) {
+      if (typeof skillId !== "string" || !Object.hasOwn(config.skills, skillId)) {
         return errorResponse(`Unknown skill '${skillId}'`);
       }
       const skills = { ...config.skills, [skillId]: enabled };

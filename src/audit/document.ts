@@ -185,10 +185,10 @@ function findExactLocatedQuote(quote: string, segments: AuditSegment[]): Located
       return toLocatedQuote(segment, quote, start, end);
     }
 
-    const lowerIndex = segment.text.toLocaleLowerCase().indexOf(quote.toLocaleLowerCase());
-    if (lowerIndex >= 0) {
-      const matched = segment.text.slice(lowerIndex, lowerIndex + quote.length);
-      const start = typeof segment.startOffset === "number" ? segment.startOffset + lowerIndex : undefined;
+    const foldedIndex = findCaseInsensitiveIndex(segment.text, quote);
+    if (foldedIndex >= 0) {
+      const matched = segment.text.slice(foldedIndex, foldedIndex + quote.length);
+      const start = typeof segment.startOffset === "number" ? segment.startOffset + foldedIndex : undefined;
       const end = typeof start === "number" ? start + matched.length : undefined;
       return toLocatedQuote(segment, matched, start, end);
     }
@@ -198,6 +198,16 @@ function findExactLocatedQuote(quote: string, segments: AuditSegment[]): Located
     if (normalizedQuote.includes(normalizedSegment)) return toLocatedQuote(segment, undefined, undefined, undefined, "fuzzy");
   }
   return undefined;
+}
+
+function findCaseInsensitiveIndex(text: string, query: string): number {
+  if (!query || query.length > text.length) return -1;
+  const collator = new Intl.Collator(undefined, { sensitivity: "accent", usage: "search" });
+  for (let index = 0; index <= text.length - query.length; index++) {
+    const candidate = text.slice(index, index + query.length);
+    if (collator.compare(candidate, query) === 0) return index;
+  }
+  return -1;
 }
 
 function findBestSegment(quote: string, segments: AuditSegment[]): AuditSegment | undefined {

@@ -67,7 +67,10 @@ interface GroundedClaimResult {
   assessment: GroundedAssessment;
   sources: Source[];
   webSearchQueries: string[];
+  attempts: ProviderAttemptDraft[];
 }
+
+type ProviderAttemptDraft = Omit<ProviderAttempt, "id">;
 
 const GEMINI_GROUNDED_MODEL = LLM_MODEL.gemini;
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
@@ -163,11 +166,19 @@ export class FactCheckGroundedSkill implements Skill {
     const runtimeSkippedClaims: Array<{ claim: string; skipReason: AuditBudgetStopReason }> = [];
     const checkedClaims = claimSelection.checkedClaims;
     const budgetStartedAt = Date.now();
+    let providerRetries = 0;
+    let providerFailures = 0;
+    let inputTokens = 0;
+    let outputTokens = 0;
     for (const [index, claim] of checkedClaims.entries()) {
       const stopKey = shouldStopForBudget(budget, {
         costUsd,
         providerCalls: groundedResults.length,
         wallClockMs: Date.now() - budgetStartedAt,
+        providerRetries,
+        providerFailures,
+        inputTokens,
+        outputTokens,
       });
       if (stopKey) {
         const skipReason = budgetStopReasonFromKey(stopKey);
@@ -179,6 +190,10 @@ export class FactCheckGroundedSkill implements Skill {
       const grounded = await assessClaimGrounded(claim, apiKey, perClaimCost);
       costUsd += perClaimCost;
       groundedResults.push({ claim, ...grounded });
+      providerRetries += grounded.attempts.filter((attempt) => attempt.status === "retry").length;
+      providerFailures += grounded.attempts.filter((attempt) => attempt.status === "failed").length;
+      inputTokens += sumAttemptTokens(grounded.attempts, "inputTokens");
+      outputTokens += sumAttemptTokens(grounded.attempts, "outputTokens");
     }
 
     const baseAudit = createAuditRecordBase(this.id, text);
@@ -186,12 +201,17 @@ export class FactCheckGroundedSkill implements Skill {
     const auditClaims: AuditClaim[] = [];
     const claimDecisions: ClaimDecision[] = [];
     const factAssessments: FactAssessment[] = [];
-    const providerAttempts: ProviderAttempt[] = groundedResults.map((_, index) => ({
-      id: `attempt-${index + 1}`,
-      provider: resolved.provider,
-      model: GEMINI_GROUNDED_MODEL,
-      status: "success",
-    }));
+    const attemptIdsByResult = new Map<number, string[]>();
+    const providerAttempts: ProviderAttempt[] = [];
+    for (const [resultIndex, result] of groundedResults.entries()) {
+      const ids: string[] = [];
+      for (const attempt of result.attempts) {
+        const id = `attempt-${providerAttempts.length + 1}`;
+        ids.push(id);
+        providerAttempts.push({ id, ...attempt });
+      }
+      attemptIdsByResult.set(resultIndex, ids);
+    }
 
     for (const [index, { claim, assessment, sources, webSearchQueries }] of groundedResults.entries()) {
       const supported = sources.length === 0 && assessment.supported === true ? null : assessment.supported;
@@ -231,7 +251,7 @@ export class FactCheckGroundedSkill implements Skill {
         searchQueries: webSearchQueries.length ? webSearchQueries : [claim],
         provider: resolved.provider,
         model: GEMINI_GROUNDED_MODEL,
-        attemptIds: [providerAttempts[index]?.id ?? `attempt-${index + 1}`],
+        attemptIds: attemptIdsByResult.get(index) ?? [],
         language: located.language,
         direction: located.direction,
         rewrite,
@@ -298,8 +318,9 @@ export class FactCheckGroundedSkill implements Skill {
 
     const failCount = findings.filter((finding) => finding.severity === "error").length;
     const warnCount = findings.filter((finding) => finding.severity === "warn").length;
-    const score = Math.round(100 - failCount * 25 - warnCount * 10);
-    const verdict = failCount > 0 ? "fail" : warnCount > 1 ? "warn" : "pass";
+    const noCheckedClaims = groundedResults.length === 0 && claims.length > 0;
+    const score = noCheckedClaims ? 60 : Math.round(100 - failCount * 25 - warnCount * 10);
+    const verdict = noCheckedClaims ? "warn" : failCount > 0 ? "fail" : warnCount > 1 ? "warn" : "pass";
     const summary = `${groundedResults.length} claims checked — ${failCount} unsupported, ${warnCount} unverified (via gemini-grounded)`;
 
     const result: SkillResult = {
@@ -379,6 +400,11 @@ async function assessClaimGrounded(
         assessment: { supported: null, note: "No grounded claims in scenario" },
         sources: [],
         webSearchQueries: [],
+        attempts: [{
+          provider: "gemini-grounded",
+          model: GEMINI_GROUNDED_MODEL,
+          status: "skipped",
+        }],
       };
     }
     const mock = mockClaims[_e2eGroundedCursor % mockClaims.length]!;
@@ -387,11 +413,16 @@ async function assessClaimGrounded(
       assessment: { supported: mock.supported, note: mock.note },
       sources: mock.sources.map((uri) => ({ url: uri, title: formatCitation(uri) })),
       webSearchQueries: [mock.claim],
+      attempts: [{
+        provider: "gemini-grounded",
+        model: GEMINI_GROUNDED_MODEL,
+        status: "success",
+      }],
     };
   }
 
   assertMocksOnly("gemini-grounded");
-  const response = await fetchGroundedAssessment(
+  const { response, attempts } = await fetchGroundedAssessment(
     claim,
     apiKey,
     createGeminiCapability({ apiKey }).getModel("grounded"),
@@ -411,7 +442,13 @@ async function assessClaimGrounded(
     assessment,
     sources: extractGroundingSources(groundingMetadata),
     webSearchQueries: groundingMetadata?.webSearchQueries ?? [],
+    attempts,
   };
+}
+
+interface GeminiGroundedFetchResult {
+  response: GeminiGroundedResponse;
+  attempts: ProviderAttemptDraft[];
 }
 
 async function fetchGroundedAssessment(
@@ -420,7 +457,8 @@ async function fetchGroundedAssessment(
   model: string,
   retriesLeft: number,
   perClaimCost: number,
-): Promise<GeminiGroundedResponse> {
+  attempts: ProviderAttemptDraft[] = [],
+): Promise<GeminiGroundedFetchResult> {
   const startedAt = Date.now();
   const emitAttempt = (payload: Record<string, unknown>) =>
     emitGroundedCallEvent({
@@ -455,6 +493,13 @@ async function fetchGroundedAssessment(
       },
     );
   } catch (error) {
+    attempts.push({
+      provider: "gemini-grounded",
+      model,
+      status: "failed",
+      retryable: true,
+      errorMessage: sanitizeProviderError(error instanceof Error ? error.message : String(error)),
+    });
     emitAttempt({
       httpStatus: null,
       latencyMs: Date.now() - startedAt,
@@ -469,6 +514,13 @@ async function fetchGroundedAssessment(
   const latencyMs = Date.now() - startedAt;
 
   if ((response.status === 500 || response.status === 503) && retriesLeft > 0) {
+    attempts.push({
+      provider: "gemini-grounded",
+      model,
+      status: "retry",
+      retryable: true,
+      statusCode: response.status,
+    });
     emitAttempt({
       httpStatus: response.status,
       latencyMs,
@@ -477,10 +529,18 @@ async function fetchGroundedAssessment(
       totalTokens: null,
     });
     await sleep(3_000);
-    return fetchGroundedAssessment(claim, apiKey, model, retriesLeft - 1, perClaimCost);
+    return fetchGroundedAssessment(claim, apiKey, model, retriesLeft - 1, perClaimCost, attempts);
   }
 
   if (!response.ok) {
+    attempts.push({
+      provider: "gemini-grounded",
+      model,
+      status: "failed",
+      retryable: false,
+      statusCode: response.status,
+      errorMessage: `HTTP ${response.status}`,
+    });
     emitAttempt({
       httpStatus: response.status,
       latencyMs,
@@ -492,6 +552,15 @@ async function fetchGroundedAssessment(
   }
 
   const data = (await response.json()) as GeminiGroundedResponse;
+  attempts.push({
+    provider: "gemini-grounded",
+    model,
+    status: "success",
+    statusCode: response.status,
+    inputTokens: data.usageMetadata?.promptTokenCount,
+    outputTokens: data.usageMetadata?.candidatesTokenCount,
+    totalTokens: data.usageMetadata?.totalTokenCount,
+  });
   emitAttempt({
     httpStatus: response.status,
     latencyMs,
@@ -499,7 +568,11 @@ async function fetchGroundedAssessment(
     outputTokens: data.usageMetadata?.candidatesTokenCount ?? null,
     totalTokens: data.usageMetadata?.totalTokenCount ?? null,
   });
-  return data;
+  return { response: data, attempts };
+}
+
+function sumAttemptTokens(attempts: ProviderAttemptDraft[], key: "inputTokens" | "outputTokens"): number {
+  return attempts.reduce((sum, attempt) => sum + (attempt[key] ?? 0), 0);
 }
 
 function buildGroundedPrompt(claim: string): string {

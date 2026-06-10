@@ -93,7 +93,7 @@ Classifies the article's content purpose (tutorial, product announcement, case s
 ## Organization
 
 - **Tags** — Attach tags to any check via the dashboard or API (`POST /api/checks/:id/tags`). Filter and search by tag.
-- **Search** — Full-text search across check sources and results via the dashboard or API (`GET /api/search`).
+- **Search** — Search check sources and tags via the dashboard or API (`GET /api/search`).
 - **Batch checking** — `checkapp --batch ./articles/` checks all `.md`/`.txt` files in a directory.
 - **Configurable thresholds** — Custom pass/warn/fail score cutoffs per skill in `config.json`.
 

@@ -77,7 +77,7 @@ Standard is opt-in and stays off by default until Gate 2 passes. Basic remains t
 | Standard (opt-in) | Gemini 3 Pro Preview + Google Search grounding | $0.16 | ~45s | Requires Gemini. Enable with `factCheckTierFlag=true` and `factCheckTier="standard"`, or set `providers["fact-check"].provider = "gemini-grounded"`. |
 | Deep Audit (async) | Gemini Deep Research | $1.50 | 5–15 min | Premium async audit workflow. The normal sync check still runs Basic unless Standard is selected. Initiate via dashboard button or `deep_audit_article` MCP tool. |
 
-Basic and Standard sync fact-checking default to checking up to 4 extracted claims per article to keep latency and provider cost predictable. Advanced users can adjust `factAudit.standardMaxClaims` and provider-call budgets in config; structured reports show skipped-claim counts and budget reasons such as `claim_cap` when a cap stops verification.
+Basic, Standard, and sync deep-reasoning fact-checking default to checking up to 4 extracted claims per article to keep latency and provider cost predictable. Advanced users can adjust `factAudit.standardMaxClaims`, `factAudit.deepMaxClaims`, and provider-call budgets in config; structured reports show skipped-claim counts and budget reasons such as `claim_cap` when a cap stops verification.
 
 Research basis: the Standard tier was selected based on an [internal benchmark on a 20-claim synthetic corpus](https://github.com/sharonds/checkapp-fact-check-research). That benchmark is directional, not definitive - see its [LIMITATIONS.md](https://github.com/sharonds/checkapp-fact-check-research/blob/main/LIMITATIONS.md) before relying on the results for your own decisions.
 
@@ -121,7 +121,7 @@ When the same quote appears multiple times and the provider does not return sour
 | **Web dashboard** | Local Next.js UI — overview stats, report browser, run checks, manage skills and settings, in-app docs. Run from a source checkout. |
 | **`--ui` flag** | Launches the dashboard dev server when the sibling `dashboard/` directory is present, such as in a source checkout. Published npm/binary installs expose CLI/MCP features but do not bundle the dashboard app. |
 | **`--output` export** | `--output report.md` or `--output report.html` — save the report to a file. |
-| **Tags + search** | Attach tags to checks, search across all history by text or tag via dashboard or API. |
+| **Tags + search** | Attach tags to checks, search check sources and tags via dashboard or API. |
 | **JSON API** | RESTful API at `localhost:3000/api` for running checks, managing tags, toggling skills. See [docs/api.md](docs/api.md). |
 | **Context system** | Upload tone guides, content briefs, legal policies, and style guides. Contexts are stored in SQLite and automatically loaded by relevant skills. Manage via CLI (`checkapp context add/list/show/remove`) or the dashboard Contexts page. |
 | **MCP server** | 10 tools for AI agent integration (Claude Code, Cursor, Windsurf). Start with `checkapp --mcp`. Tools include `check_article`, `list_reports`, `get_report`, `upload_context`, `list_contexts`, `get_skills`, `toggle_skill`, `regenerate_article`, `deep_audit_article`, and `get_deep_audit_result`. |
@@ -381,7 +381,7 @@ Exa is a neural search engine built for AI agents. Used to search for evidence s
 2. Create an account and generate an API key
 3. Add to `.env`: `EXA_API_KEY=your-key`
 
-**Cost:** ~$0.007 per search. The fact-check skill checks up to 4 claims per article by default → ~$0.028 per check before LLM assessment cost. Raising `factAudit.standardMaxClaims` increases provider calls and cost.
+**Cost:** ~$0.007 per search, or ~$0.025 per Exa deep-reasoning search. The sync fact-check skill checks up to 4 claims per article by default → ~$0.028 per Basic check or ~$0.10 per sync deep-reasoning check before LLM assessment cost. Raising `factAudit.standardMaxClaims` or `factAudit.deepMaxClaims` increases provider calls and cost.
 
 Free trial credits available on signup.
 
@@ -716,7 +716,7 @@ checkapp/
 │   ├── batch.ts              # Batch checking — runs all .md/.txt files in a directory
 │   ├── checker.ts            # Headless check engine — runCheckHeadless() for MCP/CI/API
 │   ├── regenerate.ts         # Regenerate/fix engine — AI rewrites for flagged sentences
-│   ├── mcp-server.ts         # MCP server — 8 tools for agent integration
+│   ├── mcp-server.ts         # MCP server — 10 tools for agent integration
 │   ├── thresholds.ts         # Configurable pass/warn/fail score cutoffs
 │   ├── language.ts           # Language detection — English, Hebrew, Arabic, Chinese, Japanese, Korean
 │   └── skills/

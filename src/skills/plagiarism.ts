@@ -189,6 +189,12 @@ function buildPlagiarismAudit(
   const plagiarismFindings: PlagiarismFinding[] = matches.map((match, index) => {
     const articleQuote = extractArticleQuote(match.snippet);
     const located = locateQuote(text, articleQuote, documentAnalysis);
+    const findingConfidence = provider === "gemini-grounded-plagiarism"
+      ? extractConfidence(match.snippet) ?? confidence
+      : confidence;
+    const rationale = provider === "gemini-grounded-plagiarism"
+      ? plagiarismConfidenceRationale(match.groundingMode, findingConfidence)
+      : confidenceRationale(1, findingConfidence);
     return {
       id: `plagiarism-${index + 1}`,
       quote: located.quote || articleQuote,
@@ -199,8 +205,8 @@ function buildPlagiarismAudit(
         accepted: true,
       },
       status: "plagiarism_match",
-      confidence,
-      confidenceRationale: confidenceRationale(1, confidence),
+      confidence: findingConfidence,
+      confidenceRationale: rationale,
       passageIds: located.segmentId ? [located.segmentId] : undefined,
       matchType: provider === "gemini-grounded-plagiarism" ? auditMatchType(match) : "exact",
       groundingMode: match.groundingMode,

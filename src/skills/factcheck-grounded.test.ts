@@ -305,6 +305,87 @@ describe("FactCheckGroundedSkill", () => {
     expect((result as any).audit.coverage.budgetStopReason).toBe("cost_budget");
   });
 
+  test("records Gemini retries in structured audit coverage", async () => {
+    let assessmentCalls = 0;
+    mockFetch(urlRouter({
+      "api.minimax.io": async () => jsonResponse({
+        id: "msg_extract_retry",
+        type: "message",
+        role: "assistant",
+        model: "MiniMax-M2.7",
+        content: [{
+          type: "text",
+          text: JSON.stringify(["Claim one."]),
+        }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 10, output_tokens: 10 },
+      }),
+      "generativelanguage.googleapis.com": async () => {
+        assessmentCalls++;
+        if (assessmentCalls === 1) return new Response("temporary", { status: 503 });
+        return jsonResponse({
+          candidates: [{
+            content: { parts: [{ text: JSON.stringify({ supported: true, note: "Grounded sources support the claim." }) }] },
+            groundingMetadata: {
+              webSearchQueries: ["claim one"],
+              groundingChunks: [{ web: { uri: "https://example.com/claim", title: "Source" } }],
+            },
+          }],
+        });
+      },
+    }));
+
+    const result = await new FactCheckGroundedSkill().run("Claim one.", baseConfig);
+
+    expect(assessmentCalls).toBe(2);
+    expect((result as any).audit.providerAttempts.map((attempt: any) => attempt.status)).toEqual(["retry", "success"]);
+    expect((result as any).audit.coverage.providerRetries).toBe(1);
+    expect((result as any).audit.coverage.providerFailures).toBe(0);
+    expect((result as any).audit.factAssessments[0].attemptIds).toEqual(["attempt-1", "attempt-2"]);
+  });
+
+  test("warns instead of passing when a budget skips every grounded claim", async () => {
+    let assessmentCalls = 0;
+    mockFetch(urlRouter({
+      "api.minimax.io": async () => jsonResponse({
+        id: "msg_extract_zero_budget",
+        type: "message",
+        role: "assistant",
+        model: "MiniMax-M2.7",
+        content: [{
+          type: "text",
+          text: JSON.stringify(["Claim one.", "Claim two."]),
+        }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 10, output_tokens: 10 },
+      }),
+      "generativelanguage.googleapis.com": async () => {
+        assessmentCalls++;
+        return jsonResponse({
+          candidates: [{
+            content: { parts: [{ text: JSON.stringify({ supported: true, note: "Grounded sources support the claim." }) }] },
+            groundingMetadata: {
+              webSearchQueries: [`claim ${assessmentCalls}`],
+              groundingChunks: [{ web: { uri: `https://example.com/${assessmentCalls}`, title: `Source ${assessmentCalls}` } }],
+            },
+          }],
+        });
+      },
+    }));
+
+    const result = await new FactCheckGroundedSkill().run(
+      "Claim one. Claim two.",
+      { ...baseConfig, factAudit: { standardMaxClaims: 2, maxUsd: 0 } },
+    );
+
+    expect(assessmentCalls).toBe(0);
+    expect(result.verdict).toBe("warn");
+    expect(result.score).toBeLessThan(100);
+    expect(result.summary).toContain("0 claims checked");
+    expect((result as any).audit.coverage.claimsChecked).toBe(0);
+    expect((result as any).audit.coverage.claimsSkipped).toBe(2);
+  });
+
   test("uses Hebrew rewrite text for mixed Hebrew-English claims", async () => {
     mockFetch(urlRouter({
       "api.minimax.io": async () => jsonResponse({

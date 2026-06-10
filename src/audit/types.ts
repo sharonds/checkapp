@@ -147,6 +147,9 @@ export interface ProviderAttempt {
   status: "success" | "retry" | "failed" | "skipped";
   retryable?: boolean;
   statusCode?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
   errorMessage?: string;
 }
 
@@ -301,7 +304,8 @@ export function sanitizeProviderError(message: unknown): string {
   return message
     .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
     .replace(/\b(api[_-]?key|key|token|secret)=([^&\s]+)/gi, "$1=[redacted]")
-    .replace(/\b(?:sk|sk-live|sk-test|AIza|xai|or)-[A-Za-z0-9._-]{6,}\b/g, "[redacted]")
+    .replace(/\bAIza[0-9A-Za-z_-]{20,}\b/g, "[redacted]")
+    .replace(/\b(?:sk|sk-live|sk-test|xai|or)-[A-Za-z0-9._-]{6,}\b/g, "[redacted]")
     .slice(0, 500);
 }
 
@@ -425,6 +429,9 @@ function normalizeProviderAttempt(raw: unknown): ProviderAttempt | null {
     status: raw.status as ProviderAttempt["status"],
     retryable: typeof raw.retryable === "boolean" ? raw.retryable : undefined,
     statusCode: optionalNumber(raw.statusCode),
+    inputTokens: optionalNumber(raw.inputTokens),
+    outputTokens: optionalNumber(raw.outputTokens),
+    totalTokens: optionalNumber(raw.totalTokens),
     errorMessage: raw.errorMessage === undefined ? undefined : sanitizeProviderError(raw.errorMessage),
   };
 }
