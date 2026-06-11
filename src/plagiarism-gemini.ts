@@ -1,8 +1,8 @@
 import type { Config } from "./config.ts";
 import type { CopyscapeMatch, CopyscapeResult } from "./copyscape.ts";
+import { createGeminiCapability } from "./providers/gemini-capability.ts";
 
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
-const DEFAULT_MODEL = "gemini-3-pro-preview";
 const ESTIMATED_COST_USD = 0.04;
 const GEMINI_MODEL_RE = /^[a-zA-Z0-9._-]{1,80}$/;
 
@@ -53,6 +53,7 @@ export interface GeminiGroundedPlagiarismResult extends CopyscapeResult {
   groundedSourceUrls: string[];
   costUsd: number;
   groundingMode?: "grounded" | "mixed" | "ungrounded";
+  model?: string;
 }
 
 const RESPONSE_SCHEMA = {
@@ -132,9 +133,9 @@ export async function checkPlagiarismGeminiGrounded(
     return skipped("Gemini API key not configured — set GEMINI_API_KEY, config.geminiApiKey, or providers.plagiarism.apiKey.");
   }
 
-  const model = providerConfig?.extra?.model || DEFAULT_MODEL;
+  const model = providerConfig?.extra?.model || createGeminiCapability({ apiKey }).getModel("grounded");
   if (!isValidGeminiModel(model)) {
-    return skipped("Gemini grounded plagiarism model is invalid — use a Gemini model id such as gemini-3-pro-preview.");
+    return skipped("Gemini grounded plagiarism model is invalid — use a Gemini model id such as gemini-3.1-pro-preview.");
   }
   const url = `${GEMINI_BASE}/models/${model}:generateContent`;
 
@@ -211,6 +212,7 @@ export async function checkPlagiarismGeminiGrounded(
       : normalized.ungroundedMatches > 0
         ? "mixed"
         : "grounded",
+    model,
   };
 }
 

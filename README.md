@@ -41,7 +41,7 @@ See [docs/security.md](docs/security.md) for the BYOK-alpha threat model.
 | Skill | Engine | Cost/check | Enabled by default |
 |-------|--------|-----------|-------------------|
 | **Plagiarism** | Copyscape · Gemini Grounded Plagiarism | ~$0.09 / ~$0.04 estimate | ✅ |
-| **AI Detection** | Copyscape (English) · Gemini 3 Pro Preview (multilingual) | ~$0.03 / ~$0.01 estimate | ✅ |
+| **AI Detection** | Copyscape (English) · Gemini 3.1 Pro Preview (multilingual) | ~$0.03 / ~$0.01 estimate | ✅ |
 | **SEO** | Offline (no API) | free | ✅ |
 | **Grammar & Style** | LanguageTool + LLM fallback | free tier / ~$0.002 | ❌ disabled by default (enable in Settings; LanguageTool free tier works without any API key) |
 | **Academic Citations** | OpenAlex (default) / Semantic Scholar (legacy) | free | ❌ disabled by default (augments fact-check findings when enabled; OpenAlex/SS both free) |
@@ -105,7 +105,7 @@ When the same quote appears multiple times and the provider does not return sour
 |---------|---------|
 | **Pluggable skills** | Enable/disable any skill via config. Add custom skills by implementing one TypeScript interface. |
 | **Plagiarism check** | Checks against Copyscape's indexed web data by default, or Gemini Grounded Plagiarism when selected. Returns 0–100% similarity + matched sources. |
-| **AI detection** | Copyscape AI detector by default, or Gemini 3 Pro Preview when explicitly configured for multilingual checks. Returns 0–100% probability per sentence and an overall verdict. |
+| **AI detection** | Copyscape AI detector by default, or Gemini 3.1 Pro Preview when explicitly configured for multilingual checks. Returns 0–100% probability per sentence and an overall verdict. |
 | **SEO analysis** | Offline. Checks word count (800–2500 ideal), H1/H2 headings, average sentence length, Flesch-Kincaid readability. |
 | **Fact check** | Basic extracts specific claims, searches each with Exa AI, and uses the configured LLM to assess evidence. Standard uses Gemini 3.1 Pro with Google Search grounding. |
 | **Tone of voice** | Loads your brand voice guide (`.md` file), sends article + guide to the configured LLM, returns violations with quotes and rewrite suggestions in your brand voice. |
@@ -259,7 +259,7 @@ CheckApp supports two AI detection providers:
 | Provider | Languages | Cost | When used |
 |----------|-----------|------|-----------|
 | Copyscape AI | English only | ~$0.03/check | Default |
-| Gemini 3 Pro Preview | Multilingual best-effort; tested/recommended for English and Hebrew non-Copyscape paths | ~$0.01/check in-app estimate | Explicitly configured (required for non-English) |
+| Gemini 3.1 Pro Preview | Multilingual best-effort; tested/recommended for English and Hebrew non-Copyscape paths | ~$0.01/check in-app estimate | Explicitly configured (required for non-English) |
 
 Copyscape only supports English. For non-English articles, set Gemini as the ai-detection provider in `~/.checkapp/config.json` and provide either `GEMINI_API_KEY`, `geminiApiKey`, or a provider-scoped `apiKey`:
 ```json

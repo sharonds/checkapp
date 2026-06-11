@@ -1,5 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { checkPlagiarismGeminiGrounded } from "./plagiarism-gemini.ts";
+import { resetGeminiCapabilityHealthCache } from "./providers/gemini-capability.ts";
 import type { Config } from "./config.ts";
 
 const config: Config = {
@@ -49,7 +50,7 @@ describe("checkPlagiarismGeminiGrounded", () => {
 
     const result = await checkPlagiarismGeminiGrounded("Copied sentence from source.", config);
 
-    expect(requestUrl).toContain("/models/gemini-3-pro-preview:generateContent");
+    expect(requestUrl).toContain("/models/gemini-3.1-pro-preview:generateContent");
     expect(requestKey).toBe("gemini-key");
     expect(requestBody.tools).toEqual([{ google_search: {} }, { url_context: {} }]);
     expect(requestBody.generationConfig.maxOutputTokens).toBe(8192);
@@ -277,7 +278,7 @@ describe("checkPlagiarismGeminiGrounded", () => {
       providers: {
         plagiarism: {
           provider: "gemini-grounded-plagiarism",
-          extra: { model: "gemini-3-pro-preview?key=leak" },
+          extra: { model: "gemini-3.1-pro-preview?key=leak" },
         },
       },
     });
@@ -326,6 +327,62 @@ describe("checkPlagiarismGeminiGrounded", () => {
     expect(result.verdict).toBe("skipped");
     expect(result.error).toMatch(/could not parse API response body/i);
     expect(result.costUsd).toBe(0);
+  });
+
+  test("uses the capability-resolved grounded model by default", async () => {
+    resetGeminiCapabilityHealthCache();
+    let requestUrl = "";
+    globalThis.fetch = async (url: string | URL, init?: RequestInit) => {
+      requestUrl = String(url);
+      return {
+        ok: true,
+        json: async () => geminiResponse({
+          overallSimilarityPct: 0,
+          verdict: "publish",
+          confidence: "low",
+          matches: [],
+        }),
+      } as Response;
+    };
+
+    const result = await checkPlagiarismGeminiGrounded("Some text.", {
+      ...config,
+      geminiApiKey: "unique-key-capability-default",
+      providers: { plagiarism: { provider: "gemini-grounded-plagiarism" } },
+    });
+
+    expect(requestUrl).toContain("/models/gemini-3.1-pro-preview:generateContent");
+    expect((result as any).model).toBe("gemini-3.1-pro-preview");
+  });
+
+  test("per-config extra.model override still wins and is reported in the result", async () => {
+    resetGeminiCapabilityHealthCache();
+    let requestUrl = "";
+    globalThis.fetch = async (url: string | URL, init?: RequestInit) => {
+      requestUrl = String(url);
+      return {
+        ok: true,
+        json: async () => geminiResponse({
+          overallSimilarityPct: 0,
+          verdict: "publish",
+          confidence: "low",
+          matches: [],
+        }),
+      } as Response;
+    };
+
+    const result = await checkPlagiarismGeminiGrounded("Some text.", {
+      ...config,
+      providers: {
+        plagiarism: {
+          provider: "gemini-grounded-plagiarism",
+          extra: { model: "gemini-custom-x" },
+        },
+      },
+    });
+
+    expect(requestUrl).toContain("/models/gemini-custom-x:");
+    expect((result as any).model).toBe("gemini-custom-x");
   });
 });
 

@@ -298,6 +298,107 @@ describe("FactCheckSkill — Phase 7 evidence", () => {
     expect(res.summary).toMatch(/tavily.*not implemented/i);
   });
 
+  describe("claim extraction failure handling", () => {
+    // Adapts the grounded tier's three tests to the basic tier's mock shape.
+    // The basic tier uses MiniMax via the Anthropic SDK shape (api.minimax.io).
+
+    test("empty extraction response reports extraction failure, not a claim-free article", async () => {
+      // Reasoning models can exhaust max_tokens inside the thinking block and
+      // return no text block at all — observed live with MiniMax-M2.7.
+      // The LLM client returns "" when there is no text content block.
+      mockFetch(urlRouter({
+        "api.minimax.io": async () => jsonResponse({
+          id: "msg_x", type: "message", role: "assistant", model: "MiniMax-M2.7",
+          content: [{ type: "thinking", thinking: "..." }],
+          stop_reason: "max_tokens", usage: { input_tokens: 10, output_tokens: 0 },
+        }),
+      }));
+      // exaSearchHandler must not be called — set a sentinel that throws
+      exaSearchHandler = async () => { throw new Error("Exa must not be called on extraction failure"); };
+      const result = await new FactCheckSkill().run("73% of remote workers experience back pain.", cfgBase);
+      expect(result.verdict).toBe("warn");
+      expect(result.summary).not.toContain("No specific verifiable claims");
+      expect(result.summary).toContain("Claim extraction failed");
+      expect(result.findings[0]?.status).toBe("provider_error");
+    });
+
+    test("unparseable extraction response reports extraction failure", async () => {
+      mockFetch(urlRouter({
+        "api.minimax.io": async () => anthropicContent("I could not find any claims in this article."),
+      }));
+      exaSearchHandler = async () => { throw new Error("Exa must not be called on extraction failure"); };
+      const result = await new FactCheckSkill().run("73% of remote workers experience back pain.", cfgBase);
+      expect(result.verdict).toBe("warn");
+      expect(result.summary).toContain("Claim extraction failed");
+      expect(result.findings[0]?.status).toBe("provider_error");
+    });
+
+    test("a valid empty claims array still reports a claim-free article", async () => {
+      mockFetch(urlRouter({
+        "api.minimax.io": async () => anthropicContent("[]"),
+      }));
+      exaSearchHandler = async () => { throw new Error("Exa must not be called for empty claims"); };
+      const result = await new FactCheckSkill().run("Some article with no verifiable claims.", cfgBase);
+      expect(result.verdict).toBe("warn");
+      expect(result.summary).toContain("No specific verifiable claims detected");
+    });
+
+    test("extraction failure on Hebrew text attaches a truthful Hebrew/RTL audit shell", async () => {
+      // Thinking-only response: the LLM client returns "" → extraction returns null.
+      // The result must carry an `audit` with real language/direction, truthful
+      // zero-coverage, and must survive a safeParseAuditRecord round-trip.
+      const { safeParseAuditRecord } = await import("../audit/types.ts");
+      const { generateReport } = await import("../report.ts");
+
+      mockFetch(urlRouter({
+        "api.minimax.io": async () => jsonResponse({
+          id: "msg_he_fail", type: "message", role: "assistant", model: "MiniMax-M2.7",
+          content: [{ type: "thinking", thinking: "..." }],
+          stop_reason: "max_tokens", usage: { input_tokens: 10, output_tokens: 0 },
+        }),
+      }));
+      exaSearchHandler = async () => { throw new Error("Exa must not be called on extraction failure"); };
+
+      const HEBREW_TEXT = "ירושלים היא עיר הבירה של ישראל ומרכז היסטורי ותרבותי.";
+      const result = await new FactCheckSkill().run(HEBREW_TEXT, cfgBase);
+
+      // audit field must exist
+      const audit = (result as any).audit;
+      expect(audit).toBeDefined();
+
+      // language and direction derive from the real document
+      expect(audit.language).toBe("he");
+      expect(audit.direction).toBe("rtl");
+
+      // coverage must be truthful zeros (no synthetic claims)
+      expect(audit.coverage.claimsExtracted).toBe(0);
+      expect(audit.coverage.claimsChecked).toBe(0);
+      expect(audit.coverage.claimsSkipped).toBe(0);
+      expect(audit.claims).toHaveLength(0);
+      expect(audit.claimDecisions).toHaveLength(0);
+      expect(audit.factAssessments).toHaveLength(0);
+      expect(audit.providerAttempts).toHaveLength(0);
+
+      // round-trip through safeParseAuditRecord must succeed
+      const parsed = safeParseAuditRecord(JSON.parse(JSON.stringify(audit)));
+      expect(parsed.ok).toBe(true);
+
+      // generateReport must produce Hebrew/RTL shell
+      const html = generateReport({
+        source: "he-test.md",
+        wordCount: 10,
+        results: [result],
+        totalCostUsd: 0.001,
+        audit,
+      });
+      expect(html).toContain('lang="he"');
+      expect(html).toContain('dir="rtl"');
+      // localized provider_error label — no raw English "(low)" leaking
+      expect(html).toContain("שגיאת ספק");
+      expect(html).not.toContain("(low)");
+    });
+  });
+
   test("deep-reasoning mode passes type: 'deep-reasoning' + numResults: 5 to Exa", async () => {
     let capturedOpts: any = null;
     let llmCallCount = 0;

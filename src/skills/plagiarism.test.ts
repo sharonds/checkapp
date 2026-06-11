@@ -259,6 +259,52 @@ describe("PlagiarismSkill Copyscape results", () => {
     expect((result as any).audit.plagiarismFindings[0].quote).toBe("Copied sentence from source.");
     expect((result as any).audit.plagiarismFindings[0].remediation).toContain("Rewrite this passage");
   });
+
+  test("audit attribution reports the model actually used, including config overrides", async () => {
+    globalThis.fetch = async () => ({
+      ok: true,
+      json: async () => ({
+        candidates: [{
+          content: { parts: [{ text: JSON.stringify({
+            overallSimilarityPct: 30,
+            verdict: "review",
+            confidence: "medium",
+            matches: [{
+              sourceUrl: "https://example.com/source",
+              sourceTitle: "Source",
+              matchedArticleText: "Sentence from source.",
+              matchedSourceText: "Sentence from source.",
+              similarityPct: 80,
+              matchType: "exact",
+              confidence: "medium",
+              explanation: "Exact match.",
+            }],
+          }) }] },
+          groundingMetadata: {
+            webSearchQueries: ["Sentence from source"],
+            groundingChunks: [{ web: { uri: "https://example.com/source", title: "Source" } }],
+          },
+        }],
+      }),
+    } as Response);
+
+    const result = await new PlagiarismSkill().run(
+      "Sentence from source plus additional editorial context to pad the article.",
+      {
+        ...config,
+        geminiApiKey: "gemini-key",
+        providers: {
+          plagiarism: {
+            provider: "gemini-grounded-plagiarism",
+            extra: { model: "gemini-custom-x" },
+          },
+        },
+      },
+    );
+
+    expect(result.findings[0].model).toBe("gemini-custom-x");
+    expect((result as any).audit.providerAttempts[0].model).toBe("gemini-custom-x");
+  });
 });
 
 function hostnameIs(input: string | URL, expectedHostname: string): boolean {

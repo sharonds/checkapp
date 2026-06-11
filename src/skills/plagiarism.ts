@@ -126,7 +126,7 @@ export class PlagiarismSkill implements Skill {
       confidenceRationale: plagiarismConfidenceRationale(m.groundingMode, confidence),
       searchQueries: result.searchQueries,
       provider: "gemini-grounded-plagiarism",
-      model: "gemini-3-pro-preview",
+      model: result.model,
       auditRef: { auditId, plagiarismFindingId },
     };
     });
@@ -161,7 +161,7 @@ export class PlagiarismSkill implements Skill {
         auditId,
         result.confidence,
         result.searchQueries,
-        "gemini-3-pro-preview",
+        result.model,
       ),
     };
   }
