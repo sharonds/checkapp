@@ -3,26 +3,28 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildSkills, runCheckHeadless, selectFactCheckSkill } from "./checker.ts";
-import { readConfig } from "./config.ts";
+import type { Config } from "./config.ts";
 import { openDb } from "./db.ts";
 
-function buildBaseConfig() {
-  const config = readConfig();
-  config.skills = {
-    plagiarism: false,
-    aiDetection: false,
-    seo: false,
-    factCheck: false,
-    tone: false,
-    legal: false,
-    summary: false,
-    brief: false,
-    purpose: false,
-    grammar: false,
-    academic: false,
-    selfPlagiarism: false,
+function buildBaseConfig(): Config {
+  return {
+    copyscapeUser: "",
+    copyscapeKey: "",
+    skills: {
+      plagiarism: false,
+      aiDetection: false,
+      seo: false,
+      factCheck: false,
+      tone: false,
+      legal: false,
+      summary: false,
+      brief: false,
+      purpose: false,
+      grammar: false,
+      academic: false,
+      selfPlagiarism: false,
+    },
   };
-  return config;
 }
 
 describe("runCheckHeadless", () => {
