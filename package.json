@@ -62,6 +62,7 @@
     "test:gemini-grounded:scenarios": "bun run scripts/validate-gemini-grounded-scenarios.ts",
     "test:all": "bun run test && bun run test:dashboard",
     "test:release": "bun run test && bun run test:dashboard && bun run check:registry && bun run check:docs && bun run check:package && cd dashboard && bunx tsc --noEmit --pretty false && bun run build && cd .. && bun run test:e2e:browser:prod && bun run test:e2e:browser && bun run build",
+    "test:release:extended": "bun run test:release && bun run test:gemini-grounded:scenarios",
     "check:registry": "bun run scripts/check-registry-parity.ts",
     "check:docs": "bun run scripts/check-docs-contracts.ts",
     "check:package": "bun run scripts/check-package-surface.ts"
