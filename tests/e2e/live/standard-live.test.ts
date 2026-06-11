@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { allocateTempPaths } from "../helpers/temp-paths.ts";
 
-// Live Standard tier smoke. Runs a real Gemini 3 Pro Preview + Google Search
+// Live Standard tier smoke. Runs a real Gemini 3.1 Pro + Google Search
 // grounding call on a short article and asserts the grounded skill
 // produced findings with at least one source citation.
 //

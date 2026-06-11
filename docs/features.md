@@ -26,7 +26,7 @@ CheckApp's fact-check skill is tiered:
 | Tier | Engine | Cost per article | Typical time | Notes |
 |------|--------|------|------|-------|
 | Basic (default) | Exa + LLM | $0.04 | ~15s | Requires Exa plus an LLM key for claim extraction/assessment |
-| Standard (opt-in) | Gemini 3 Pro Preview + Google Search grounding | $0.16 | ~45s | Requires Gemini. Enable with `factCheckTierFlag=true` and `factCheckTier="standard"`, or set `providers["fact-check"].provider = "gemini-grounded"`. |
+| Standard (opt-in) | Gemini 3.1 Pro + Google Search grounding | $0.16 | ~45s | Requires Gemini. Enable with `factCheckTierFlag=true` and `factCheckTier="standard"`, or set `providers["fact-check"].provider = "gemini-grounded"`. |
 | Deep Audit (async) | Gemini Deep Research | $1.50 | 5-15 min | Premium async audit workflow. The normal sync check still runs Basic unless Standard is selected. Start from the dashboard or `deep_audit_article` MCP tool. |
 
 Standard stays off by default until the feature flag is enabled. The benchmark that informed Standard is directional rather than definitive; see the [research repo](https://github.com/sharonds/checkapp-fact-check-research) and [LIMITATIONS.md](https://github.com/sharonds/checkapp-fact-check-research/blob/main/LIMITATIONS.md) for scope and constraints.
