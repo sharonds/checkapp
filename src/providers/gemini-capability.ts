@@ -1,5 +1,17 @@
 import { isE2E } from "../e2e/mode.ts";
 
+// Mirrors isValidGeminiModel in src/plagiarism-gemini.ts — defined here
+// independently to avoid a reverse dependency from capability → plagiarism.
+const GEMINI_MODEL_ID_RE = /^[a-zA-Z0-9._-]{1,80}$/;
+
+/** Returns the env value if it passes the model-ID charset check, else the fallback. */
+function sanitizeModelOverride(value: string | undefined, fallback: string): string {
+  if (value !== undefined && GEMINI_MODEL_ID_RE.test(value)) {
+    return value;
+  }
+  return fallback;
+}
+
 const DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 const DEFAULT_MODEL_PRO = "gemini-3.1-pro-preview";
 const DEFAULT_MODEL_FLASH = "gemini-3.5-flash";
@@ -190,8 +202,8 @@ export function resetGeminiCapabilityHealthCache(): void {
 
 function resolveModels(): GeminiModels {
   return {
-    pro: process.env.GEMINI_MODEL_PRO ?? DEFAULT_MODEL_PRO,
-    flash: process.env.GEMINI_MODEL_FLASH ?? DEFAULT_MODEL_FLASH,
-    deepResearch: process.env.GEMINI_MODEL_DEEP_RESEARCH ?? DEFAULT_MODEL_DEEP_RESEARCH,
+    pro: sanitizeModelOverride(process.env.GEMINI_MODEL_PRO, DEFAULT_MODEL_PRO),
+    flash: sanitizeModelOverride(process.env.GEMINI_MODEL_FLASH, DEFAULT_MODEL_FLASH),
+    deepResearch: sanitizeModelOverride(process.env.GEMINI_MODEL_DEEP_RESEARCH, DEFAULT_MODEL_DEEP_RESEARCH),
   };
 }

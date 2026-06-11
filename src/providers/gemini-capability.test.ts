@@ -40,6 +40,62 @@ afterEach(() => {
   resetGeminiCapabilityHealthCache();
 });
 
+describe("resolveModels — env override validation", () => {
+  test("rejects a GEMINI_MODEL_PRO override containing URL metacharacters and falls back to the default", () => {
+    const env = snapshotEnv();
+    try {
+      resetGeminiCapabilityHealthCache();
+      process.env.GEMINI_MODEL_PRO = "evil/model?key=x#frag";
+      const capability = createGeminiCapability({ apiKey: "test-key" });
+      expect(capability.models.pro).toBe("gemini-3.1-pro-preview");
+      expect(capability.getModel("chat")).toBe("gemini-3.1-pro-preview");
+    } finally {
+      restoreEnv(env);
+      resetGeminiCapabilityHealthCache();
+    }
+  });
+
+  test("rejects an oversized GEMINI_MODEL_PRO override (>80 chars) and falls back to the default", () => {
+    const env = snapshotEnv();
+    try {
+      resetGeminiCapabilityHealthCache();
+      process.env.GEMINI_MODEL_PRO = "a".repeat(81);
+      const capability = createGeminiCapability({ apiKey: "test-key" });
+      expect(capability.models.pro).toBe("gemini-3.1-pro-preview");
+    } finally {
+      restoreEnv(env);
+      resetGeminiCapabilityHealthCache();
+    }
+  });
+
+  test("accepts a well-formed GEMINI_MODEL_PRO override", () => {
+    const env = snapshotEnv();
+    try {
+      resetGeminiCapabilityHealthCache();
+      process.env.GEMINI_MODEL_PRO = "gemini-test-override";
+      const capability = createGeminiCapability({ apiKey: "test-key" });
+      expect(capability.models.pro).toBe("gemini-test-override");
+      expect(capability.getModel("chat")).toBe("gemini-test-override");
+    } finally {
+      restoreEnv(env);
+      resetGeminiCapabilityHealthCache();
+    }
+  });
+
+  test("rejects a GEMINI_MODEL_FLASH override containing URL metacharacters and falls back to the default", () => {
+    const env = snapshotEnv();
+    try {
+      resetGeminiCapabilityHealthCache();
+      process.env.GEMINI_MODEL_FLASH = "flash/../../../etc/passwd";
+      const capability = createGeminiCapability({ apiKey: "test-key" });
+      expect(capability.models.flash).toBe("gemini-3.5-flash");
+    } finally {
+      restoreEnv(env);
+      resetGeminiCapabilityHealthCache();
+    }
+  });
+});
+
 describe("createGeminiCapability", () => {
   test("uses env-var overrides for model names", () => {
     const env = snapshotEnv();
