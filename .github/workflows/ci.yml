@@ -21,10 +21,10 @@ jobs:
           bun-version: latest
 
       - name: Install CLI dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
 
       - name: Install dashboard dependencies
-        run: cd dashboard && bun install
+        run: cd dashboard && bun install --frozen-lockfile
 
       - name: Check registry drift
         run: bun run check:registry
@@ -60,3 +60,22 @@ jobs:
 
       - name: Build CLI binaries
         run: bash build.sh
+
+  package-smoke-windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install CLI dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run package surface tests
+        run: bun test scripts/check-package-surface.test.ts
+
+      - name: Check npm package surface
+        run: bun run check:package
