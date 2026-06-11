@@ -92,15 +92,30 @@ export class FactCheckSkill implements Skill {
 
     const documentAnalysis = analyzeDocument(text);
 
-    // Step 1: extract claims
-    const claimsText = await llm.call(extractClaimsPrompt(text), 1024);
-
-    let claims: string[] = [];
-    try {
-      const parsed = parseJsonResponse<string[]>(claimsText);
-      claims = Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string").slice(0, 20) : [];
-    } catch {
-      claims = [];
+    // Step 1: extract claims. Empty/unparseable/non-array responses mean the
+    // extraction provider failed — never "the article has no claims".
+    const claimsText = await llm.call(extractClaimsPrompt(text), 4096);
+    let claims: string[] | null = null;
+    if (claimsText.trim()) {
+      try {
+        const parsed = parseJsonResponse<string[]>(claimsText);
+        claims = Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string").slice(0, 20) : null;
+      } catch {
+        claims = null;
+      }
+    }
+    if (claims === null) {
+      return {
+        skillId: this.id, name: this.name, score: 60, verdict: "warn",
+        summary: "Claim extraction failed — claims could not be verified",
+        findings: [{
+          severity: "warn",
+          status: "provider_error",
+          text: "The claim-extraction provider returned an unusable response, so fact-checking could not run. Re-run the check or switch the LLM provider.",
+        }],
+        costUsd: 0.001,
+        provider: resolved.provider,
+      };
     }
 
     if (claims.length === 0) {

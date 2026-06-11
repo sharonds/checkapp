@@ -298,6 +298,52 @@ describe("FactCheckSkill — Phase 7 evidence", () => {
     expect(res.summary).toMatch(/tavily.*not implemented/i);
   });
 
+  describe("claim extraction failure handling", () => {
+    // Adapts the grounded tier's three tests to the basic tier's mock shape.
+    // The basic tier uses MiniMax via the Anthropic SDK shape (api.minimax.io).
+
+    test("empty extraction response reports extraction failure, not a claim-free article", async () => {
+      // Reasoning models can exhaust max_tokens inside the thinking block and
+      // return no text block at all — observed live with MiniMax-M2.7.
+      // The LLM client returns "" when there is no text content block.
+      mockFetch(urlRouter({
+        "api.minimax.io": async () => jsonResponse({
+          id: "msg_x", type: "message", role: "assistant", model: "MiniMax-M2.7",
+          content: [{ type: "thinking", thinking: "..." }],
+          stop_reason: "max_tokens", usage: { input_tokens: 10, output_tokens: 0 },
+        }),
+      }));
+      // exaSearchHandler must not be called — set a sentinel that throws
+      exaSearchHandler = async () => { throw new Error("Exa must not be called on extraction failure"); };
+      const result = await new FactCheckSkill().run("73% of remote workers experience back pain.", cfgBase);
+      expect(result.verdict).toBe("warn");
+      expect(result.summary).not.toContain("No specific verifiable claims");
+      expect(result.summary).toContain("Claim extraction failed");
+      expect(result.findings[0]?.status).toBe("provider_error");
+    });
+
+    test("unparseable extraction response reports extraction failure", async () => {
+      mockFetch(urlRouter({
+        "api.minimax.io": async () => anthropicContent("I could not find any claims in this article."),
+      }));
+      exaSearchHandler = async () => { throw new Error("Exa must not be called on extraction failure"); };
+      const result = await new FactCheckSkill().run("73% of remote workers experience back pain.", cfgBase);
+      expect(result.verdict).toBe("warn");
+      expect(result.summary).toContain("Claim extraction failed");
+      expect(result.findings[0]?.status).toBe("provider_error");
+    });
+
+    test("a valid empty claims array still reports a claim-free article", async () => {
+      mockFetch(urlRouter({
+        "api.minimax.io": async () => anthropicContent("[]"),
+      }));
+      exaSearchHandler = async () => { throw new Error("Exa must not be called for empty claims"); };
+      const result = await new FactCheckSkill().run("Some article with no verifiable claims.", cfgBase);
+      expect(result.verdict).toBe("warn");
+      expect(result.summary).toContain("No specific verifiable claims detected");
+    });
+  });
+
   test("deep-reasoning mode passes type: 'deep-reasoning' + numResults: 5 to Exa", async () => {
     let capturedOpts: any = null;
     let llmCallCount = 0;
