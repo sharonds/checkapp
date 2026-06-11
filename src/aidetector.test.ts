@@ -1,4 +1,5 @@
 import { checkAiDetectorGemini } from "./aidetector.ts";
+import { resetGeminiCapabilityHealthCache } from "./providers/gemini-capability.ts";
 import type { Config } from "./config.ts";
 import { test, expect, describe, beforeEach, afterEach } from "bun:test";
 
@@ -18,7 +19,8 @@ describe("checkAiDetectorGemini", () => {
   beforeEach(() => { originalFetch = globalThis.fetch; });
   afterEach(() => { globalThis.fetch = originalFetch; });
 
-  test("calls the configured Gemini 3 Pro Preview model endpoint", async () => {
+  test("calls the capability-resolved Gemini pro model", async () => {
+    resetGeminiCapabilityHealthCache();
     const calls: string[] = [];
     let requestBody: { generationConfig?: { maxOutputTokens?: number; responseMimeType?: string } } | undefined;
     globalThis.fetch = async (url: string | URL, init?: RequestInit) => {
@@ -32,9 +34,33 @@ describe("checkAiDetectorGemini", () => {
       } as Response;
     };
     await checkAiDetectorGemini("Some article text.", geminiConfig);
-    expect(calls[0]).toContain("/models/gemini-3-pro-preview:generateContent");
+    expect(calls[0]).toContain("/models/gemini-3.1-pro-preview:generateContent");
     expect(requestBody?.generationConfig?.maxOutputTokens).toBe(2048);
     expect(requestBody?.generationConfig?.responseMimeType).toBe("application/json");
+  });
+
+  test("honors the GEMINI_MODEL_PRO env override (resolver-routed, not hardcoded)", async () => {
+    const saved = process.env.GEMINI_MODEL_PRO;
+    process.env.GEMINI_MODEL_PRO = "gemini-test-override";
+    resetGeminiCapabilityHealthCache();
+    const calls: string[] = [];
+    globalThis.fetch = async (url: string | URL, _init?: RequestInit) => {
+      calls.push(String(url));
+      return {
+        ok: true,
+        json: async () => ({
+          candidates: [{ content: { parts: [{ text: JSON.stringify({ aiScore: 0.15, segments: [] }) }] } }]
+        }),
+      } as Response;
+    };
+    try {
+      await checkAiDetectorGemini("Some article text.", geminiConfig);
+      expect(calls[0]).toContain("/models/gemini-test-override:generateContent");
+    } finally {
+      if (saved === undefined) delete process.env.GEMINI_MODEL_PRO;
+      else process.env.GEMINI_MODEL_PRO = saved;
+      resetGeminiCapabilityHealthCache();
+    }
   });
 
   test("maps 0.82 aiScore to 'ai' verdict", async () => {
