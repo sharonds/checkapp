@@ -822,7 +822,7 @@ bun run test:e2e:browser
 
 # Release gate: CLI tests, dashboard tests, registry/docs/package checks,
 # dashboard typecheck/build, production + dev browser E2E, and package build.
-# CI gate — must pass before any publish.
+# Local mirror of the CI gate (CI runs the same steps individually) — must pass before any publish.
 bun run test:release
 
 # Extended release gate: everything in test:release plus the grounded-scenario
