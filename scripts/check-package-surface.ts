@@ -39,6 +39,9 @@ function assertPackageSurface(root: string): void {
   for (const path of required) {
     if (!existsSync(join(root, path))) throw new Error(`missing packaged file: ${path}`);
   }
+  if ((statSync(join(root, "src/index.tsx")).mode & 0o111) === 0) {
+    throw new Error("CLI bin is not executable: src/index.tsx");
+  }
 
   const forbiddenPatterns = [
     /\.test\.tsx?$/,

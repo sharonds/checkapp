@@ -4,7 +4,7 @@
   "description": "AI content quality gate — plagiarism, AI detection, SEO, fact-check, tone, legal risk, and more. CLI + web dashboard.",
   "type": "module",
   "bin": {
-    "checkapp": "./src/index.tsx"
+    "checkapp": "src/index.tsx"
   },
   "engines": {
     "bun": ">=1.0.0"
