@@ -146,6 +146,18 @@ export class FactCheckGroundedSkill implements Skill {
     const documentAnalysis = analyzeDocument(text);
     const claims = await extractClaims(text, llm.call);
     if (claims === null) {
+      const baseAudit = createAuditRecordBase(this.id, text);
+      const audit: AuditRecord = {
+        ...baseAudit,
+        coverage: buildAuditCoverage({
+          wordsScanned: documentAnalysis.wordsScanned,
+          sectionsDetected: documentAnalysis.sectionsDetected,
+          paragraphsScanned: documentAnalysis.paragraphsScanned,
+          sentencesScanned: documentAnalysis.sentencesScanned,
+          claimDecisions: [],
+          providerAttempts: [],
+        }),
+      };
       return {
         skillId: this.id,
         name: this.name,
@@ -159,6 +171,7 @@ export class FactCheckGroundedSkill implements Skill {
         }],
         costUsd: 0.001,
         provider: resolved.provider,
+        audit,
       };
     }
     if (claims.length === 0) {

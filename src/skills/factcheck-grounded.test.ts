@@ -892,6 +892,56 @@ describe("FactCheckGroundedSkill", () => {
       expect(result.verdict).toBe("warn");
       expect(result.summary).toBe("No specific verifiable claims detected");
     });
+
+    test("extraction failure on Hebrew text attaches a truthful Hebrew/RTL audit shell", async () => {
+      // Thinking-only response: no text block → extraction returns null.
+      // The result must carry an `audit` with the correct language/direction,
+      // truthful zero-coverage, and must survive a safeParseAuditRecord round-trip.
+      const { safeParseAuditRecord } = await import("../audit/types.ts");
+      const { generateReport } = await import("../report.ts");
+
+      mockFetch(urlRouter({
+        "api.minimax.io": async () => minimaxResponse([{ type: "thinking", thinking: "..." }]),
+      }));
+
+      const HEBREW_TEXT = "ירושלים היא עיר הבירה של ישראל ומרכז היסטורי ותרבותי.";
+      const result = await new FactCheckGroundedSkill().run(HEBREW_TEXT, baseConfig);
+
+      // audit field must exist
+      const audit = (result as any).audit;
+      expect(audit).toBeDefined();
+
+      // language and direction derive from the real document
+      expect(audit.language).toBe("he");
+      expect(audit.direction).toBe("rtl");
+
+      // coverage must be truthful zeros (no synthetic claims)
+      expect(audit.coverage.claimsExtracted).toBe(0);
+      expect(audit.coverage.claimsChecked).toBe(0);
+      expect(audit.coverage.claimsSkipped).toBe(0);
+      expect(audit.claims).toHaveLength(0);
+      expect(audit.claimDecisions).toHaveLength(0);
+      expect(audit.factAssessments).toHaveLength(0);
+      expect(audit.providerAttempts).toHaveLength(0);
+
+      // round-trip through safeParseAuditRecord must succeed
+      const parsed = safeParseAuditRecord(JSON.parse(JSON.stringify(audit)));
+      expect(parsed.ok).toBe(true);
+
+      // generateReport must produce Hebrew/RTL shell
+      const html = generateReport({
+        source: "he-test.md",
+        wordCount: 10,
+        results: [result],
+        totalCostUsd: 0.001,
+        audit,
+      });
+      expect(html).toContain('lang="he"');
+      expect(html).toContain('dir="rtl"');
+      // localized provider_error label — no raw English "(low)" leaking
+      expect(html).toContain("שגיאת ספק");
+      expect(html).not.toContain("(low)");
+    });
   });
 
   describe("computeRetryAfterDelayMs", () => {

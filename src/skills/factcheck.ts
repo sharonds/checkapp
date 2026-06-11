@@ -105,6 +105,18 @@ export class FactCheckSkill implements Skill {
       }
     }
     if (claims === null) {
+      const baseAudit = createAuditRecordBase(this.id, text);
+      const audit: AuditRecord = {
+        ...baseAudit,
+        coverage: buildAuditCoverage({
+          wordsScanned: documentAnalysis.wordsScanned,
+          sectionsDetected: documentAnalysis.sectionsDetected,
+          paragraphsScanned: documentAnalysis.paragraphsScanned,
+          sentencesScanned: documentAnalysis.sentencesScanned,
+          claimDecisions: [],
+          providerAttempts: [],
+        }),
+      };
       return {
         skillId: this.id, name: this.name, score: 60, verdict: "warn",
         summary: "Claim extraction failed — claims could not be verified",
@@ -115,6 +127,7 @@ export class FactCheckSkill implements Skill {
         }],
         costUsd: 0.001,
         provider: resolved.provider,
+        audit,
       };
     }
 
