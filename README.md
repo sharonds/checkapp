@@ -295,13 +295,15 @@ npm install -g checkapp
 checkapp --setup
 ```
 
+The npm-installed `checkapp` command runs with Bun, so install Bun first if it is not already on your `PATH`.
+
 Or run without installing:
 
 ```bash
 npx checkapp ./my-article.md
 ```
 
-### Alternative — Download the binary
+### Step 2 — Download the binary instead
 
 Go to the **[Releases page](https://github.com/sharonds/checkapp/releases/latest)** and download for your platform:
 
@@ -319,7 +321,7 @@ chmod +x ~/Downloads/checkapp-mac-arm64
 mv ~/Downloads/checkapp-mac-arm64 /usr/local/bin/checkapp
 ```
 
-### Step 2 — Add your API keys
+### Step 3 — Add your API keys
 
 Create a `.env` file in your working directory:
 
