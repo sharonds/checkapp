@@ -63,7 +63,7 @@ function assertPackageSurface(root: string): void {
     /(^|\/)\.env/,
   ];
   for (const file of walk(root)) {
-    const rel = relative(root, file);
+    const rel = relative(root, file).replaceAll("\\", "/");
     if (forbiddenPatterns.some((pattern) => pattern.test(rel))) {
       throw new Error(`forbidden packaged file: ${rel}`);
     }

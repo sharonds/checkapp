@@ -73,6 +73,23 @@ test("package surface guard does not require POSIX execute bits on Windows", () 
   expect(`${result.stdout}\n${result.stderr}`).not.toContain("CLI bin is not executable");
 });
 
+test("package surface guard normalizes Windows-style package paths before forbidden checks", () => {
+  const root = mkdtempSync(join(tmpdir(), "checkapp-package-fixture-"));
+  tempDirs.push(root);
+  writeRequiredPackageFiles(root, {
+    extraFiles: { "dashboard\\.env.local": "SECRET=value\n" },
+  });
+
+  const result = spawnSync("bun", ["run", "scripts/check-package-surface.ts"], {
+    cwd: process.cwd(),
+    env: { ...process.env, CHECKAPP_PACKAGE_SURFACE_ROOT: root, CHECKAPP_PACKAGE_SURFACE_PLATFORM: "win32" },
+    encoding: "utf8",
+  });
+
+  expect(result.status).not.toBe(0);
+  expect(`${result.stdout}\n${result.stderr}`).toContain("forbidden packaged file: dashboard/.env.local");
+});
+
 test("package surface guard accepts a valid Windows fixture without POSIX execute bits", () => {
   const root = mkdtempSync(join(tmpdir(), "checkapp-package-fixture-"));
   tempDirs.push(root);
