@@ -286,7 +286,24 @@ Checks: word count (800–2500 ideal), H1/H2 headings present, average sentence 
 
 ## Quick Start
 
-### Step 1 — Download the binary
+### Step 1 — Install CheckApp
+
+With npm:
+
+```bash
+npm install -g checkapp
+checkapp --setup
+```
+
+The npm-installed `checkapp` command runs with Bun, so install Bun first if it is not already on your `PATH`.
+
+Or run without installing:
+
+```bash
+npx checkapp ./my-article.md
+```
+
+### Step 2 — Download the binary instead
 
 Go to the **[Releases page](https://github.com/sharonds/checkapp/releases/latest)** and download for your platform:
 
@@ -297,7 +314,7 @@ Go to the **[Releases page](https://github.com/sharonds/checkapp/releases/latest
 | `checkapp-linux-x64` | Linux x64 |
 | `checkapp-win-x64.exe` | Windows x64 |
 
-### Step 2 — Make it executable (Mac/Linux only)
+Make the binary executable on Mac/Linux:
 
 ```bash
 chmod +x ~/Downloads/checkapp-mac-arm64

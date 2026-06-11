@@ -5,7 +5,9 @@ All notable changes to CheckApp are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [1.4.0] - 2026-06-10
+## [1.4.0] - 2026-06-11
+
+This is the first npm publish for `checkapp`. GitHub Releases previously stopped at `v1.2.0`, so this release also includes the `1.3.0` and `1.3.1` changes listed below.
 
 ### Added
 
@@ -16,11 +18,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Provider-error localization (en/he) in CLI HTML report; provider errors counted separately in claim summaries.
 - Hebrew + English labels for all 8 budget stop reasons.
 - Dashboard drill-down "Details" label for provider errors.
+- **Gemini Grounded Plagiarism provider** — selectable plagiarism provider using Gemini with Google Search grounding, URL context, structured output, and source-confidence evidence. Copyscape remains the default; users can explicitly select Gemini or configure `providers.plagiarism.extra.fallbackProvider = "gemini-grounded-plagiarism"` for Copyscape skipped states.
+- **Gemini AI detection provider** — multilingual AI detection via Gemini. Set as default via `providers["ai-detection"].provider = "gemini-ai-detection"` in `~/.checkapp/config.json` and provide `GEMINI_API_KEY`, `geminiApiKey`, or `providers["ai-detection"].apiKey`. CheckApp records an in-app estimate of about $0.01/check; Copyscape remains the default at about $0.03/check.
+- **Google Docs tab support** — `?tab=t.xxx` URLs now fetch the correct tab instead of always returning the first tab. Tab IDs are allowlist-validated (alphanumeric + dots + hyphens, max 64 chars). No Google auth required.
 
 ### Changed
 
 - **Contract change (`retryable` field):** `retryable` on provider attempts now means the error class was transient (HTTP 429/500/502/503/504 or network throw), regardless of remaining retry budget. Previously `retryable` was cleared once the budget was exhausted. The `status` field (`retry`/`failed`) records whether a retry actually happened. Effective 1.4.0; no migration of older records.
 - MCP-wide error sanitization: all MCP tool errors now return sanitized messages (API keys and sensitive URLs redacted) via a dispatch-level wrapper.
+- **Dependency majors**
+  - **Root runtime majors coordinated upgrade** (#36): `react` ^18 → ^19.2, `@types/react` ^18 → ^19.2, `ink` ^5 → ^7. Ink 7 requires React 19 — merged as one cluster. Dashboard was already on React 19.2.
+  - **Dashboard TypeScript** (#35): ^5 → ^6.
+    - TypeScript 6 caught two latent issues, both fixed in the same PR.
+    - Widened `AppConfigForEstimate` to type legacy `exaApiKey`/`copyscapeKey` fields the estimator already reads.
+    - Removed `(cfg as any)` escape hatches in `providerBase()`.
+    - Moved orphaned sanitize regression test from `src/lib/` into the vitest-watched `src/__tests__/` directory (77 → 78 tests now execute).
+  - **Dashboard Node types** (#36): `@types/node` ^20 → ^25. Node 24 LTS runtime unchanged; only types updated.
+  - Root deps: `@anthropic-ai/sdk` bumped via minor-and-patch group (#27).
+  - Dashboard deps: minor-and-patch group of 4 updates (#31).
+
+### Security
+
+- Dashboard `next` upgraded 16.2.4 → 16.2.6 (patches 13 CVEs: middleware bypass, cache poisoning, DoS via connection exhaustion, CSP nonce leak, SSRF via WebSocket upgrade).
+- CLI `@anthropic-ai/sdk` upgraded ^0.90 → ^0.99 (patches insecure default file permissions in local filesystem memory tool).
+- Secret scanning + push protection enabled.
+- Dependabot vulnerability alerts + automated security fixes enabled.
 
 ### Performance
 
@@ -41,6 +63,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Gemini plagiarism audit records now preserve per-match confidence and ungrounded-review rationale.
 - Gemini grounded fact-check audit records now capture retry/success provider attempts instead of synthesizing success-only attempts.
 - MCP `toggle_skill` rejects prototype property names, and provider error redaction now catches bare Gemini API keys.
+- Standard fact-check tier now consistently runs Gemini grounded fact-check even if the saved fact-check provider is still Exa, dashboard readiness asks for Gemini in that mode, and HTML/Markdown reports show the Gemini grounded provider and source evidence.
+- Dashboard saved reports now preserve stored fail/warn/pass verdicts instead of recomputing them from score, so a single unsupported fact-check claim with a 75 score still renders as fail.
+- Gemini grounded fact-check and Basic Exa fact-check now downgrade `supported: true` assessments to unverified when no source URL is attached.
+- Gemini grounded plagiarism now counts only source URLs present in Gemini grounding metadata; ungrounded or unsafe URLs no longer affect similarity or verdict.
+- Report exports now include verified info-level source evidence, sanitize unsafe source URLs, and disclose providers in generated Markdown/HTML.
+- AI detection returns `"skipped"` (excluded from overall score) for non-English content when Copyscape is the active provider, instead of hard-failing with score 0. Configure `gemini-ai-detection` as the provider to handle non-English articles.
+- Copyscape insufficient-credits error now maps to `"skipped"` verdict (billing issue) rather than `"fail"` (content quality failure).
+- `"skipped"` results are now excluded from overall score averaging in HTML report, Markdown export, and CLI summary.
+- `.env.example` — replaced stale `checkit` references with `CheckApp` / `~/.checkapp` / `checkapp --setup` (#25).
+
+### Infrastructure
+
+- `.github/dependabot.yml` — weekly version + security updates for CLI, dashboard, and GitHub Actions (grouped minor+patch, Monday 06:00 Europe/Amsterdam) (#25).
+- Branch protection on `main`: required `test` status check, linear history, conversation resolution, no force-push, no deletions.
+- CodeQL default setup (weekly; `actions`/`javascript`/`javascript-typescript`/`typescript`).
+- `ci.yml`: `actions/checkout` 4 → 6 (#26).
+
+### Deferred
+
+- **ESLint 9 → 10** (Dependabot #33) — `eslint-plugin-react` (pulled in transitively via `eslint-config-next`) is not yet compatible with ESLint 10's rule-context API (`contextOrFilename.getFilename is not a function`). Will revisit once `eslint-config-next` ships a compatible release.
 
 ## [1.3.1] - 2026-04-23
 
@@ -63,63 +105,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Docs
 
 - README skills table: AI Detection cost corrected to ~$0.03 (shipped cost constant). Grammar / Academic / Self-Plagiarism now accurately marked as disabled by default, matching `DEFAULT_SKILLS`. Mirrored in `docs/features.md`.
-
-## [Unreleased]
-
-### Added
-
-- **Gemini Grounded Plagiarism provider** — selectable plagiarism provider using Gemini 3 Pro Preview with Google Search grounding, URL context, structured output, and source-confidence evidence. Copyscape remains the default; users can explicitly select Gemini or configure `providers.plagiarism.extra.fallbackProvider = "gemini-grounded-plagiarism"` for Copyscape skipped states.
-- **Gemini 3 Pro Preview AI detection provider** — multilingual AI detection via Gemini. Set as default via `providers["ai-detection"].provider = "gemini-ai-detection"` in `~/.checkapp/config.json` and provide `GEMINI_API_KEY`, `geminiApiKey`, or `providers["ai-detection"].apiKey`. CheckApp records an in-app estimate of about $0.01/check; Copyscape remains the default at about $0.03/check.
-- **Google Docs tab support** — `?tab=t.xxx` URLs now fetch the correct tab instead of always returning the first tab. Tab IDs are allowlist-validated (alphanumeric + dots + hyphens, max 64 chars). No Google auth required.
-
-### Fixed
-
-- Standard fact-check tier now consistently runs Gemini grounded fact-check even if the saved fact-check provider is still Exa, dashboard readiness asks for Gemini in that mode, and HTML/Markdown reports show the Gemini grounded provider and source evidence.
-- Dashboard saved reports now preserve stored fail/warn/pass verdicts instead of recomputing them from score, so a single unsupported fact-check claim with a 75 score still renders as fail.
-- Gemini grounded fact-check and Basic Exa fact-check now downgrade `supported: true` assessments to unverified when no source URL is attached.
-- Gemini grounded plagiarism now counts only source URLs present in Gemini grounding metadata; ungrounded or unsafe URLs no longer affect similarity or verdict.
-- Report exports now include verified info-level source evidence, sanitize unsafe source URLs, and disclose providers in generated Markdown/HTML.
-- AI detection returns `"skipped"` (excluded from overall score) for non-English content when Copyscape is the active provider, instead of hard-failing with score 0. Configure `gemini-ai-detection` as the provider to handle non-English articles.
-- Copyscape insufficient-credits error now maps to `"skipped"` verdict (billing issue) rather than `"fail"` (content quality failure).
-- `"skipped"` results are now excluded from overall score averaging in HTML report, Markdown export, and CLI summary.
-
-### Security
-
-- Dashboard `next` upgraded 16.2.4 → 16.2.6 (patches 13 CVEs: middleware bypass, cache poisoning, DoS via connection exhaustion, CSP nonce leak, SSRF via WebSocket upgrade).
-- CLI `@anthropic-ai/sdk` upgraded ^0.90 → ^0.99 (patches insecure default file permissions in local filesystem memory tool).
-
-### Changed
-
-- **Dependency majors**
-  - **Root runtime majors coordinated upgrade** (#36): `react` ^18 → ^19.2, `@types/react` ^18 → ^19.2, `ink` ^5 → ^7. Ink 7 requires React 19 — merged as one cluster. Dashboard was already on React 19.2.
-  - **Dashboard TypeScript** (#35): ^5 → ^6.
-    - TypeScript 6 caught two latent issues, both fixed in the same PR.
-    - Widened `AppConfigForEstimate` to type legacy `exaApiKey`/`copyscapeKey` fields the estimator already reads.
-    - Removed `(cfg as any)` escape hatches in `providerBase()`.
-    - Moved orphaned sanitize regression test from `src/lib/` into the vitest-watched `src/__tests__/` directory (77 → 78 tests now execute).
-  - **Dashboard Node types** (#36): `@types/node` ^20 → ^25. Node 24 LTS runtime unchanged; only types updated.
-  - Root deps: `@anthropic-ai/sdk` bumped via minor-and-patch group (#27).
-  - Dashboard deps: minor-and-patch group of 4 updates (#31).
-
-### Deferred
-
-- **ESLint 9 → 10** (Dependabot #33) — `eslint-plugin-react` (pulled in transitively via `eslint-config-next`) is not yet compatible with ESLint 10's rule-context API (`contextOrFilename.getFilename is not a function`). Will revisit once `eslint-config-next` ships a compatible release.
-
-### Added — repository infrastructure
-
-- `.github/dependabot.yml` — weekly version + security updates for CLI, dashboard, and GitHub Actions (grouped minor+patch, Monday 06:00 Europe/Amsterdam) (#25).
-- Branch protection on `main`: required `test` status check, linear history, conversation resolution, no force-push, no deletions.
-- CodeQL default setup (weekly; `actions`/`javascript`/`javascript-typescript`/`typescript`).
-- `ci.yml`: `actions/checkout` 4 → 6 (#26).
-
-### Security
-
-- Secret scanning + push protection enabled.
-- Dependabot vulnerability alerts + automated security fixes enabled.
-
-### Fixed
-
-- `.env.example` — replaced stale `checkit` references with `CheckApp` / `~/.checkapp` / `checkapp --setup` (#25).
 
 ## [1.3.0] - 2026-04-22
 
@@ -354,6 +339,8 @@ Rebranded from `article-checker` → `checkit` → `checkapp`. See repository
 history for full details. Legacy config directories (`~/.article-checker`,
 `~/.checkit`) are auto-migrated to `~/.checkapp` on first run.
 
-[Unreleased]: https://github.com/sharonds/checkapp/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/sharonds/checkapp/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/sharonds/checkapp/compare/v1.2.0...v1.4.0
+[1.2.0]: https://github.com/sharonds/checkapp/releases/tag/v1.2.0
 [1.1.0]: https://github.com/sharonds/checkapp/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/sharonds/checkapp/releases/tag/v1.0.0
