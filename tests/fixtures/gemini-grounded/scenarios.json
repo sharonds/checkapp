@@ -125,7 +125,7 @@
       "provider": "gemini-grounded-plagiarism",
       "verdict": "fail",
       "minSources": 1,
-      "reportContains": ["Gemini Grounded Plagiarism", "high confidence", "Wikipedia"]
+      "reportContains": ["Gemini Grounded Plagiarism", "Confidence: high", "Wikipedia"]
     }
   },
   {
@@ -172,7 +172,7 @@
       "provider": "gemini-grounded-plagiarism",
       "verdict": "fail",
       "minSources": 1,
-      "reportContains": ["Gemini Grounded Plagiarism", "ynet", "medium confidence"]
+      "reportContains": ["Gemini Grounded Plagiarism", "ynet", "Confidence: medium"]
     }
   },
   {
