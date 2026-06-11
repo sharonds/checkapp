@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - Grounded fact-check now uses `gemini-3.1-pro-preview` (flash fallback `gemini-3.5-flash`) — Google retired `gemini-3-pro-preview` and `gemini-3-flash-preview`, which made every grounded call fail with HTTP 404. Override with `GEMINI_MODEL_PRO` / `GEMINI_MODEL_FLASH`.
+- Retired `gemini-3-pro-preview` removed from AI-detection and Gemini grounded plagiarism providers — both now resolve the model at runtime via the capability resolver. Override with `GEMINI_MODEL_PRO` (pro-tier) or `GEMINI_MODEL_FLASH` (flash-tier) env vars.
+- Plagiarism audit attribution now reports the model actually used (including `extra.model` provider overrides) instead of a hardcoded model name.
+- Basic-tier claim-extraction failures now surface as provider errors instead of silently returning a false "no claims detected" result.
+- Extraction-failure results keep a truthful Hebrew/RTL audit shell so reports render with correct language direction even when extraction fails.
 - Empty or unparseable claim-extraction responses are now reported as provider errors instead of a false "No specific verifiable claims detected"; extraction gets 4096 output tokens so reasoning models don't truncate before answering.
 - Hebrew reports no longer render raw English confidence values (e.g. "(high)") on verified findings.
 - Sync fact-check budgets now keep Basic, Standard, and Exa deep-reasoning checks at the documented 4-claim default unless config explicitly raises the cap.

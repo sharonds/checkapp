@@ -5,7 +5,7 @@
 | Skill | Engine | Cost/check | Default |
 |-------|--------|-----------|---------|
 | Plagiarism Check | Copyscape / Gemini Grounded Plagiarism | ~$0.09 / ~$0.04 estimate | Enabled |
-| AI Detection | Copyscape (English) / Gemini 3 Pro Preview (multilingual) | ~$0.03 / ~$0.01 estimate | Enabled |
+| AI Detection | Copyscape (English) / Gemini 3.1 Pro Preview (multilingual) | ~$0.03 / ~$0.01 estimate | Enabled |
 | SEO Analysis | Offline | Free | Enabled |
 | Fact Check | Tiered: Basic = Exa + LLM; Standard = Gemini + Google Search; Deep Audit = Gemini Deep Research | varies | Basic is default; Standard is opt-in; Deep Audit is async |
 | Tone of Voice | Configured LLM | ~$0.002 | Requires API keys + tone guide |
