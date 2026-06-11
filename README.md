@@ -74,7 +74,7 @@ Standard is opt-in and stays off by default until Gate 2 passes. Basic remains t
 | Tier | Engine | Cost per article | Typical time | Notes |
 |------|--------|------|------|-------|
 | Basic (default) | Exa + LLM | $0.04 | ~15s | Requires Exa plus an LLM key for claim extraction/assessment |
-| Standard (opt-in) | Gemini 3 Pro Preview + Google Search grounding | $0.16 | ~45s | Requires Gemini. Enable with `factCheckTierFlag=true` and `factCheckTier="standard"`, or set `providers["fact-check"].provider = "gemini-grounded"`. |
+| Standard (opt-in) | Gemini 3.1 Pro + Google Search grounding | $0.16 | ~45s | Requires Gemini. Enable with `factCheckTierFlag=true` and `factCheckTier="standard"`, or set `providers["fact-check"].provider = "gemini-grounded"`. |
 | Deep Audit (async) | Gemini Deep Research | $1.50 | 5–15 min | Premium async audit workflow. The normal sync check still runs Basic unless Standard is selected. Initiate via dashboard button or `deep_audit_article` MCP tool. |
 
 Basic, Standard, and sync deep-reasoning fact-checking default to checking up to 4 extracted claims per article to keep latency and provider cost predictable. Advanced users can adjust `factAudit.standardMaxClaims`, `factAudit.deepMaxClaims`, and provider-call budgets in config; structured reports show skipped-claim counts and budget reasons such as `claim_cap` when a cap stops verification.
@@ -107,7 +107,7 @@ When the same quote appears multiple times and the provider does not return sour
 | **Plagiarism check** | Checks against Copyscape's indexed web data by default, or Gemini Grounded Plagiarism when selected. Returns 0–100% similarity + matched sources. |
 | **AI detection** | Copyscape AI detector by default, or Gemini 3 Pro Preview when explicitly configured for multilingual checks. Returns 0–100% probability per sentence and an overall verdict. |
 | **SEO analysis** | Offline. Checks word count (800–2500 ideal), H1/H2 headings, average sentence length, Flesch-Kincaid readability. |
-| **Fact check** | Basic extracts specific claims, searches each with Exa AI, and uses the configured LLM to assess evidence. Standard uses Gemini 3 Pro Preview with Google Search grounding. |
+| **Fact check** | Basic extracts specific claims, searches each with Exa AI, and uses the configured LLM to assess evidence. Standard uses Gemini 3.1 Pro with Google Search grounding. |
 | **Tone of voice** | Loads your brand voice guide (`.md` file), sends article + guide to the configured LLM, returns violations with quotes and rewrite suggestions in your brand voice. |
 | **Legal risk** | Scans for unsubstantiated health claims, defamation, false promises, GDPR risks, price misrepresentation. Findings include actionable "Fix:" suggestions. |
 | **Content summary** | Analyzes topic, main argument, target audience, and tone (informational/persuasive/conversational/technical/promotional). |
@@ -822,7 +822,12 @@ bun run test:e2e:browser
 
 # Release gate: CLI tests, dashboard tests, registry/docs/package checks,
 # dashboard typecheck/build, production + dev browser E2E, and package build.
+# Local mirror of the CI gate (CI runs the same steps individually) — must pass before any publish.
 bun run test:release
+
+# Extended release gate: everything in test:release plus the grounded-scenario
+# validation suite. Human pre-publish gate — run before cutting a release.
+bun run test:release:extended
 
 # Build all platform binaries
 bash build.sh
