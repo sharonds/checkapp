@@ -286,7 +286,22 @@ Checks: word count (800–2500 ideal), H1/H2 headings present, average sentence 
 
 ## Quick Start
 
-### Step 1 — Download the binary
+### Step 1 — Install CheckApp
+
+With npm:
+
+```bash
+npm install -g checkapp
+checkapp --setup
+```
+
+Or run without installing:
+
+```bash
+npx checkapp ./my-article.md
+```
+
+### Alternative — Download the binary
 
 Go to the **[Releases page](https://github.com/sharonds/checkapp/releases/latest)** and download for your platform:
 
@@ -297,14 +312,14 @@ Go to the **[Releases page](https://github.com/sharonds/checkapp/releases/latest
 | `checkapp-linux-x64` | Linux x64 |
 | `checkapp-win-x64.exe` | Windows x64 |
 
-### Step 2 — Make it executable (Mac/Linux only)
+Make the binary executable on Mac/Linux:
 
 ```bash
 chmod +x ~/Downloads/checkapp-mac-arm64
 mv ~/Downloads/checkapp-mac-arm64 /usr/local/bin/checkapp
 ```
 
-### Step 3 — Add your API keys
+### Step 2 — Add your API keys
 
 Create a `.env` file in your working directory:
 
