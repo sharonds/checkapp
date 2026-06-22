@@ -139,7 +139,11 @@ export class FactCheckGroundedSkill implements Skill {
     // that actually serves the calls (the capability layer owns the choice).
     const groundedModel = createGeminiCapability({ apiKey }).getModel("grounded");
 
-    const llm = getLlmClient({ ...config, geminiApiKey: config.geminiApiKey ?? apiKey });
+    // Claim extraction runs on Gemini (chat model = pro, with the capability
+    // layer's flash fallback if pro is unhealthy) so the grounded fact-check is
+    // Gemini end-to-end and never falls back to MiniMax, whose reasoning path
+    // intermittently returns an empty response (zero claims, no fact-check).
+    const llm = getLlmClient({ ...config, llmProvider: "gemini", geminiApiKey: config.geminiApiKey ?? apiKey });
     if (!llm) {
       return skippedResult(this, "no LLM key configured for claim extraction");
     }
@@ -429,14 +433,21 @@ function budgetStopReasonFromKey(key: ReturnType<typeof shouldStopForBudget>): A
 }
 
 // Returns null when the extraction provider produced an unusable response
-// (empty, unparseable, or non-array). Reasoning models can exhaust max_tokens
-// inside their thinking block and emit no text at all, so an empty response
-// means "extraction failed", never "the article has no claims".
+// (empty, unparseable, non-array, or a thrown provider error). The Gemini
+// caller throws on an empty response (where MiniMax returned ""), so a thrown
+// error is treated identically to empty text: "extraction failed", never "the
+// article has no claims". Reasoning models can also exhaust max_tokens inside
+// their thinking block and emit no text at all — same graceful degradation.
 async function extractClaims(
   text: string,
   call: (prompt: string, maxTokens?: number) => Promise<string>,
 ): Promise<ExtractedClaim[] | null> {
-  const claimsText = await call(extractClaimsPromptGrounded(text), 4096);
+  let claimsText: string;
+  try {
+    claimsText = await call(extractClaimsPromptGrounded(text), 4096);
+  } catch {
+    return null;
+  }
   return parseExtractedClaims(claimsText);
 }
 

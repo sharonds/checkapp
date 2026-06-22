@@ -229,27 +229,32 @@ function plagiarismConfig(): Config {
 function prepareFactCheckFetch(scenario: Scenario): void {
   const claims = scenario.claims ?? [];
   let groundedCursor = 0;
-  globalThis.fetch = async (input) => {
+  globalThis.fetch = async (input, init) => {
     const url = requestUrl(input);
-    if (hostnameIs(url, "api.minimax.io")) {
-      return new Response(JSON.stringify({
-        id: `msg_${scenario.id}`,
-        type: "message",
-        role: "assistant",
-        model: "MiniMax-M2.7",
-        content: [{
-          type: "text",
-          text: JSON.stringify(claims.map((claim) => ({ assertion: claim.claim, source: claim.source ?? claim.claim }))),
-        }],
-        stop_reason: "end_turn",
-        usage: { input_tokens: 10, output_tokens: 10 },
-      }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
 
+    // Extraction and grounding now both run on Gemini and hit the same host AND
+    // model. Branch on the request body: grounding requests carry
+    // `tools: [{ google_search: {} }]`; extraction requests are plain `contents`.
     if (hostnameIs(url, "generativelanguage.googleapis.com")) {
+      const body = parseRequestBody(input, init);
+      const isGrounding = Boolean(body?.tools);
+
+      if (!isGrounding) {
+        // Claim extraction (Gemini generateContent shape).
+        return new Response(JSON.stringify({
+          candidates: [{
+            content: {
+              parts: [{
+                text: JSON.stringify(claims.map((claim) => ({ assertion: claim.claim, source: claim.source ?? claim.claim }))),
+              }],
+            },
+          }],
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
       const claim = claims[Math.min(groundedCursor, Math.max(0, claims.length - 1))];
       groundedCursor++;
       if (!claim) {
@@ -290,6 +295,19 @@ function prepareFactCheckFetch(scenario: Scenario): void {
 
     return new Response("Unexpected validation request", { status: 500 });
   };
+}
+
+function parseRequestBody(_input: RequestInfo | URL, init?: RequestInit): { tools?: unknown } | null {
+  // The grounded skill and the Gemini LLM caller both invoke
+  // fetch(urlString, { method, headers, body: JSON.stringify(...) }), so the
+  // JSON payload arrives as a string in init.body.
+  const body = init?.body;
+  if (typeof body !== "string") return null;
+  try {
+    return JSON.parse(body) as { tools?: unknown };
+  } catch {
+    return null;
+  }
 }
 
 function requestUrl(input: RequestInfo | URL): string {
