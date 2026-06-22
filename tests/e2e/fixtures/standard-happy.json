@@ -5,7 +5,7 @@
   "flagOn": true,
   "providers": {
     "llm": {
-      "extractClaims": "[\"Coffee contains caffeine, a stimulant\",\"The human heart pumps blood throughout the body\"]",
+      "extractClaims": "[{\"assertion\":\"Coffee contains caffeine, a stimulant\",\"source\":\"Coffee contains caffeine\"},{\"assertion\":\"The human heart pumps blood throughout the body\",\"source\":\"Heart pumps blood\"}]",
       "assessClaim": "{\"supported\":true,\"note\":\"Verified against cited sources.\",\"claimType\":\"general\"}"
     },
     "geminiGrounded": {

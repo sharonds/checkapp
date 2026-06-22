@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { Config } from "../config.ts";
 import { jsonResponse, mockFetch, urlRouter } from "../testing/mock-fetch.ts";
 import { FactCheckGroundedSkill, computeRetryAfterDelayMs } from "./factcheck-grounded.ts";
+import { locateQuote } from "../audit/document.ts";
 
 describe("FactCheckGroundedSkill", () => {
   const baseConfig: Config = {
@@ -62,7 +63,7 @@ describe("FactCheckGroundedSkill", () => {
           content: [{
             type: "text",
             text: JSON.stringify([
-              "The Netherlands banned indoor smoking in workplaces and hospitality venues in 2008.",
+              { assertion: "The Netherlands banned indoor smoking in workplaces and hospitality venues in 2008.", source: "Smoking laws changed in 2008." },
             ]),
           }],
           stop_reason: "end_turn",
@@ -160,7 +161,7 @@ describe("FactCheckGroundedSkill", () => {
         type: "message",
         role: "assistant",
         model: "MiniMax-M2.7",
-        content: [{ type: "text", text: JSON.stringify(["The claim needs checking."]) }],
+        content: [{ type: "text", text: JSON.stringify([{ assertion: "The claim needs checking.", source: "The claim needs checking." }]) }],
         stop_reason: "end_turn",
         usage: { input_tokens: 10, output_tokens: 10 },
       }),
@@ -204,7 +205,7 @@ describe("FactCheckGroundedSkill", () => {
         model: "MiniMax-M2.7",
         content: [{
           type: "text",
-          text: JSON.stringify(["OpenAI announced GPT-4 in March 2023."]),
+          text: JSON.stringify([{ assertion: "OpenAI announced GPT-4 in March 2023.", source: "OpenAI announced GPT-4 in March 2023." }]),
         }],
         stop_reason: "end_turn",
         usage: { input_tokens: 10, output_tokens: 10 },
@@ -248,7 +249,13 @@ describe("FactCheckGroundedSkill", () => {
         model: "MiniMax-M2.7",
         content: [{
           type: "text",
-          text: JSON.stringify(["Claim one.", "Claim two.", "Claim three.", "Claim four.", "Claim five."]),
+          text: JSON.stringify([
+            { assertion: "Claim one.", source: "Claim one." },
+            { assertion: "Claim two.", source: "Claim two." },
+            { assertion: "Claim three.", source: "Claim three." },
+            { assertion: "Claim four.", source: "Claim four." },
+            { assertion: "Claim five.", source: "Claim five." },
+          ]),
         }],
         stop_reason: "end_turn",
         usage: { input_tokens: 10, output_tokens: 10 },
@@ -290,7 +297,11 @@ describe("FactCheckGroundedSkill", () => {
         model: "MiniMax-M2.7",
         content: [{
           type: "text",
-          text: JSON.stringify(["Claim one.", "Claim two.", "Claim three."]),
+          text: JSON.stringify([
+            { assertion: "Claim one.", source: "Claim one." },
+            { assertion: "Claim two.", source: "Claim two." },
+            { assertion: "Claim three.", source: "Claim three." },
+          ]),
         }],
         stop_reason: "end_turn",
         usage: { input_tokens: 10, output_tokens: 10 },
@@ -333,7 +344,7 @@ describe("FactCheckGroundedSkill", () => {
           model: "MiniMax-M2.7",
           content: [{
             type: "text",
-            text: JSON.stringify(["Claim one."]),
+            text: JSON.stringify([{ assertion: "Claim one.", source: "Claim one." }]),
           }],
           stop_reason: "end_turn",
           usage: { input_tokens: 10, output_tokens: 10 },
@@ -377,7 +388,7 @@ describe("FactCheckGroundedSkill", () => {
           model: "MiniMax-M2.7",
           content: [{
             type: "text",
-            text: JSON.stringify(["Claim one."]),
+            text: JSON.stringify([{ assertion: "Claim one.", source: "Claim one." }]),
           }],
           stop_reason: "end_turn",
           usage: { input_tokens: 10, output_tokens: 10 },
@@ -422,7 +433,7 @@ describe("FactCheckGroundedSkill", () => {
         model: "MiniMax-M2.7",
         content: [{
           type: "text",
-          text: JSON.stringify(["Claim one."]),
+          text: JSON.stringify([{ assertion: "Claim one.", source: "Claim one." }]),
         }],
         stop_reason: "end_turn",
         usage: { input_tokens: 10, output_tokens: 10 },
@@ -472,7 +483,10 @@ describe("FactCheckGroundedSkill", () => {
         model: "MiniMax-M2.7",
         content: [{
           type: "text",
-          text: JSON.stringify(["Claim one.", "Claim two."]),
+          text: JSON.stringify([
+            { assertion: "Claim one.", source: "Claim one." },
+            { assertion: "Claim two.", source: "Claim two." },
+          ]),
         }],
         stop_reason: "end_turn",
         usage: { input_tokens: 10, output_tokens: 10 },
@@ -513,7 +527,7 @@ describe("FactCheckGroundedSkill", () => {
         model: "MiniMax-M2.7",
         content: [{
           type: "text",
-          text: JSON.stringify(["המשחק Rummikub מתאים לשני שחקנים בלבד."]),
+          text: JSON.stringify([{ assertion: "המשחק Rummikub מתאים לשני שחקנים בלבד.", source: "המשחק Rummikub מתאים לשני שחקנים בלבד." }]),
         }],
         stop_reason: "end_turn",
         usage: { input_tokens: 10, output_tokens: 10 },
@@ -544,12 +558,12 @@ describe("FactCheckGroundedSkill", () => {
         expect(req.url).toContain("provider-gemini-key");
         const body = await req.json() as any;
         const prompt = body.contents?.[0]?.parts?.[0]?.text ?? "";
-        if (prompt.includes("Extract up to 20")) {
+        if (prompt.includes("JSON array of objects")) {
           return jsonResponse({
             candidates: [{
               content: {
                 parts: [
-                  { text: JSON.stringify(["OpenAI announced GPT-4 in March 2023."]) },
+                  { text: JSON.stringify([{ assertion: "OpenAI announced GPT-4 in March 2023.", source: "OpenAI announced GPT-4 in March 2023." }]) },
                 ],
               },
             }],
@@ -594,7 +608,7 @@ describe("FactCheckGroundedSkill", () => {
         model: "MiniMax-M2.7",
         content: [{
           type: "text",
-          text: JSON.stringify(["A source-free claim is verified."]),
+          text: JSON.stringify([{ assertion: "A source-free claim is verified.", source: "A source-free claim is verified." }]),
         }],
         stop_reason: "end_turn",
         usage: { input_tokens: 10, output_tokens: 10 },
@@ -624,12 +638,15 @@ describe("FactCheckGroundedSkill", () => {
   });
 
   describe("rate-limit retry handling", () => {
+    // Each claim string must appear VERBATIM in the test's article text so the
+    // grounded pipeline locates an EXACT source span (the R4 location-approximate
+    // path would otherwise downgrade confidence to "low").
     const minimaxExtract = (claims: string[]) => jsonResponse({
       id: "msg_x",
       type: "message",
       role: "assistant",
       model: "MiniMax-M2.7",
-      content: [{ type: "text", text: JSON.stringify(claims) }],
+      content: [{ type: "text", text: JSON.stringify(claims.map((c) => ({ assertion: c, source: c }))) }],
       stop_reason: "end_turn",
       usage: { input_tokens: 10, output_tokens: 10 },
     });
@@ -942,6 +959,14 @@ describe("FactCheckGroundedSkill", () => {
       expect(html).toContain("שגיאת ספק");
       expect(html).not.toContain("(low)");
     });
+  });
+
+  test("located quote for a verbatim Hebrew source sentence is an exact match (regression guard)", () => {
+    const article = "כותרת המאמר\n\nסט 43013 מכיל כ-520 חלקים.\n\nפסקה אחרת.";
+    const located = locateQuote(article, "סט 43013 מכיל כ-520 חלקים.");
+    expect(located.quote).toBe("סט 43013 מכיל כ-520 חלקים.");
+    expect(located.location?.matchQuality).toBe("exact");
+    expect(located.language).toBe("he");
   });
 
   describe("computeRetryAfterDelayMs", () => {
