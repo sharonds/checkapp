@@ -379,6 +379,7 @@ describe("generateMarkdownReport", () => {
         summary: "1 claims checked — 0 unsupported, 0 unverified (via gemini-grounded)",
         findings: [{
           severity: "info" as const,
+          status: "supported" as const,
           text: "Verified (medium confidence): \"Claim\" — Supported by sources",
           sources: [{ url: "https://example.com/evidence", title: "Evidence" }],
         }],
@@ -390,6 +391,26 @@ describe("generateMarkdownReport", () => {
     // Verified claims are collapsed to a count; their evidence is not rendered.
     expect(md).toContain("1 claim verified");
     expect(md).not.toContain("https://example.com/evidence");
+  });
+
+  it("keeps non-claim info findings (setup guidance) visible on fact-check skills", () => {
+    const md = generateMarkdownReport({
+      source: "test.md",
+      wordCount: 500,
+      totalCostUsd: 0,
+      results: [{
+        skillId: "fact-check",
+        name: "Fact Check",
+        score: 50,
+        verdict: "warn" as const,
+        summary: "Skipped — no fact-check provider configured",
+        findings: [{ severity: "info" as const, text: "Add MINIMAX_API_KEY or ANTHROPIC_API_KEY to .env to enable fact-checking" }],
+        costUsd: 0,
+      }],
+    });
+
+    expect(md).toContain("Add MINIMAX_API_KEY");
+    expect(md).not.toContain("claim verified");
   });
 
   it("renders unsafe source URLs as plain text in markdown exports", () => {

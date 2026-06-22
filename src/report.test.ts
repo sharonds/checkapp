@@ -557,6 +557,7 @@ test("passing Gemini grounded fact-check report collapses verified claims to a c
       summary: "1 claims checked — 0 unsupported, 0 unverified (via gemini-grounded)",
       findings: [{
         severity: "info",
+        status: "supported",
         text: "Verified (medium confidence): \"Claim\" — Supported by sources",
         sources: [{ url: "https://example.com/evidence", title: "Evidence" }],
         confidence: "medium",
@@ -571,6 +572,28 @@ test("passing Gemini grounded fact-check report collapses verified claims to a c
   // rather than rendering a card (and its evidence) per verified claim.
   expect(html).toContain("1 claim verified");
   expect(html).not.toContain("https://example.com/evidence");
+});
+
+test("non-claim info findings on a fact-check skill (setup guidance) stay visible, not collapsed as verified", () => {
+  const html = generateReport({
+    source: "article.md",
+    wordCount: 800,
+    totalCostUsd: 0,
+    results: [{
+      skillId: "fact-check",
+      name: "Fact Check",
+      score: 50,
+      verdict: "warn",
+      summary: "Skipped — no fact-check provider configured",
+      // An info finding WITHOUT status "supported" is setup guidance, not a
+      // verified claim: it must render, not be hidden + miscounted as verified.
+      findings: [{ severity: "info", text: "Configure a fact-check provider in Settings → Providers (e.g. Exa)" }],
+      costUsd: 0,
+    }],
+  });
+
+  expect(html).toContain("Configure a fact-check provider");
+  expect(html).not.toContain("claim verified");
 });
 
 test("SEO-only report does not disclose third-party processors", () => {

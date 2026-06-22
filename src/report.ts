@@ -122,10 +122,17 @@ function skillCard(r: SkillResult, locale: AuditLocale, audit?: CheckRecord["aud
   // issues). Scoped to fact-check skills so other skills (academic, grammar,
   // etc.) keep showing their info findings that carry sources, as before.
   const isFactCheck = r.skillId === "fact-check" || r.skillId === "fact-check-grounded";
+  // A verified claim is an info finding the checker marked "supported". Other
+  // info findings on fact-check skills (e.g. "configure a fact-check provider"
+  // setup guidance) are NOT verified claims, so they must stay visible rather
+  // than be hidden and miscounted as verified.
+  const isVerifiedClaim = (f: (typeof r.findings)[number]) => f.severity === "info" && f.status === "supported";
   const visibleFindings = r.findings.filter((f) =>
-    f.severity === "warn" || f.severity === "error" || (!isFactCheck && (f.sources?.length ?? 0) > 0)
+    f.severity === "warn" || f.severity === "error"
+    || (!isFactCheck && (f.sources?.length ?? 0) > 0)
+    || (isFactCheck && f.severity === "info" && !isVerifiedClaim(f))
   );
-  const verifiedCount = isFactCheck ? r.findings.filter((f) => f.severity === "info").length : 0;
+  const verifiedCount = isFactCheck ? r.findings.filter(isVerifiedClaim).length : 0;
   const verifiedLine = verifiedCount > 0
     ? `<p style="margin:8px 0 0 0;font-size:12px;color:#059669">✓ ${verifiedCount} ${locale === "he" ? "טענות אומתו (לא מוצגות)" : (verifiedCount === 1 ? "claim verified (not shown)" : "claims verified (not shown)")}</p>`
     : "";

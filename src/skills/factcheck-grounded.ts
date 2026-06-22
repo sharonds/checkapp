@@ -143,7 +143,10 @@ export class FactCheckGroundedSkill implements Skill {
     // layer's flash fallback if pro is unhealthy) so the grounded fact-check is
     // Gemini end-to-end and never falls back to MiniMax, whose reasoning path
     // intermittently returns an empty response (zero claims, no fact-check).
-    const llm = getLlmClient({ ...config, llmProvider: "gemini", geminiApiKey: config.geminiApiKey ?? apiKey });
+    // Use the SAME resolved key for extraction as for grounding (resolveProvider
+    // prefers the provider-scoped key); preferring a global geminiApiKey here would
+    // let extraction and grounding diverge onto different keys.
+    const llm = getLlmClient({ ...config, llmProvider: "gemini", geminiApiKey: apiKey ?? config.geminiApiKey });
     if (!llm) {
       return skippedResult(this, "no LLM key configured for claim extraction");
     }

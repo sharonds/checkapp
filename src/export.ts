@@ -59,8 +59,11 @@ export function generateMarkdownReport(record: Omit<CheckRecord, "id" | "created
     // verified ("info") claims to a count line; other skills keep their info
     // findings that carry sources.
     const isFactCheck = r.skillId === "fact-check" || r.skillId === "fact-check-grounded";
-    const visible = r.findings.filter(f => f.severity === "warn" || f.severity === "error" || (!isFactCheck && (f.sources?.length ?? 0) > 0));
-    const verifiedCount = isFactCheck ? r.findings.filter(f => f.severity === "info").length : 0;
+    // Only "supported" info findings are verified claims; other fact-check info
+    // findings (e.g. provider-setup guidance) stay visible, not collapsed.
+    const isVerifiedClaim = (f: (typeof r.findings)[number]) => f.severity === "info" && f.status === "supported";
+    const visible = r.findings.filter(f => f.severity === "warn" || f.severity === "error" || (!isFactCheck && (f.sources?.length ?? 0) > 0) || (isFactCheck && f.severity === "info" && !isVerifiedClaim(f)));
+    const verifiedCount = isFactCheck ? r.findings.filter(isVerifiedClaim).length : 0;
     if (verifiedCount > 0) {
       md += `✓ ${verifiedCount} ${locale === "he" ? "טענות אומתו (לא מוצגות)" : (verifiedCount === 1 ? "claim verified (not shown)" : "claims verified (not shown)")}\n\n`;
     }

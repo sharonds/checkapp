@@ -50,12 +50,16 @@ export class PlagiarismSkill implements Skill {
     const documentAnalysis = analyzeDocument(text);
     const baseAudit = createAuditRecordBase(this.id, text);
     const auditId = baseAudit.auditId;
-    const findings: Finding[] = result.matches.slice(0, 5).map((m, index) => {
+    const findings: Finding[] = result.matches.slice(0, 5).flatMap((m, index) => {
+      // Drop the finding for an unsafe/empty source URL to match buildPlagiarismAudit's
+      // audit-side drop, so Finding.auditRef.plagiarismFindingId never points at an
+      // audit plagiarismFinding that was dropped (a dangling reference).
+      if (!sanitizeAuditUrl(m.url)) return [];
       const articleQuote = extractArticleQuote(m.snippet);
       const located = locateQuote(text, articleQuote, documentAnalysis);
       const confidence = result.verdict === "rewrite" ? "high" : "medium";
       const plagiarismFindingId = `plagiarism-${index + 1}`;
-      return {
+      return [{
       severity: result.verdict === "rewrite" ? "error" : "warn",
       text: `${m.wordsMatched} words matched at ${displayUrl(m.url)}`,
       quote: located.quote || articleQuote || undefined,
@@ -69,7 +73,7 @@ export class PlagiarismSkill implements Skill {
       confidenceRationale: confidenceRationale(1, confidence),
       provider: "copyscape",
       auditRef: { auditId, plagiarismFindingId },
-    };
+    }];
     });
 
     const score = Math.max(0, 100 - result.similarityPct * 2);
@@ -107,12 +111,16 @@ export class PlagiarismSkill implements Skill {
     const documentAnalysis = analyzeDocument(text);
     const baseAudit = createAuditRecordBase(this.id, text);
     const auditId = baseAudit.auditId;
-    const findings: Finding[] = result.matches.slice(0, 5).map((m, index) => {
+    const findings: Finding[] = result.matches.slice(0, 5).flatMap((m, index) => {
+      // Drop the finding for an unsafe/empty source URL to match buildPlagiarismAudit's
+      // audit-side drop, so Finding.auditRef.plagiarismFindingId never points at an
+      // audit plagiarismFinding that was dropped (a dangling reference).
+      if (!sanitizeAuditUrl(m.url)) return [];
       const confidence = extractConfidence(m.snippet) ?? result.confidence;
       const articleQuote = extractArticleQuote(m.snippet);
       const located = locateQuote(text, articleQuote, documentAnalysis);
       const plagiarismFindingId = `plagiarism-${index + 1}`;
-      return {
+      return [{
       severity: result.verdict === "rewrite" ? "error" : "warn",
       text: `${m.wordsMatched} words matched at ${displayUrl(m.url)}`,
       quote: located.quote || articleQuote || undefined,
@@ -129,7 +137,7 @@ export class PlagiarismSkill implements Skill {
       provider: "gemini-grounded-plagiarism",
       model: result.model,
       auditRef: { auditId, plagiarismFindingId },
-    };
+    }];
     });
 
     const score = Math.max(0, 100 - result.similarityPct * 2);
