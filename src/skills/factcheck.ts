@@ -18,6 +18,29 @@ import {
 } from "../audit/document.ts";
 import type { AuditClaim, AuditRecord, ClaimDecision, FactAssessment, ProviderAttempt } from "../audit/types.ts";
 
+export interface ExtractedClaim {
+  assertion: string; // atomic, self-contained — the unit we VERIFY
+  source: string;    // verbatim sentence from the article — the span we LOCATE + show
+}
+
+export function parseExtractedClaims(rawJson: string): ExtractedClaim[] | null {
+  if (!rawJson.trim()) return null;
+  let parsed: unknown;
+  try {
+    parsed = parseJsonResponse<unknown>(rawJson); // existing tolerant JSON extractor
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(parsed)) return null;
+  const claims = parsed
+    .filter((row): row is { assertion: unknown; source: unknown } =>
+      !!row && typeof row === "object" && "assertion" in row && "source" in row)
+    .map((row) => ({ assertion: String(row.assertion).trim(), source: String(row.source).trim() }))
+    .filter((c) => c.assertion.length > 0 && c.source.length > 0)
+    .slice(0, 20);
+  return claims; // may be [] (parsed ok, no usable claims) — distinct from null (parse failed)
+}
+
 export function extractClaimsPrompt(articleText: string): string {
   return `Extract up to 20 specific, verifiable factual claims from across the entire article below.
 Return ONLY a JSON array of strings, no other text. Each string is one claim.

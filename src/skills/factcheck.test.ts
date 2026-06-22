@@ -1,5 +1,5 @@
 import { test, expect, describe, mock, beforeEach } from "bun:test";
-import { extractClaimsPrompt, claimConfidence, formatCitation, FactCheckSkill } from "./factcheck.ts";
+import { extractClaimsPrompt, claimConfidence, formatCitation, FactCheckSkill, parseExtractedClaims } from "./factcheck.ts";
 import type { Config } from "../config.ts";
 import { mockFetch, urlRouter, jsonResponse } from "../testing/mock-fetch.ts";
 
@@ -434,5 +434,30 @@ describe("FactCheckSkill — Phase 7 evidence", () => {
     });
     // cost per claim should accumulate 0.025 (deep) + 0.001 (base) + 0.001 (assess) per claim
     expect(result.costUsd).toBeGreaterThanOrEqual(0.025);
+  });
+});
+
+describe("parseExtractedClaims", () => {
+  test("keeps valid {assertion, source} rows and drops malformed ones", () => {
+    const raw = JSON.stringify([
+      { assertion: "LEGO set 43013 contains 490 pieces", source: "סט 43013 מכיל כ-520 חלקים." },
+      { assertion: "no source here" },                 // missing source → drop
+      { source: "no assertion" },                       // missing assertion → drop
+      "a bare string",                                  // wrong shape → drop
+      { assertion: "  ", source: "  " },                // empty → drop
+    ]);
+    expect(parseExtractedClaims(raw)).toEqual([
+      { assertion: "LEGO set 43013 contains 490 pieces", source: "סט 43013 מכיל כ-520 חלקים." },
+    ]);
+  });
+
+  test("returns null on unparseable input (extraction failed)", () => {
+    expect(parseExtractedClaims("")).toBeNull();
+    expect(parseExtractedClaims("not json")).toBeNull();
+  });
+
+  test("parseExtractedClaims returns [] (not null) when JSON is valid but every row is malformed", () => {
+    const raw = JSON.stringify([{ foo: "bar" }, "bare string", { assertion: "  ", source: "  " }]);
+    expect(parseExtractedClaims(raw)).toEqual([]);
   });
 });
