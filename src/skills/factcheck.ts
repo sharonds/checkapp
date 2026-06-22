@@ -56,6 +56,23 @@ Example output:
 JSON array of claims:`;
 }
 
+export function extractClaimsPromptGrounded(articleText: string): string {
+  return `From the article below, extract up to 20 verifiable factual claims.
+Return ONLY a JSON array of objects, no other text. Each object has exactly two string fields:
+- "assertion": ONE atomic, SELF-CONTAINED factual statement that can be verified on its own. Include the entity/subject so it stands alone (e.g. "LEGO set 43013 contains 490 pieces", NOT "contains ~520 pieces"). One fact per assertion — split a sentence that states several facts into several objects.
+- "source": the EXACT sentence from the article (copied VERBATIM, in the original language, no translation) that this assertion comes from, so it can be located in the article.
+A single source sentence may appear in multiple objects when it states multiple facts.
+Focus on statistics, dates, specs, prices, rules, and named entities — not opinions.
+
+Article:
+${articleText}
+
+Example output:
+[{"assertion":"LEGO set 43020 contains 2842 pieces","source":"ערכת גביע העולם הרשמי (סט 43020) מורכבת מ-2,842 חלקים."}]
+
+JSON array:`;
+}
+
 export function formatCitation(url: string): string {
   try {
     const u = new URL(url);

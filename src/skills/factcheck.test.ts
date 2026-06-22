@@ -1,5 +1,5 @@
 import { test, expect, describe, mock, beforeEach } from "bun:test";
-import { extractClaimsPrompt, claimConfidence, formatCitation, FactCheckSkill, parseExtractedClaims } from "./factcheck.ts";
+import { extractClaimsPrompt, extractClaimsPromptGrounded, claimConfidence, formatCitation, FactCheckSkill, parseExtractedClaims } from "./factcheck.ts";
 import type { Config } from "../config.ts";
 import { mockFetch, urlRouter, jsonResponse } from "../testing/mock-fetch.ts";
 
@@ -460,4 +460,12 @@ describe("parseExtractedClaims", () => {
     const raw = JSON.stringify([{ foo: "bar" }, "bare string", { assertion: "  ", source: "  " }]);
     expect(parseExtractedClaims(raw)).toEqual([]);
   });
+});
+
+test("extractClaimsPromptGrounded asks for atomic assertion + verbatim source per claim", () => {
+  const p = extractClaimsPromptGrounded("מאמר לדוגמה");
+  expect(p).toContain("assertion");
+  expect(p).toContain("source");
+  expect(p).toMatch(/self-contained|standalone/i);     // assertion must stand alone
+  expect(p).toMatch(/verbatim|exactly/i);               // source copied verbatim
 });
