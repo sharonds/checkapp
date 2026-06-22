@@ -447,7 +447,11 @@ async function extractClaims(
 ): Promise<ExtractedClaim[] | null> {
   let claimsText: string;
   try {
-    claimsText = await call(extractClaimsPromptGrounded(text), 4096);
+    // 8192 (the Gemini caller's cap), not 4096: the Gemini pro thinking-model
+    // spends part of the output budget on reasoning, and a 4096 budget made it
+    // intermittently emit empty text on longer articles (zero claims). 8192 is
+    // reliable in practice; flash fits comfortably either way.
+    claimsText = await call(extractClaimsPromptGrounded(text), 8192);
   } catch {
     return null;
   }
