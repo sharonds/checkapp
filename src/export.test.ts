@@ -366,7 +366,7 @@ describe("generateMarkdownReport", () => {
     expect(md).toContain("מקור: [מקור רשמי](https://example.com/evidence)");
   });
 
-  it("includes verified info source links for passing grounded fact-check", () => {
+  it("collapses verified grounded claims to a count line, not per-claim source cards", () => {
     const md = generateMarkdownReport({
       source: "test.md",
       wordCount: 500,
@@ -387,8 +387,9 @@ describe("generateMarkdownReport", () => {
       }],
     });
 
-    expect(md).toContain("Verified");
-    expect(md).toContain("Source: [Evidence](https://example.com/evidence)");
+    // Verified claims are collapsed to a count; their evidence is not rendered.
+    expect(md).toContain("1 claim verified");
+    expect(md).not.toContain("https://example.com/evidence");
   });
 
   it("renders unsafe source URLs as plain text in markdown exports", () => {
