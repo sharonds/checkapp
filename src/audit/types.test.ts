@@ -75,10 +75,25 @@ describe("AuditRecord schema", () => {
     expect(parsed.claimDecisions).toEqual([{ claimId: "c1", decision: "skipped", skipReason: "unknown" }]);
   });
 
-  test("serializeAuditRecord degrades malformed optional audits to null instead of throwing", () => {
+  test("serializeAuditRecord returns a discriminated result instead of silently nulling failures", () => {
     const malformedAudit = { ...baseAudit, claims: [{ id: "c1", quote: 42 }] } as any;
+    // A present-but-invalid audit must surface an error, never a bare null.
     expect(() => serializeAuditRecord(malformedAudit)).not.toThrow();
-    expect(serializeAuditRecord(malformedAudit)).toBeNull();
+    const malformed = serializeAuditRecord(malformedAudit);
+    expect(malformed.ok).toBe(false);
+    if (!malformed.ok) {
+      expect(typeof malformed.error).toBe("string");
+      expect(malformed.error.length).toBeGreaterThan(0);
+    }
+    // A null/undefined input is not an error — there is simply nothing to store.
+    expect(serializeAuditRecord(null)).toEqual({ ok: true, json: null });
+    expect(serializeAuditRecord(undefined)).toEqual({ ok: true, json: null });
+    // A valid audit serializes to a JSON string.
+    const valid = serializeAuditRecord(baseAudit as any);
+    expect(valid.ok).toBe(true);
+    if (valid.ok) {
+      expect(typeof valid.json).toBe("string");
+    }
   });
 
   test("sanitizes nested provider errors and drops unsafe source URLs before persistence", () => {

@@ -14,6 +14,7 @@ import {
 } from "../audit/document.ts";
 import type { AuditRecord, PlagiarismFinding } from "../audit/types.ts";
 import { sanitizeAuditUrl } from "../audit/types.ts";
+import { emitAuditFailedEvent } from "../telemetry/audit-events.ts";
 
 export class PlagiarismSkill implements Skill {
   readonly id = "plagiarism";
@@ -186,7 +187,21 @@ function buildPlagiarismAudit(
   searchQueries: string[] = [],
   model?: string,
 ): AuditRecord {
-  const plagiarismFindings: PlagiarismFinding[] = matches.map((match, index) => {
+  const plagiarismFindings: PlagiarismFinding[] = matches.flatMap((match, index) => {
+    // Sanitize the provider-supplied source URL at production time. Copyscape can
+    // emit an empty <url> (copyscape.ts default) and grounded providers can return
+    // relative/unsafe URIs; an unsanitizable URL makes normalizeSource reject the
+    // finding, which previously rejected the WHOLE audit (language/segments dropped).
+    // We never emit an unsafe source: a finding with no usable source link is not
+    // actionable, so we drop ONLY that finding via an explicit, logged policy.
+    const safeSourceUrl = sanitizeAuditUrl(match.url);
+    if (!safeSourceUrl) {
+      emitAuditFailedEvent({ stage: "plagiarism-finding-dropped", provider, matchIndex: index, reason: "unsafe-source-url" });
+      console.warn(
+        `[audit] dropping plagiarism finding #${index + 1} with unsafe source URL (provider=${provider}); the rest of the audit is preserved`,
+      );
+      return [];
+    }
     const articleQuote = extractArticleQuote(match.snippet);
     const located = locateQuote(text, articleQuote, documentAnalysis);
     const findingConfidence = provider === "gemini-grounded-plagiarism"
@@ -195,11 +210,15 @@ function buildPlagiarismAudit(
     const rationale = provider === "gemini-grounded-plagiarism"
       ? plagiarismConfidenceRationale(match.groundingMode, findingConfidence)
       : confidenceRationale(1, findingConfidence);
-    return {
+    return [{
+      // IDs are derived from the original match index so they line up positionally
+      // with the Finding[] auditRef.plagiarismFindingId built in the run() paths
+      // (which keep every match). IDs may be sparse when a finding is dropped above;
+      // uniqueness is preserved and the positional cross-reference stays intact.
       id: `plagiarism-${index + 1}`,
       quote: located.quote || articleQuote,
       source: {
-        url: match.url,
+        url: safeSourceUrl,
         title: match.title,
         quote: match.matchedSourceText ?? match.snippet,
         accepted: true,
@@ -217,7 +236,7 @@ function buildPlagiarismAudit(
       language: located.language,
       direction: located.direction,
       location: located.location,
-    };
+    }];
   });
   return {
     ...baseAudit,
