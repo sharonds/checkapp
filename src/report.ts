@@ -116,8 +116,26 @@ function skillCard(r: SkillResult, locale: AuditLocale, audit?: CheckRecord["aud
   const skillName = localizedSkillName(r, locale);
   const summary = localizedSkillSummary(r, locale, audit);
 
-  // Only show warn and error findings — info is noise when skills run
-  const visibleFindings = r.findings.filter((f) => f.severity === "warn" || f.severity === "error" || (f.sources?.length ?? 0) > 0);
+  // For fact-check, only show problems — warn (unverified) and error
+  // (unsupported). Verified ("info") claims are not problems; we collapse them
+  // to a single count line instead of a card per claim (that buried the real
+  // issues). Scoped to fact-check skills so other skills (academic, grammar,
+  // etc.) keep showing their info findings that carry sources, as before.
+  const isFactCheck = r.skillId === "fact-check" || r.skillId === "fact-check-grounded";
+  // A verified claim is an info finding the checker marked "supported". Other
+  // info findings on fact-check skills (e.g. "configure a fact-check provider"
+  // setup guidance) are NOT verified claims, so they must stay visible rather
+  // than be hidden and miscounted as verified.
+  const isVerifiedClaim = (f: (typeof r.findings)[number]) => f.severity === "info" && f.status === "supported";
+  const visibleFindings = r.findings.filter((f) =>
+    f.severity === "warn" || f.severity === "error"
+    || (!isFactCheck && (f.sources?.length ?? 0) > 0)
+    || (isFactCheck && f.severity === "info" && !isVerifiedClaim(f))
+  );
+  const verifiedCount = isFactCheck ? r.findings.filter(isVerifiedClaim).length : 0;
+  const verifiedLine = verifiedCount > 0
+    ? `<p style="margin:8px 0 0 0;font-size:12px;color:#059669">✓ ${verifiedCount} ${locale === "he" ? "טענות אומתו (לא מוצגות)" : (verifiedCount === 1 ? "claim verified (not shown)" : "claims verified (not shown)")}</p>`
+    : "";
   const findingsHtml = visibleFindings.length === 0 ? "" : `
     <ul style="margin:12px 0 0 0;padding:0;list-style:none">
       ${visibleFindings.map((f) => `
@@ -155,6 +173,7 @@ function skillCard(r: SkillResult, locale: AuditLocale, audit?: CheckRecord["aud
     ${scoreBar(r.verdict === "skipped" ? null : r.score, r.verdict)}
     <p style="margin:8px 0 0 0;font-size:13px;color:#6b7280">${escapeHtml(summary)}</p>
     ${r.error ? `<p style="margin:8px 0 0 0;font-size:12px;color:#dc2626">⚠ ${escapeHtml(r.error)}</p>` : ""}
+    ${verifiedLine}
     ${findingsHtml}
   </div>`;
 }
@@ -265,9 +284,28 @@ function summaryBlock(result: SkillResult): string {
   </div>`;
 }
 
+function inferAuditLanguage(audit?: CheckRecord["audit"]): "he" | "en" | "mixed" | undefined {
+  const segments = audit?.segments ?? [];
+  let he = 0;
+  let en = 0;
+  for (const segment of segments) {
+    if (segment.language === "he") he++;
+    else if (segment.language === "en") en++;
+    else if (segment.language === "mixed") { he++; en++; }
+  }
+  if (he === 0 && en === 0) {
+    const text = segments.map((s) => s.text ?? "").join(" ");
+    return (text.match(/[֐-׿]/g) ?? []).length > 0 ? "he" : undefined;
+  }
+  return he >= en && he > 0 ? "he" : "en";
+}
+
 export function generateReport(record: Omit<CheckRecord, "id" | "createdAt"> & { createdAt?: string }): string {
   const overall = summarizeResults(record.results);
-  const locale = auditLocaleForLanguage(record.audit?.language);
+  // The merged record-level audit sometimes loses its top-level `language`, which
+  // would silently fall back to an English/LTR report for a Hebrew article. Infer
+  // the dominant language from the audit segments when the top-level field is absent.
+  const locale = auditLocaleForLanguage(record.audit?.language ?? inferAuditLanguage(record.audit));
   const labels = AUDIT_UI[locale];
   const sourceLabel = sanitizeSourceLabel(record.source);
 

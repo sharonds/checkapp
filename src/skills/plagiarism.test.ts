@@ -1,6 +1,8 @@
 import { test, expect, describe, beforeEach, afterEach } from "bun:test";
 import { PlagiarismSkill } from "./plagiarism.ts";
 import type { Config } from "../config.ts";
+import { serializeAuditRecord } from "../audit/types.ts";
+import type { AuditRecord } from "../audit/types.ts";
 
 const config: Config = {
   copyscapeUser: "user",
@@ -51,6 +53,80 @@ describe("PlagiarismSkill Copyscape results", () => {
     expect(result.score).toBe(100);
     expect(result.provider).toBe("copyscape");
     expect(result.summary).toBe("0% similarity — 0 sources matched");
+  });
+
+  test("drops only the unsafe-URL plagiarism finding, preserving the rest of the audit", async () => {
+    // Copyscape can emit a <result> with an empty <url> (the parser defaults it to "").
+    // Pre-fix, that unsafe URL poisoned normalizeSource -> the WHOLE plagiarismFindings
+    // array was rejected and the ENTIRE audit (language/direction/segments) was dropped.
+    // The producer now drops ONLY that finding, so a sibling valid-URL finding and the
+    // surrounding audit survive and round-trip.
+    globalThis.fetch = async () => ({
+      ok: true,
+      text: async () =>
+        "<count>2</count><querywords>40</querywords>" +
+        "<allwordsmatched>20</allwordsmatched><allpercentmatched>50</allpercentmatched>" +
+        "<result><url></url><title>No URL Source</title><wordsmatched>10</wordsmatched>" +
+        "<htmlsnippet>This sentence has no source url at all.</htmlsnippet></result>" +
+        "<result><url>https://example.com/good</url><title>Good Source</title><wordsmatched>10</wordsmatched>" +
+        "<htmlsnippet>This sentence has a valid source url here.</htmlsnippet></result>",
+    } as Response);
+
+    const result = await new PlagiarismSkill().run(
+      "This sentence has no source url at all. This sentence has a valid source url here.",
+      config,
+    );
+
+    const audit = (result as { audit?: AuditRecord }).audit as AuditRecord;
+    // Only the unsafe-URL finding is dropped; the valid one survives.
+    expect(audit.plagiarismFindings).toHaveLength(1);
+    expect(audit.plagiarismFindings[0].source.url).toBe("https://example.com/good");
+    // The audit itself is NOT dropped: top-level fields and segments stay intact.
+    expect(audit.language).toBeDefined();
+    expect(audit.direction).toBeDefined();
+    expect(audit.segments.length).toBeGreaterThan(0);
+    // And it now round-trips through the validator instead of being rejected wholesale.
+    expect(serializeAuditRecord(audit).ok).toBe(true);
+  });
+
+  test("filters unsafe-URL matches before the top-5 cap, so a valid 6th match is not displaced", async () => {
+    // 6 matches with an empty <url> at position 2. Slicing to 5 BEFORE dropping the
+    // unsafe one would surface only 4 findings and hide the valid 6th; filtering
+    // first keeps 5 valid findings (incl. the 6th) with contiguous ids aligned to
+    // the audit's plagiarismFindings (no dangling auditRef).
+    const mk = (n: number, url: string) =>
+      `<result><url>${url}</url><title>Source ${n}</title><wordsmatched>10</wordsmatched>` +
+      `<htmlsnippet>Matched sentence number ${n} here.</htmlsnippet></result>`;
+    globalThis.fetch = async () => ({
+      ok: true,
+      text: async () =>
+        "<count>6</count><querywords>60</querywords>" +
+        "<allwordsmatched>60</allwordsmatched><allpercentmatched>80</allpercentmatched>" +
+        mk(1, "https://example.com/1") +
+        mk(2, "") +                          // unsafe — inside the original top 5
+        mk(3, "https://example.com/3") +
+        mk(4, "https://example.com/4") +
+        mk(5, "https://example.com/5") +
+        mk(6, "https://example.com/6"),       // valid — beyond the original top 5
+    } as Response);
+
+    const result = await new PlagiarismSkill().run(
+      "Matched sentence number 1 here. Matched sentence number 3 here. Matched sentence number 4 here. Matched sentence number 5 here. Matched sentence number 6 here.",
+      config,
+    );
+
+    // 5 valid findings surface; the empty-URL one is gone and the 6th fills its slot.
+    expect(result.findings).toHaveLength(5);
+    expect(result.findings.some((f) => f.sources?.[0]?.url === "https://example.com/6")).toBe(true);
+    expect(result.findings.every((f) => (f.sources?.[0]?.url ?? "") !== "")).toBe(true);
+
+    // Contiguous ids; every Finding.auditRef resolves to a real audit plagiarismFinding.
+    const audit = (result as { audit?: AuditRecord }).audit as AuditRecord;
+    const auditIds = new Set(audit.plagiarismFindings.map((p) => p.id));
+    for (const f of result.findings) {
+      expect(f.auditRef?.plagiarismFindingId).toBeDefined();
+      expect(auditIds.has(f.auditRef!.plagiarismFindingId!)).toBe(true);
+    }
   });
 
   test("routes to explicit Gemini grounded plagiarism provider", async () => {

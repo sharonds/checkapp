@@ -7,6 +7,7 @@
     "claims": [
       {
         "claim": "OpenAI announced GPT-4 in March 2023.",
+        "source": "OpenAI announced GPT-4 in March 2023.",
         "supported": true,
         "note": "OpenAI's public GPT-4 materials support the March 2023 announcement date.",
         "sources": ["https://openai.com/index/gpt-4-research/"]
@@ -16,7 +17,7 @@
       "provider": "gemini-grounded",
       "verdict": "pass",
       "minSources": 1,
-      "reportContains": ["Gemini 3.1 Pro + Google Search", "OpenAI", "GPT-4"]
+      "reportContains": ["Gemini 3.1 Pro + Google Search", "claim verified"]
     }
   },
   {
@@ -27,6 +28,7 @@
     "claims": [
       {
         "claim": "OpenAI announced GPT-4 in March 2021.",
+        "source": "OpenAI announced GPT-4 in March 2021.",
         "supported": false,
         "note": "Grounded sources place the GPT-4 announcement in March 2023, not March 2021.",
         "sources": ["https://openai.com/index/gpt-4-research/"]
@@ -47,6 +49,7 @@
     "claims": [
       {
         "claim": "Super-Pharm offers the best pharmacy shopping experience in Israel.",
+        "source": "Super-Pharm offers the best pharmacy shopping experience in Israel.",
         "supported": null,
         "note": "The claim is subjective and cannot be verified as a factual statement from grounded sources.",
         "sources": []
@@ -67,6 +70,7 @@
     "claims": [
       {
         "claim": "סופר-פארם נוסדה בישראל בשנת 1978.",
+        "source": "סופר-פארם נוסדה בישראל בשנת 1978.",
         "supported": true,
         "note": "מקורות ציבוריים תומכים בכך שסופר-פארם נוסדה בשנת 1978.",
         "sources": ["https://www.ynet.co.il/articles/0,7340,L-4066088,00.html"]
@@ -76,7 +80,7 @@
       "provider": "gemini-grounded",
       "verdict": "pass",
       "minSources": 1,
-      "reportContains": ["Gemini 3.1 Pro + Google Search", "1978"]
+      "reportContains": ["Gemini 3.1 Pro + Google Search", "אומתו"]
     }
   },
   {
@@ -87,6 +91,7 @@
     "claims": [
       {
         "claim": "סופר-פארם נוסדה בישראל בשנת 1968.",
+        "source": "סופר-פארם נוסדה בישראל בשנת 1968.",
         "supported": false,
         "note": "המקורות מציינים את שנת 1978 ולא את 1968.",
         "sources": ["https://www.ynet.co.il/articles/0,7340,L-4066088,00.html"]
@@ -96,7 +101,7 @@
       "provider": "gemini-grounded",
       "verdict": "fail",
       "minSources": 1,
-      "reportContains": ["Unsupported", "1968"]
+      "reportContains": ["לא נתמך", "1968"]
     }
   },
   {
@@ -202,6 +207,7 @@
     "claims": [
       {
         "claim": "Super-Pharm was founded in Israel in 1978.",
+        "source": "Super-Pharm was founded in Israel in 1978.",
         "supported": true,
         "note": "Grounded sources support the 1978 founding date.",
         "sources": ["https://www.ynet.co.il/articles/0,7340,L-4066088,00.html"]
@@ -211,7 +217,57 @@
       "provider": "gemini-grounded",
       "verdict": "pass",
       "minSources": 1,
-      "reportContains": ["Gemini 3.1 Pro + Google Search", "1978"]
+      "reportContains": ["Gemini 3.1 Pro + Google Search", "אומתו"]
+    }
+  },
+  {
+    "id": "he-multi-claim",
+    "kind": "fact-check",
+    "language": "he",
+    "article": "articles/he-multi-claim.md",
+    "claims": [
+      {
+        "claim": "LEGO set 43015 is designed for ages 8 and up.",
+        "source": "ערכת לגו 43015 כוללת 490 חלקים ומיועדת לגיל 8 ומעלה.",
+        "supported": true,
+        "note": "מקורות רשמיים מאשרים שהסט מיועד לגיל 8 ומעלה.",
+        "sources": ["https://www.lego.com/en-us/product/43015"]
+      },
+      {
+        "claim": "LEGO set 43015 contains 490 pieces.",
+        "source": "ערכת לגו 43015 כוללת 490 חלקים ומיועדת לגיל 8 ומעלה.",
+        "supported": false,
+        "note": "מקורות רשמיים מציינים מספר חלקים שונה מ-490.",
+        "sources": ["https://www.lego.com/en-us/product/43015"]
+      }
+    ],
+    "expect": {
+      "provider": "gemini-grounded",
+      "verdict": "fail",
+      "minSources": 1,
+      "reportContains": ["490 חלקים", "אומתו", "מספר חלקים שונה"]
+    }
+  },
+  {
+    "id": "en-fact-approx",
+    "kind": "fact-check",
+    "language": "en",
+    "article": "articles/en-fact-approx.md",
+    "claims": [
+      {
+        "claim": "Heat-pump dryers save 50% on electricity.",
+        "source": "Heat-pump dryers cut household power consumption dramatically.",
+        "supported": false,
+        "note": "Independent testing shows savings well below 50%.",
+        "sources": ["https://www.energystar.gov/products/clothes_dryers"],
+        "expectApproximate": true
+      }
+    ],
+    "expect": {
+      "provider": "gemini-grounded",
+      "verdict": "fail",
+      "minSources": 1,
+      "reportContains": ["location approximate", "Unsupported"]
     }
   }
 ]

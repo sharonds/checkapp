@@ -18,6 +18,34 @@ import {
 } from "../audit/document.ts";
 import type { AuditClaim, AuditRecord, ClaimDecision, FactAssessment, ProviderAttempt } from "../audit/types.ts";
 
+export interface ExtractedClaim {
+  assertion: string; // atomic, self-contained — the unit we VERIFY
+  source: string;    // verbatim sentence from the article — the span we LOCATE + show
+}
+
+export function parseExtractedClaims(rawJson: string): ExtractedClaim[] | null {
+  if (!rawJson.trim()) return null;
+  let parsed: unknown;
+  try {
+    parsed = parseJsonResponse<unknown>(rawJson); // existing tolerant JSON extractor
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(parsed)) return null;
+  const claims = parsed
+    // Require both fields to already be strings — a key-only check would let a
+    // malformed row like {assertion: null} or {source: {...}} through and
+    // String()-coerce it into a bogus "null"/"[object Object]" claim.
+    .filter((row): row is { assertion: string; source: string } =>
+      !!row && typeof row === "object"
+      && typeof (row as { assertion?: unknown }).assertion === "string"
+      && typeof (row as { source?: unknown }).source === "string")
+    .map((row) => ({ assertion: row.assertion.trim(), source: row.source.trim() }))
+    .filter((c) => c.assertion.length > 0 && c.source.length > 0)
+    .slice(0, 20);
+  return claims; // may be [] (parsed ok, no usable claims) — distinct from null (parse failed)
+}
+
 export function extractClaimsPrompt(articleText: string): string {
   return `Extract up to 20 specific, verifiable factual claims from across the entire article below.
 Return ONLY a JSON array of strings, no other text. Each string is one claim.
@@ -31,6 +59,23 @@ Example output:
 ["More than one billion people are vitamin D deficient worldwide.", "Vitamin D deficiency causes rickets in children."]
 
 JSON array of claims:`;
+}
+
+export function extractClaimsPromptGrounded(articleText: string): string {
+  return `From the article below, extract up to 20 verifiable factual claims.
+Return ONLY a JSON array of objects, no other text. Each object has exactly two string fields:
+- "assertion": ONE atomic, SELF-CONTAINED factual statement that can be verified on its own. Include the entity/subject so it stands alone (e.g. "LEGO set 43013 contains 490 pieces", NOT "contains ~520 pieces"). One fact per assertion — split a sentence that states several facts into several objects.
+- "source": the EXACT sentence from the article (copied VERBATIM, in the original language, no translation) that this assertion comes from, so it can be located in the article.
+A single source sentence may appear in multiple objects when it states multiple facts.
+Focus on statistics, dates, specs, prices, rules, and named entities — not opinions.
+
+Article:
+${articleText}
+
+Example output:
+[{"assertion":"LEGO set 43020 contains 2842 pieces","source":"ערכת גביע העולם הרשמי (סט 43020) מורכבת מ-2,842 חלקים."}]
+
+JSON array:`;
 }
 
 export function formatCitation(url: string): string {

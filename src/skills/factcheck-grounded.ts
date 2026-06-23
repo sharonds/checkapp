@@ -5,7 +5,7 @@ import { getProvider } from "../providers/registry.ts";
 import { resolveProvider } from "../providers/resolve.ts";
 import { emitGroundedCallEvent } from "../telemetry/audit-events.ts";
 import { getLlmClient, parseJsonResponse } from "./llm.ts";
-import { claimConfidence, formatCitation, extractClaimsPrompt } from "./factcheck.ts";
+import { claimConfidence, formatCitation, extractClaimsPromptGrounded, parseExtractedClaims, type ExtractedClaim } from "./factcheck.ts";
 import type { ClaimType, Finding, Skill, SkillResult, Source } from "./types.ts";
 import { isE2E, assertMocksOnly } from "../e2e/mode.ts";
 import { loadScenario } from "../e2e/fixtures.ts";
@@ -64,7 +64,8 @@ interface GroundedAssessment {
 }
 
 interface GroundedClaimResult {
-  claim: string;
+  assertion: string;
+  source: string;
   assessment: GroundedAssessment;
   sources: Source[];
   webSearchQueries: string[];
@@ -138,7 +139,14 @@ export class FactCheckGroundedSkill implements Skill {
     // that actually serves the calls (the capability layer owns the choice).
     const groundedModel = createGeminiCapability({ apiKey }).getModel("grounded");
 
-    const llm = getLlmClient({ ...config, geminiApiKey: config.geminiApiKey ?? apiKey });
+    // Claim extraction runs on Gemini (chat model = pro, with the capability
+    // layer's flash fallback if pro is unhealthy) so the grounded fact-check is
+    // Gemini end-to-end and never falls back to MiniMax, whose reasoning path
+    // intermittently returns an empty response (zero claims, no fact-check).
+    // Use the SAME resolved key for extraction as for grounding (resolveProvider
+    // prefers the provider-scoped key); preferring a global geminiApiKey here would
+    // let extraction and grounding diverge onto different keys.
+    const llm = getLlmClient({ ...config, llmProvider: "gemini", geminiApiKey: apiKey ?? config.geminiApiKey });
     if (!llm) {
       return skippedResult(this, "no LLM key configured for claim extraction");
     }
@@ -195,10 +203,18 @@ export class FactCheckGroundedSkill implements Skill {
     let costUsd = 0.001;
 
     const budget = createAuditBudget(config, "standard");
-    const claimSelection = selectClaimsForAudit(claims, budget);
+    // Budget selection works on assertion strings; re-zip the index-aligned
+    // ExtractedClaim[] afterward. selectClaimsForAudit preserves order:
+    // checkedClaims = prefix, skippedClaims = suffix.
+    const claimSelection = selectClaimsForAudit(claims.map((c) => c.assertion), budget);
+    const checkedClaims: ExtractedClaim[] = claims.slice(0, claimSelection.checkedClaims.length);
+    const selectionSkipped: Array<{ claim: ExtractedClaim; skipReason: AuditBudgetStopReason }> =
+      claimSelection.skippedClaims.map((skipped, i) => ({
+        claim: claims[claimSelection.checkedClaims.length + i]!,
+        skipReason: skipped.skipReason,
+      }));
     const groundedResults: GroundedClaimResult[] = [];
-    const runtimeSkippedClaims: Array<{ claim: string; skipReason: AuditBudgetStopReason }> = [];
-    const checkedClaims = claimSelection.checkedClaims;
+    const runtimeSkippedClaims: Array<{ claim: ExtractedClaim; skipReason: AuditBudgetStopReason }> = [];
     const budgetStartedAt = Date.now();
     let providerRetries = 0;
     let providerFailures = 0;
@@ -222,14 +238,15 @@ export class FactCheckGroundedSkill implements Skill {
         break;
       }
       const grounded = await assessClaimGrounded(
-        claim,
+        claim.assertion,
+        claim.source,
         apiKey,
         groundedModel,
         perClaimCost,
         remainingProviderRetries(budget.maxProviderRetries, providerRetries),
       );
       costUsd += perClaimCost;
-      groundedResults.push({ claim, ...grounded });
+      groundedResults.push({ assertion: claim.assertion, source: claim.source, ...grounded });
       providerRetries += grounded.attempts.filter((attempt) => attempt.status === "retry").length;
       providerFailures += grounded.attempts.filter((attempt) => attempt.status === "failed").length;
       inputTokens += sumAttemptTokens(grounded.attempts, "inputTokens");
@@ -253,26 +270,31 @@ export class FactCheckGroundedSkill implements Skill {
       attemptIdsByResult.set(resultIndex, ids);
     }
 
-    for (const [index, { claim, assessment, sources, webSearchQueries, providerError }] of groundedResults.entries()) {
+    for (const [index, { assertion, source, assessment, sources, webSearchQueries, providerError }] of groundedResults.entries()) {
       const supported = providerError ? null : sources.length === 0 && assessment.supported === true ? null : assessment.supported;
-      const confidence = providerError ? "low" : claimConfidence(sources.length, supported);
+      const located = locateQuote(text, source, documentAnalysis);
+      const locationApproximate = !located.location || located.location.matchQuality === "fuzzy";
+      const confidence = providerError ? "low" : locationApproximate ? "low" : claimConfidence(sources.length, supported);
+      const approxMarker = locationApproximate
+        ? (located.language === "he" ? " (מיקום משוער — המקור לא אותר מילה במילה)" : " (location approximate — source not found verbatim)")
+        : "";
+      const note = `${assessment.note}${approxMarker}`;
       const queryHint = webSearchQueries.length > 0 ? ` Search: ${webSearchQueries.slice(0, 2).join(" | ")}` : "";
       const base = { sources, confidence, claimType: "general" as ClaimType };
-      const located = locateQuote(text, claim, documentAnalysis);
       const claimId = `claim-${index + 1}`;
       const assessmentId = `assessment-${index + 1}`;
       const status = providerError ? "provider_error" : supported === false ? "unsupported" : supported === null ? "unverified" : "supported";
       const rationale = providerError ? "Provider attempt failed; review manually." : confidenceRationale(sources.length, confidence);
-      const rewrite = status === "supported" || status === "provider_error" ? undefined : factRewriteSuggestion(located.quote, located.language, supported, assessment.note);
+      const rewrite = status === "supported" || status === "provider_error" ? undefined : factRewriteSuggestion(located.quote, located.language, supported, note);
       auditClaims.push({
         id: claimId,
         quote: located.quote,
-        normalizedClaim: claim,
+        normalizedClaim: assertion,
         type: "general",
         language: located.language,
         direction: located.direction,
         location: located.location,
-        searchQueries: webSearchQueries.length ? webSearchQueries : [claim],
+        searchQueries: webSearchQueries.length ? webSearchQueries : [assertion],
       });
       claimDecisions.push({ claimId, decision: "checked" });
       factAssessments.push({
@@ -285,10 +307,10 @@ export class FactCheckGroundedSkill implements Skill {
           quote: source.quote,
           accepted: true,
         })),
-        explanation: assessment.note,
+        explanation: note,
         confidence,
         confidenceRationale: rationale,
-        searchQueries: webSearchQueries.length ? webSearchQueries : [claim],
+        searchQueries: webSearchQueries.length ? webSearchQueries : [assertion],
         provider: resolved.provider,
         model: groundedModel,
         attemptIds: attemptIdsByResult.get(index) ?? [],
@@ -303,11 +325,11 @@ export class FactCheckGroundedSkill implements Skill {
         status,
         quote: located.quote,
         location: located.location,
-        explanation: assessment.note,
+        explanation: note,
         explanationLanguage: located.language,
         explanationDir: located.direction,
         confidenceRationale: rationale,
-        searchQueries: webSearchQueries.length ? webSearchQueries : [claim],
+        searchQueries: webSearchQueries.length ? webSearchQueries : [assertion],
         provider: resolved.provider,
         model: groundedModel,
         auditRef: { auditId, claimId, assessmentId },
@@ -316,21 +338,21 @@ export class FactCheckGroundedSkill implements Skill {
       if (providerError) {
         findings.push({
           severity: "warn",
-          text: `Provider error (${confidence} confidence): "${claim}" — ${assessment.note}${queryHint}`,
+          text: `Provider error (${confidence} confidence): "${assertion}" — ${note}${queryHint}`,
           ...base,
           ...auditFields,
         });
       } else if (supported === false) {
         findings.push({
           severity: "error",
-          text: `Unsupported (${confidence} confidence): "${claim}" — ${assessment.note}${queryHint}`,
+          text: `Unsupported (${confidence} confidence): "${assertion}" — ${note}${queryHint}`,
           ...base,
           ...auditFields,
         });
       } else if (supported === null) {
         findings.push({
           severity: "warn",
-          text: `Unverified (${confidence} confidence): "${claim}" — ${sources.length === 0 ? "No grounded source URL was returned." : assessment.note}${queryHint}`,
+          text: `Unverified (${confidence} confidence): "${assertion}" — ${sources.length === 0 ? "No grounded source URL was returned." : note}${queryHint}`,
           ...base,
           ...auditFields,
         });
@@ -338,27 +360,27 @@ export class FactCheckGroundedSkill implements Skill {
         const citations = sources.slice(0, 2).map((source) => formatCitation(source.url)).join(", ");
         findings.push({
           severity: "info",
-          text: `Verified (${confidence} confidence): "${claim}" — ${assessment.note}${citations ? `. Cite: ${citations}` : ""}${queryHint}`,
+          text: `Verified (${confidence} confidence): "${assertion}" — ${note}${citations ? `. Cite: ${citations}` : ""}${queryHint}`,
           ...base,
           ...auditFields,
         });
       }
     }
 
-    const skippedClaims = [...runtimeSkippedClaims, ...claimSelection.skippedClaims];
+    const skippedClaims = [...runtimeSkippedClaims, ...selectionSkipped];
     for (const [offset, skipped] of skippedClaims.entries()) {
-      const claim = skipped.claim;
-      const located = locateQuote(text, claim, documentAnalysis);
+      const claim = skipped.claim; // ExtractedClaim
+      const located = locateQuote(text, claim.source, documentAnalysis);
       const claimId = `claim-${groundedResults.length + offset + 1}`;
       auditClaims.push({
         id: claimId,
         quote: located.quote,
-        normalizedClaim: claim,
+        normalizedClaim: claim.assertion,
         type: "general",
         language: located.language,
         direction: located.direction,
         location: located.location,
-        searchQueries: [claim],
+        searchQueries: [claim.assertion],
       });
       claimDecisions.push({ claimId, decision: "skipped", skipReason: skipped.skipReason });
     }
@@ -414,22 +436,26 @@ function budgetStopReasonFromKey(key: ReturnType<typeof shouldStopForBudget>): A
 }
 
 // Returns null when the extraction provider produced an unusable response
-// (empty, unparseable, or non-array). Reasoning models can exhaust max_tokens
-// inside their thinking block and emit no text at all, so an empty response
-// means "extraction failed", never "the article has no claims".
+// (empty, unparseable, non-array, or a thrown provider error). The Gemini
+// caller throws on an empty response (where MiniMax returned ""), so a thrown
+// error is treated identically to empty text: "extraction failed", never "the
+// article has no claims". Reasoning models can also exhaust max_tokens inside
+// their thinking block and emit no text at all — same graceful degradation.
 async function extractClaims(
   text: string,
   call: (prompt: string, maxTokens?: number) => Promise<string>,
-): Promise<string[] | null> {
-  const claimsText = await call(extractClaimsPrompt(text), 4096);
-  if (!claimsText.trim()) return null;
-
+): Promise<ExtractedClaim[] | null> {
+  let claimsText: string;
   try {
-    const parsed = parseJsonResponse<string[]>(claimsText);
-    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string").slice(0, 20) : null;
+    // 8192 (the Gemini caller's cap), not 4096: the Gemini pro thinking-model
+    // spends part of the output budget on reasoning, and a 4096 budget made it
+    // intermittently emit empty text on longer articles (zero claims). 8192 is
+    // reliable in practice; flash fits comfortably either way.
+    claimsText = await call(extractClaimsPromptGrounded(text), 8192);
   } catch {
     return null;
   }
+  return parseExtractedClaims(claimsText);
 }
 
 // Module-level cursor for deterministic E2E claim-by-claim replay. Reset when
@@ -438,12 +464,13 @@ let _e2eGroundedCursor = 0;
 let _e2eGroundedScenarioName: string | null = null;
 
 async function assessClaimGrounded(
-  claim: string,
+  assertion: string,
+  source: string,
   apiKey: string,
   groundedModel: string,
   perClaimCost: number,
   retriesLeft = 1,
-): Promise<Omit<GroundedClaimResult, "claim">> {
+): Promise<Omit<GroundedClaimResult, "assertion" | "source">> {
   if (isE2E()) {
     const s = loadScenario();
     if (s.name !== _e2eGroundedScenarioName) {
@@ -479,7 +506,8 @@ async function assessClaimGrounded(
 
   assertMocksOnly("gemini-grounded");
   const { response, attempts, errorMessage } = await fetchGroundedAssessment(
-    claim,
+    assertion,
+    source,
     apiKey,
     groundedModel,
     retriesLeft,
@@ -489,7 +517,7 @@ async function assessClaimGrounded(
     return {
       assessment: { supported: null, note: errorMessage ?? "Gemini grounded provider did not return a usable response." },
       sources: [],
-      webSearchQueries: [claim],
+      webSearchQueries: [assertion],
       attempts,
       providerError: true,
     };
@@ -518,7 +546,8 @@ interface GeminiGroundedFetchResult {
 }
 
 async function fetchGroundedAssessment(
-  claim: string,
+  assertion: string,
+  source: string,
   apiKey: string,
   model: string,
   retriesLeft: number,
@@ -530,7 +559,7 @@ async function fetchGroundedAssessment(
     emitGroundedCallEvent({
       provider: "gemini-grounded",
       model,
-      claimPreview: claim.slice(0, 160),
+      claimPreview: assertion.slice(0, 160),
       retriesLeft,
       costUsd: perClaimCost,
       ...payload,
@@ -546,7 +575,7 @@ async function fetchGroundedAssessment(
         body: JSON.stringify({
           contents: [{
             parts: [{
-              text: buildGroundedPrompt(claim),
+              text: buildGroundedPrompt(assertion, source),
             }],
           }],
           tools: [{ google_search: {} }],
@@ -577,7 +606,7 @@ async function fetchGroundedAssessment(
         errorMessage,
       });
       await sleep(groundedRetryDelayMs());
-      return fetchGroundedAssessment(claim, apiKey, model, retriesLeft - 1, perClaimCost, attempts);
+      return fetchGroundedAssessment(assertion, source, apiKey, model, retriesLeft - 1, perClaimCost, attempts);
     }
     attempts.push({
       provider: "gemini-grounded",
@@ -610,7 +639,7 @@ async function fetchGroundedAssessment(
       totalTokens: null,
     });
     await sleep(Math.max(computeRetryAfterDelayMs(response.headers.get("retry-after")), groundedRetryDelayMs()));
-    return fetchGroundedAssessment(claim, apiKey, model, retriesLeft - 1, perClaimCost, attempts);
+    return fetchGroundedAssessment(assertion, source, apiKey, model, retriesLeft - 1, perClaimCost, attempts);
   }
 
   if (!response.ok) {
@@ -676,12 +705,13 @@ function groundedRetryDelayMs(): number {
   return Number.isFinite(configured) && configured >= 0 ? configured : 3_000;
 }
 
-function buildGroundedPrompt(claim: string): string {
+function buildGroundedPrompt(assertion: string, source: string): string {
   return [
     "Use Google Search grounding to assess whether this claim is supported by current, credible sources.",
-    `Claim: "${claim}"`,
+    `Claim: "${assertion}"`,
     'Return a short explanation and include a JSON object exactly in this shape somewhere in the response: {"supported":true|false|null,"note":"string"}',
     "Set supported=true when the claim is well-supported, false when evidence contradicts it, and null when evidence is insufficient or mixed.",
+    `Write the "note" in the SAME LANGUAGE as this source text: «${source}». When supported=false, the note must state the correct fact.`,
     "Keep note to one sentence.",
   ].join("\n\n");
 }

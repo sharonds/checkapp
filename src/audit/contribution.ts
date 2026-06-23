@@ -1,6 +1,7 @@
 import type { SkillResult } from "../skills/types.ts";
 import type { AuditCoverage, AuditLocation, AuditRecord, AuditRef, AuditSegment } from "./types.ts";
 import { parseAuditRecord, safeParseAuditRecord, sanitizeAuditUrl } from "./types.ts";
+import { emitAuditFailedEvent } from "../telemetry/audit-events.ts";
 
 export interface AuditContribution {
   audit: AuditRecord;
@@ -34,15 +35,26 @@ export function normalizeSkillRunOutput(output: SkillRunOutput): NormalizedSkill
     const audit = output.audit ? safeParseAuditRecord(output.audit) : undefined;
     return {
       result: output.result,
-      audit: audit?.ok ? audit.value : undefined,
+      audit: resolveSkillAudit(audit),
     };
   }
   const audit = "audit" in output && output.audit ? safeParseAuditRecord(output.audit) : undefined;
   if ("audit" in output) {
     const { audit: _audit, ...result } = output;
-    return { result, audit: audit?.ok ? audit.value : undefined };
+    return { result, audit: resolveSkillAudit(audit) };
   }
   return { result: output, audit: undefined };
+}
+
+// Surface (do not swallow) a skill that emits an invalid audit. The pipeline still
+// produces a result with audit:undefined, but the parse failure is now logged loudly
+// instead of vanishing silently before the merge.
+function resolveSkillAudit(audit: ReturnType<typeof safeParseAuditRecord> | undefined): AuditRecord | undefined {
+  if (!audit) return undefined;
+  if (audit.ok) return audit.value;
+  emitAuditFailedEvent({ stage: "merge-input", error: audit.error });
+  console.error(`[audit] dropping invalid skill audit before merge: ${audit.error}`);
+  return undefined;
 }
 
 export function mergeAuditContributions(audits: Array<AuditRecord | undefined>): AuditRecord | undefined {

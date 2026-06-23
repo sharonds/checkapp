@@ -55,7 +55,18 @@ export function generateMarkdownReport(record: Omit<CheckRecord, "id" | "created
     md += `## ${VERDICT_ICON[r.verdict] ?? ""} ${localizedSkillName(r, locale)} — ${formatSkillScore(r)} ${markdownVerdict(r.verdict, locale)}\n\n`;
     if (r.provider) md += `**${providerHeader}:** ${PROVIDER_LABEL[r.provider] ?? r.provider}\n\n`;
     md += `${localizedMarkdownSummary(r, locale, record.audit?.coverage)}\n\n`;
-    const visible = r.findings.filter(f => f.severity === "warn" || f.severity === "error" || (f.sources?.length ?? 0) > 0);
+    // Match the HTML report: for fact-check, show only problems and collapse
+    // verified ("info") claims to a count line; other skills keep their info
+    // findings that carry sources.
+    const isFactCheck = r.skillId === "fact-check" || r.skillId === "fact-check-grounded";
+    // Only "supported" info findings are verified claims; other fact-check info
+    // findings (e.g. provider-setup guidance) stay visible, not collapsed.
+    const isVerifiedClaim = (f: (typeof r.findings)[number]) => f.severity === "info" && f.status === "supported";
+    const visible = r.findings.filter(f => f.severity === "warn" || f.severity === "error" || (!isFactCheck && (f.sources?.length ?? 0) > 0) || (isFactCheck && f.severity === "info" && !isVerifiedClaim(f)));
+    const verifiedCount = isFactCheck ? r.findings.filter(isVerifiedClaim).length : 0;
+    if (verifiedCount > 0) {
+      md += `✓ ${verifiedCount} ${locale === "he" ? "טענות אומתו (לא מוצגות)" : (verifiedCount === 1 ? "claim verified (not shown)" : "claims verified (not shown)")}\n\n`;
+    }
     if (visible.length > 0) {
       for (const f of visible) {
         md += `- ${SEVERITY_ICON[f.severity] ?? ""} ${localizedFindingText(f, locale)}\n`;

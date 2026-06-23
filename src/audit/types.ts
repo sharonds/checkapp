@@ -254,10 +254,18 @@ export function parseStoredAuditRecord(rawJson: string | null | undefined): Audi
   }
 }
 
-export function serializeAuditRecord(audit: AuditRecord | null | undefined): string | null {
-  if (!audit) return null;
+export type SerializeAuditResult =
+  | { ok: true; json: string | null }
+  | { ok: false; error: string };
+
+export function serializeAuditRecord(audit: AuditRecord | null | undefined): SerializeAuditResult {
+  // A null/undefined audit is not an error — there is simply nothing to store.
+  if (!audit) return { ok: true, json: null };
   const parsed = safeParseAuditRecord(audit);
-  return parsed.ok ? JSON.stringify(parsed.value) : null;
+  // A present-but-invalid audit is an error the caller MUST surface. Returning a
+  // bare null here is the silent-drop bug this signature is designed to prevent.
+  if (!parsed.ok) return { ok: false, error: parsed.error };
+  return { ok: true, json: JSON.stringify(parsed.value) };
 }
 
 export function redactAuditRecordText(audit: AuditRecord | null | undefined): AuditRecord | undefined {

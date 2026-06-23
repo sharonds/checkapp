@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { Config } from "../config.ts";
 import { jsonResponse, mockFetch, urlRouter } from "../testing/mock-fetch.ts";
 import { FactCheckGroundedSkill, computeRetryAfterDelayMs } from "./factcheck-grounded.ts";
+import { locateQuote } from "../audit/document.ts";
 
 describe("FactCheckGroundedSkill", () => {
   const baseConfig: Config = {
@@ -50,59 +51,60 @@ describe("FactCheckGroundedSkill", () => {
   test("parses grounded response text and groundingMetadata into findings", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "checkapp-grounded-events-"));
     process.env.CHECKAPP_AUDIT_EVENTS_PATH = join(tempDir, "audit-events.jsonl");
-    let minimaxCalls = 0;
+    let extractionCalls = 0;
     mockFetch(urlRouter({
-      "api.minimax.io": async () => {
-        minimaxCalls++;
+      // Extraction and grounding share the Gemini host; branch on tools.
+      "generativelanguage.googleapis.com": async (req) => {
+        const body = await req.json() as { tools?: unknown };
+        if (!body.tools) {
+          extractionCalls++;
+          return jsonResponse({
+            candidates: [{
+              content: {
+                parts: [{
+                  text: JSON.stringify([
+                    { assertion: "The Netherlands banned indoor smoking in workplaces and hospitality venues in 2008.", source: "Smoking laws changed in 2008." },
+                  ]),
+                }],
+              },
+            }],
+          });
+        }
         return jsonResponse({
-          id: "msg_1",
-          type: "message",
-          role: "assistant",
-          model: "MiniMax-M2.7",
-          content: [{
-            type: "text",
-            text: JSON.stringify([
-              "The Netherlands banned indoor smoking in workplaces and hospitality venues in 2008.",
-            ]),
+          candidates: [{
+            content: {
+              parts: [
+                { thought: true, text: "private chain of thought" },
+                { text: "Grounded assessment:\n```json\n{\"supported\":true,\"note\":\"Current government and public health sources confirm the timeline.\"}\n```" },
+              ],
+            },
+            groundingMetadata: {
+              webSearchQueries: ["netherlands indoor smoking ban 2008"],
+              groundingChunks: [
+                { web: { uri: "https://www.government.nl/topics/smoking", title: "Government.nl Smoking Policy" } },
+                { web: { uri: "https://www.who.int/europe/news-room/fact-sheets/item/tobacco", title: "WHO Europe Tobacco" } },
+                { web: { uri: "javascript:alert(1)", title: "Unsafe" } },
+              ],
+              groundingSupports: [
+                { groundingChunkIndices: [0], segment: { text: "The smoking ban came into force in 2008." } },
+                { groundingChunkIndices: [1], segment: { text: "Smoke-free hospitality laws were expanded in 2008." } },
+                { groundingChunkIndices: [2], segment: { text: "Unsafe URL must be ignored." } },
+              ],
+            },
           }],
-          stop_reason: "end_turn",
-          usage: { input_tokens: 10, output_tokens: 10 },
+          usageMetadata: {
+            promptTokenCount: 111,
+            candidatesTokenCount: 22,
+            totalTokenCount: 133,
+          },
         });
       },
-      "generativelanguage.googleapis.com": async () => jsonResponse({
-        candidates: [{
-          content: {
-            parts: [
-              { thought: true, text: "private chain of thought" },
-              { text: "Grounded assessment:\n```json\n{\"supported\":true,\"note\":\"Current government and public health sources confirm the timeline.\"}\n```" },
-            ],
-          },
-          groundingMetadata: {
-            webSearchQueries: ["netherlands indoor smoking ban 2008"],
-            groundingChunks: [
-              { web: { uri: "https://www.government.nl/topics/smoking", title: "Government.nl Smoking Policy" } },
-              { web: { uri: "https://www.who.int/europe/news-room/fact-sheets/item/tobacco", title: "WHO Europe Tobacco" } },
-              { web: { uri: "javascript:alert(1)", title: "Unsafe" } },
-            ],
-            groundingSupports: [
-              { groundingChunkIndices: [0], segment: { text: "The smoking ban came into force in 2008." } },
-              { groundingChunkIndices: [1], segment: { text: "Smoke-free hospitality laws were expanded in 2008." } },
-              { groundingChunkIndices: [2], segment: { text: "Unsafe URL must be ignored." } },
-            ],
-          },
-        }],
-        usageMetadata: {
-          promptTokenCount: 111,
-          candidatesTokenCount: 22,
-          totalTokenCount: 133,
-        },
-      }),
     }));
 
     try {
       const result = await new FactCheckGroundedSkill().run("Smoking laws changed in 2008.", baseConfig);
 
-      expect(minimaxCalls).toBe(1);
+      expect(extractionCalls).toBe(1);
       expect(result.provider).toBe("gemini-grounded");
       expect(result.verdict).toBe("pass");
       expect(result.summary).toContain("1 claims checked");
@@ -155,16 +157,13 @@ describe("FactCheckGroundedSkill", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "checkapp-grounded-error-events-"));
     process.env.CHECKAPP_AUDIT_EVENTS_PATH = join(tempDir, "audit-events.jsonl");
     mockFetch(urlRouter({
-      "api.minimax.io": async () => jsonResponse({
-        id: "msg_extract_grounded_error",
-        type: "message",
-        role: "assistant",
-        model: "MiniMax-M2.7",
-        content: [{ type: "text", text: JSON.stringify(["The claim needs checking."]) }],
-        stop_reason: "end_turn",
-        usage: { input_tokens: 10, output_tokens: 10 },
-      }),
-      "generativelanguage.googleapis.com": async () => {
+      "generativelanguage.googleapis.com": async (req) => {
+        const body = await req.json() as { tools?: unknown };
+        if (!body.tools) {
+          return jsonResponse({
+            candidates: [{ content: { parts: [{ text: JSON.stringify([{ assertion: "The claim needs checking.", source: "The claim needs checking." }]) }] } }],
+          });
+        }
         throw new Error("request failed https://generativelanguage.googleapis.com/v1beta/models/x:generateContent?key=gemini-key token=abc123");
       },
     }));
@@ -197,33 +196,29 @@ describe("FactCheckGroundedSkill", () => {
 
   test("standard tier uses Gemini grounded even when saved fact-check provider is Exa", async () => {
     mockFetch(urlRouter({
-      "api.minimax.io": async () => jsonResponse({
-        id: "msg_extract_grounded",
-        type: "message",
-        role: "assistant",
-        model: "MiniMax-M2.7",
-        content: [{
-          type: "text",
-          text: JSON.stringify(["OpenAI announced GPT-4 in March 2023."]),
-        }],
-        stop_reason: "end_turn",
-        usage: { input_tokens: 10, output_tokens: 10 },
-      }),
-      "generativelanguage.googleapis.com": async () => jsonResponse({
-        candidates: [{
-          content: {
-            parts: [
-              { text: "{\"supported\":true,\"note\":\"Grounded sources support the claim.\"}" },
-            ],
-          },
-          groundingMetadata: {
-            webSearchQueries: ["OpenAI GPT-4 March 2023"],
-            groundingChunks: [
-              { web: { uri: "https://openai.com/index/gpt-4-research/", title: "GPT-4 research" } },
-            ],
-          },
-        }],
-      }),
+      "generativelanguage.googleapis.com": async (req) => {
+        const body = await req.json() as { tools?: unknown };
+        if (!body.tools) {
+          return jsonResponse({
+            candidates: [{ content: { parts: [{ text: JSON.stringify([{ assertion: "OpenAI announced GPT-4 in March 2023.", source: "OpenAI announced GPT-4 in March 2023." }]) }] } }],
+          });
+        }
+        return jsonResponse({
+          candidates: [{
+            content: {
+              parts: [
+                { text: "{\"supported\":true,\"note\":\"Grounded sources support the claim.\"}" },
+              ],
+            },
+            groundingMetadata: {
+              webSearchQueries: ["OpenAI GPT-4 March 2023"],
+              groundingChunks: [
+                { web: { uri: "https://openai.com/index/gpt-4-research/", title: "GPT-4 research" } },
+              ],
+            },
+          }],
+        });
+      },
     }));
 
     const result = await new FactCheckGroundedSkill().run("OpenAI announced GPT-4 in March 2023.", {
@@ -241,19 +236,25 @@ describe("FactCheckGroundedSkill", () => {
   test("uses factAudit.standardMaxClaims and records claim-cap skips", async () => {
     let assessmentCalls = 0;
     mockFetch(urlRouter({
-      "api.minimax.io": async () => jsonResponse({
-        id: "msg_extract_many",
-        type: "message",
-        role: "assistant",
-        model: "MiniMax-M2.7",
-        content: [{
-          type: "text",
-          text: JSON.stringify(["Claim one.", "Claim two.", "Claim three.", "Claim four.", "Claim five."]),
-        }],
-        stop_reason: "end_turn",
-        usage: { input_tokens: 10, output_tokens: 10 },
-      }),
-      "generativelanguage.googleapis.com": async () => {
+      "generativelanguage.googleapis.com": async (req) => {
+        const body = await req.json() as { tools?: unknown };
+        if (!body.tools) {
+          return jsonResponse({
+            candidates: [{
+              content: {
+                parts: [{
+                  text: JSON.stringify([
+                    { assertion: "Claim one.", source: "Claim one." },
+                    { assertion: "Claim two.", source: "Claim two." },
+                    { assertion: "Claim three.", source: "Claim three." },
+                    { assertion: "Claim four.", source: "Claim four." },
+                    { assertion: "Claim five.", source: "Claim five." },
+                  ]),
+                }],
+              },
+            }],
+          });
+        }
         assessmentCalls++;
         return jsonResponse({
           candidates: [{
@@ -283,19 +284,23 @@ describe("FactCheckGroundedSkill", () => {
   test("stops grounded fact-check execution when the configured cost budget is reached", async () => {
     let assessmentCalls = 0;
     mockFetch(urlRouter({
-      "api.minimax.io": async () => jsonResponse({
-        id: "msg_extract_cost_budget",
-        type: "message",
-        role: "assistant",
-        model: "MiniMax-M2.7",
-        content: [{
-          type: "text",
-          text: JSON.stringify(["Claim one.", "Claim two.", "Claim three."]),
-        }],
-        stop_reason: "end_turn",
-        usage: { input_tokens: 10, output_tokens: 10 },
-      }),
-      "generativelanguage.googleapis.com": async () => {
+      "generativelanguage.googleapis.com": async (req) => {
+        const body = await req.json() as { tools?: unknown };
+        if (!body.tools) {
+          return jsonResponse({
+            candidates: [{
+              content: {
+                parts: [{
+                  text: JSON.stringify([
+                    { assertion: "Claim one.", source: "Claim one." },
+                    { assertion: "Claim two.", source: "Claim two." },
+                    { assertion: "Claim three.", source: "Claim three." },
+                  ]),
+                }],
+              },
+            }],
+          });
+        }
         assessmentCalls++;
         return jsonResponse({
           candidates: [{
@@ -326,19 +331,13 @@ describe("FactCheckGroundedSkill", () => {
     let assessmentCalls = 0;
     try {
       mockFetch(urlRouter({
-        "api.minimax.io": async () => jsonResponse({
-          id: "msg_extract_retry",
-          type: "message",
-          role: "assistant",
-          model: "MiniMax-M2.7",
-          content: [{
-            type: "text",
-            text: JSON.stringify(["Claim one."]),
-          }],
-          stop_reason: "end_turn",
-          usage: { input_tokens: 10, output_tokens: 10 },
-        }),
-        "generativelanguage.googleapis.com": async () => {
+        "generativelanguage.googleapis.com": async (req) => {
+          const body = await req.json() as { tools?: unknown };
+          if (!body.tools) {
+            return jsonResponse({
+              candidates: [{ content: { parts: [{ text: JSON.stringify([{ assertion: "Claim one.", source: "Claim one." }]) }] } }],
+            });
+          }
           assessmentCalls++;
           if (assessmentCalls === 1) return new Response("temporary", { status: 503 });
           return jsonResponse({
@@ -370,19 +369,13 @@ describe("FactCheckGroundedSkill", () => {
     let assessmentCalls = 0;
     try {
       mockFetch(urlRouter({
-        "api.minimax.io": async () => jsonResponse({
-          id: "msg_extract_two_retries",
-          type: "message",
-          role: "assistant",
-          model: "MiniMax-M2.7",
-          content: [{
-            type: "text",
-            text: JSON.stringify(["Claim one."]),
-          }],
-          stop_reason: "end_turn",
-          usage: { input_tokens: 10, output_tokens: 10 },
-        }),
-        "generativelanguage.googleapis.com": async () => {
+        "generativelanguage.googleapis.com": async (req) => {
+          const body = await req.json() as { tools?: unknown };
+          if (!body.tools) {
+            return jsonResponse({
+              candidates: [{ content: { parts: [{ text: JSON.stringify([{ assertion: "Claim one.", source: "Claim one." }]) }] } }],
+            });
+          }
           assessmentCalls++;
           if (assessmentCalls <= 2) return new Response("temporary", { status: 503 });
           return jsonResponse({
@@ -415,19 +408,13 @@ describe("FactCheckGroundedSkill", () => {
   test("records provider-error audit details when Gemini retries are exhausted", async () => {
     let assessmentCalls = 0;
     mockFetch(urlRouter({
-      "api.minimax.io": async () => jsonResponse({
-        id: "msg_extract_no_retry",
-        type: "message",
-        role: "assistant",
-        model: "MiniMax-M2.7",
-        content: [{
-          type: "text",
-          text: JSON.stringify(["Claim one."]),
-        }],
-        stop_reason: "end_turn",
-        usage: { input_tokens: 10, output_tokens: 10 },
-      }),
-      "generativelanguage.googleapis.com": async () => {
+      "generativelanguage.googleapis.com": async (req) => {
+        const body = await req.json() as { tools?: unknown };
+        if (!body.tools) {
+          return jsonResponse({
+            candidates: [{ content: { parts: [{ text: JSON.stringify([{ assertion: "Claim one.", source: "Claim one." }]) }] } }],
+          });
+        }
         assessmentCalls++;
         if (assessmentCalls === 1) return new Response("temporary", { status: 503 });
         return jsonResponse({
@@ -465,19 +452,22 @@ describe("FactCheckGroundedSkill", () => {
   test("warns instead of passing when a budget skips every grounded claim", async () => {
     let assessmentCalls = 0;
     mockFetch(urlRouter({
-      "api.minimax.io": async () => jsonResponse({
-        id: "msg_extract_zero_budget",
-        type: "message",
-        role: "assistant",
-        model: "MiniMax-M2.7",
-        content: [{
-          type: "text",
-          text: JSON.stringify(["Claim one.", "Claim two."]),
-        }],
-        stop_reason: "end_turn",
-        usage: { input_tokens: 10, output_tokens: 10 },
-      }),
-      "generativelanguage.googleapis.com": async () => {
+      "generativelanguage.googleapis.com": async (req) => {
+        const body = await req.json() as { tools?: unknown };
+        if (!body.tools) {
+          return jsonResponse({
+            candidates: [{
+              content: {
+                parts: [{
+                  text: JSON.stringify([
+                    { assertion: "Claim one.", source: "Claim one." },
+                    { assertion: "Claim two.", source: "Claim two." },
+                  ]),
+                }],
+              },
+            }],
+          });
+        }
         assessmentCalls++;
         return jsonResponse({
           candidates: [{
@@ -506,27 +496,23 @@ describe("FactCheckGroundedSkill", () => {
 
   test("uses Hebrew rewrite text for mixed Hebrew-English claims", async () => {
     mockFetch(urlRouter({
-      "api.minimax.io": async () => jsonResponse({
-        id: "msg_extract_he",
-        type: "message",
-        role: "assistant",
-        model: "MiniMax-M2.7",
-        content: [{
-          type: "text",
-          text: JSON.stringify(["המשחק Rummikub מתאים לשני שחקנים בלבד."]),
-        }],
-        stop_reason: "end_turn",
-        usage: { input_tokens: 10, output_tokens: 10 },
-      }),
-      "generativelanguage.googleapis.com": async () => jsonResponse({
-        candidates: [{
-          content: { parts: [{ text: JSON.stringify({ supported: false, note: "המקור הרשמי מציין יותר שחקנים." }) }] },
-          groundingMetadata: {
-            webSearchQueries: ["Rummikub מספר שחקנים"],
-            groundingChunks: [{ web: { uri: "https://example.com/rummikub", title: "Rummikub" } }],
-          },
-        }],
-      }),
+      "generativelanguage.googleapis.com": async (req) => {
+        const body = await req.json() as { tools?: unknown };
+        if (!body.tools) {
+          return jsonResponse({
+            candidates: [{ content: { parts: [{ text: JSON.stringify([{ assertion: "המשחק Rummikub מתאים לשני שחקנים בלבד.", source: "המשחק Rummikub מתאים לשני שחקנים בלבד." }]) }] } }],
+          });
+        }
+        return jsonResponse({
+          candidates: [{
+            content: { parts: [{ text: JSON.stringify({ supported: false, note: "המקור הרשמי מציין יותר שחקנים." }) }] },
+            groundingMetadata: {
+              webSearchQueries: ["Rummikub מספר שחקנים"],
+              groundingChunks: [{ web: { uri: "https://example.com/rummikub", title: "Rummikub" } }],
+            },
+          }],
+        });
+      },
     }));
 
     const result = await new FactCheckGroundedSkill().run("המשחק Rummikub מתאים לשני שחקנים בלבד.", baseConfig);
@@ -542,14 +528,15 @@ describe("FactCheckGroundedSkill", () => {
       "generativelanguage.googleapis.com": async (req) => {
         sawGeminiRequest = true;
         expect(req.url).toContain("provider-gemini-key");
-        const body = await req.json() as any;
-        const prompt = body.contents?.[0]?.parts?.[0]?.text ?? "";
-        if (prompt.includes("Extract up to 20")) {
+        const body = await req.json() as { tools?: unknown };
+        // Extraction (no tools) and grounding (google_search tool) both hit the
+        // same provider-scoped key — branch on tools to serve each.
+        if (!body.tools) {
           return jsonResponse({
             candidates: [{
               content: {
                 parts: [
-                  { text: JSON.stringify(["OpenAI announced GPT-4 in March 2023."]) },
+                  { text: JSON.stringify([{ assertion: "OpenAI announced GPT-4 in March 2023.", source: "OpenAI announced GPT-4 in March 2023." }]) },
                 ],
               },
             }],
@@ -587,31 +574,27 @@ describe("FactCheckGroundedSkill", () => {
 
   test("downgrades supported=true to unverified when no grounded source URL is returned", async () => {
     mockFetch(urlRouter({
-      "api.minimax.io": async () => jsonResponse({
-        id: "msg_extract_grounded",
-        type: "message",
-        role: "assistant",
-        model: "MiniMax-M2.7",
-        content: [{
-          type: "text",
-          text: JSON.stringify(["A source-free claim is verified."]),
-        }],
-        stop_reason: "end_turn",
-        usage: { input_tokens: 10, output_tokens: 10 },
-      }),
-      "generativelanguage.googleapis.com": async () => jsonResponse({
-        candidates: [{
-          content: {
-            parts: [
-              { text: "{\"supported\":true,\"note\":\"The model says yes but provides no source.\"}" },
-            ],
-          },
-          groundingMetadata: {
-            webSearchQueries: ["source-free claim"],
-            groundingChunks: [],
-          },
-        }],
-      }),
+      "generativelanguage.googleapis.com": async (req) => {
+        const body = await req.json() as { tools?: unknown };
+        if (!body.tools) {
+          return jsonResponse({
+            candidates: [{ content: { parts: [{ text: JSON.stringify([{ assertion: "A source-free claim is verified.", source: "A source-free claim is verified." }]) }] } }],
+          });
+        }
+        return jsonResponse({
+          candidates: [{
+            content: {
+              parts: [
+                { text: "{\"supported\":true,\"note\":\"The model says yes but provides no source.\"}" },
+              ],
+            },
+            groundingMetadata: {
+              webSearchQueries: ["source-free claim"],
+              groundingChunks: [],
+            },
+          }],
+        });
+      },
     }));
 
     const result = await new FactCheckGroundedSkill().run("A source-free claim is verified.", baseConfig);
@@ -624,15 +607,17 @@ describe("FactCheckGroundedSkill", () => {
   });
 
   describe("rate-limit retry handling", () => {
-    const minimaxExtract = (claims: string[]) => jsonResponse({
-      id: "msg_x",
-      type: "message",
-      role: "assistant",
-      model: "MiniMax-M2.7",
-      content: [{ type: "text", text: JSON.stringify(claims) }],
-      stop_reason: "end_turn",
-      usage: { input_tokens: 10, output_tokens: 10 },
-    });
+    // Extraction now runs on Gemini (no MiniMax), and grounding hits the SAME
+    // Gemini host AND model. A URL router can't tell the two apart, so the
+    // shared generativelanguage.googleapis.com handler branches on the request
+    // body: grounding requests carry `tools: [{ google_search: {} }]`;
+    // extraction requests are plain `contents` with no tools.
+    //
+    // Each claim string must appear VERBATIM in the test's article text so the
+    // grounded pipeline locates an EXACT source span (the R4 location-approximate
+    // path would otherwise downgrade confidence to "low").
+    const geminiExtract = (claims: string[]) =>
+      JSON.stringify(claims.map((c) => ({ assertion: c, source: c })));
 
     const geminiOk = (supported: boolean, note: string, sources: string[]) => jsonResponse({
       candidates: [{
@@ -644,17 +629,22 @@ describe("FactCheckGroundedSkill", () => {
       }],
     });
 
-    function geminiSequence(responses: Array<() => Response | Promise<Response>>) {
+    // Branch the shared Gemini host: tools present -> grounding sequence;
+    // tools absent -> a single extraction response (Gemini generateContent shape).
+    function geminiHandler(extractText: string, grounding: Array<() => Response | Promise<Response>>) {
       let call = 0;
-      return async () => responses[Math.min(call++, responses.length - 1)]!();
+      return async (req: Request): Promise<Response> => {
+        const body = await req.json() as { tools?: unknown };
+        if (body.tools) return grounding[Math.min(call++, grounding.length - 1)]!();
+        return jsonResponse({ candidates: [{ content: { parts: [{ text: extractText }] } }] });
+      };
     }
 
     test("retries Gemini 429 rate-limit responses within the retry budget", async () => {
       process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS = "0";
       try {
         mockFetch(urlRouter({
-          "api.minimax.io": async () => minimaxExtract(["one claim"]),
-          "generativelanguage.googleapis.com": geminiSequence([
+          "generativelanguage.googleapis.com": geminiHandler(geminiExtract(["one claim"]), [
             () => new Response(JSON.stringify({ error: { message: "RESOURCE_EXHAUSTED" } }), { status: 429 }),
             () => geminiOk(true, "ok", ["https://example.com/a"]),
           ]),
@@ -675,8 +665,7 @@ describe("FactCheckGroundedSkill", () => {
       try {
         // Use a 0-second Retry-After so the test stays fast; assert via attempt metadata, not wall clock.
         mockFetch(urlRouter({
-          "api.minimax.io": async () => minimaxExtract(["one claim"]),
-          "generativelanguage.googleapis.com": geminiSequence([
+          "generativelanguage.googleapis.com": geminiHandler(geminiExtract(["one claim"]), [
             () => new Response("", { status: 429, headers: { "Retry-After": "0" } }),
             () => geminiOk(true, "ok", ["https://example.com/a"]),
           ]),
@@ -691,12 +680,13 @@ describe("FactCheckGroundedSkill", () => {
     test("retries thrown network errors within the retry budget", async () => {
       process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS = "0";
       try {
-        let calls = 0;
+        let groundingCalls = 0;
         mockFetch(urlRouter({
-          "api.minimax.io": async () => minimaxExtract(["one claim"]),
-          "generativelanguage.googleapis.com": async () => {
-            calls++;
-            if (calls === 1) throw new Error("fetch failed: ECONNRESET");
+          "generativelanguage.googleapis.com": async (req) => {
+            const body = await req.json();
+            if (!body.tools) return jsonResponse({ candidates: [{ content: { parts: [{ text: geminiExtract(["one claim"]) }] } }] });
+            groundingCalls++;
+            if (groundingCalls === 1) throw new Error("fetch failed: ECONNRESET");
             return geminiOk(true, "ok", ["https://example.com/a"]);
           },
         }));
@@ -713,8 +703,7 @@ describe("FactCheckGroundedSkill", () => {
       try {
         // transient class, budget 1: 503 -> retry, 503 -> terminal failed but still retryable:true
         mockFetch(urlRouter({
-          "api.minimax.io": async () => minimaxExtract(["one claim"]),
-          "generativelanguage.googleapis.com": geminiSequence([
+          "generativelanguage.googleapis.com": geminiHandler(geminiExtract(["one claim"]), [
             () => new Response("", { status: 503 }),
             () => new Response("", { status: 503 }),
           ]),
@@ -729,8 +718,9 @@ describe("FactCheckGroundedSkill", () => {
 
         // non-transient class: 400 -> failed, retryable:false
         mockFetch(urlRouter({
-          "api.minimax.io": async () => minimaxExtract(["one claim"]),
-          "generativelanguage.googleapis.com": async () => new Response("", { status: 400 }),
+          "generativelanguage.googleapis.com": geminiHandler(geminiExtract(["one claim"]), [
+            () => new Response("", { status: 400 }),
+          ]),
         }));
         const second = await new FactCheckGroundedSkill().run("one claim", baseConfig);
         expect((second as any).audit.providerAttempts[0].retryable).toBe(false);
@@ -743,8 +733,9 @@ describe("FactCheckGroundedSkill", () => {
       process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS = "0";
       try {
         mockFetch(urlRouter({
-          "api.minimax.io": async () => minimaxExtract(["one claim"]),
-          "generativelanguage.googleapis.com": async () => new Response("", { status: 503 }),
+          "generativelanguage.googleapis.com": geminiHandler(geminiExtract(["one claim"]), [
+            () => new Response("", { status: 503 }),
+          ]),
         }));
         const result = await new FactCheckGroundedSkill().run("one claim", baseConfig); // default maxProviderRetries: 2
         const attempts = (result as any).audit.providerAttempts;
@@ -762,8 +753,7 @@ describe("FactCheckGroundedSkill", () => {
       process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS = "0";
       try {
         mockFetch(urlRouter({
-          "api.minimax.io": async () => minimaxExtract(["claim one", "claim two"]),
-          "generativelanguage.googleapis.com": geminiSequence([
+          "generativelanguage.googleapis.com": geminiHandler(geminiExtract(["claim one", "claim two"]), [
             () => new Response("", { status: 503 }),
             () => new Response("", { status: 503 }),
             () => geminiOk(true, "ok", ["https://example.com/a"]), // claim 1 succeeds after 2 retries
@@ -788,8 +778,7 @@ describe("FactCheckGroundedSkill", () => {
       process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS = "0";
       try {
         mockFetch(urlRouter({
-          "api.minimax.io": async () => minimaxExtract(["Claim one.", "Claim two.", "Claim three."]),
-          "generativelanguage.googleapis.com": geminiSequence([
+          "generativelanguage.googleapis.com": geminiHandler(geminiExtract(["Claim one.", "Claim two.", "Claim three."]), [
             () => geminiOk(true, "ok", ["https://example.com/a"]), // claim 1 verified
             () => new Response("", { status: 503 }),               // claim 2: budget 0 -> terminal provider_error
           ]),
@@ -813,8 +802,7 @@ describe("FactCheckGroundedSkill", () => {
       process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS = "0";
       try {
         mockFetch(urlRouter({
-          "api.minimax.io": async () => minimaxExtract(["claim one", "claim two"]),
-          "generativelanguage.googleapis.com": geminiSequence([
+          "generativelanguage.googleapis.com": geminiHandler(geminiExtract(["claim one", "claim two"]), [
             () => geminiOk(null as never, "inconclusive", ["https://example.com/a"]), // unverified
             () => new Response("", { status: 400 }),                                  // provider_error
           ]),
@@ -830,8 +818,9 @@ describe("FactCheckGroundedSkill", () => {
       process.env.CHECKAPP_GROUNDED_RETRY_DELAY_MS = "0";
       try {
         mockFetch(urlRouter({
-          "api.minimax.io": async () => minimaxExtract(["one claim"]),
-          "generativelanguage.googleapis.com": async () => {
+          "generativelanguage.googleapis.com": async (req) => {
+            const body = await req.json();
+            if (!body.tools) return jsonResponse({ candidates: [{ content: { parts: [{ text: geminiExtract(["one claim"]) }] } }] });
             throw new Error("fetch failed: ECONNRESET");
           },
         }));
@@ -851,21 +840,23 @@ describe("FactCheckGroundedSkill", () => {
   });
 
   describe("claim extraction failure handling", () => {
-    const minimaxResponse = (content: unknown[]) => jsonResponse({
-      id: "msg_x",
-      type: "message",
-      role: "assistant",
-      model: "MiniMax-M2.7",
-      content,
-      stop_reason: "max_tokens",
-      usage: { input_tokens: 10, output_tokens: 10 },
+    // Extraction runs on Gemini now. The Gemini caller throws on an empty
+    // response, and parseExtractedClaims returns null on unparseable text —
+    // both must degrade to "extraction failed", never "no claims". These
+    // mocks return the Gemini generateContent shape with no `tools` branch
+    // because extraction fails before any grounding call is made.
+    const geminiExtractResponse = (text: string) => jsonResponse({
+      candidates: [{ content: { parts: [{ text }] } }],
     });
+    // An empty candidates array makes the Gemini caller produce empty text and
+    // throw — the analogue of a reasoning model emitting no usable text block.
+    const geminiEmptyResponse = () => jsonResponse({ candidates: [] });
 
     test("empty extraction response reports extraction failure, not a claim-free article", async () => {
-      // Reasoning models can exhaust max_tokens inside the thinking block and
-      // return no text block at all — observed live with MiniMax-M2.7.
+      // The Gemini caller throws "LLM returned empty response" when no text is
+      // produced; extractClaims must catch it and degrade gracefully.
       mockFetch(urlRouter({
-        "api.minimax.io": async () => minimaxResponse([{ type: "thinking", thinking: "..." }]),
+        "generativelanguage.googleapis.com": async () => geminiEmptyResponse(),
       }));
       const result = await new FactCheckGroundedSkill().run("ירושלים היא בירת ישראל.", baseConfig);
       expect(result.verdict).toBe("warn");
@@ -876,7 +867,7 @@ describe("FactCheckGroundedSkill", () => {
 
     test("unparseable extraction response reports extraction failure", async () => {
       mockFetch(urlRouter({
-        "api.minimax.io": async () => minimaxResponse([{ type: "text", text: "I could not find any claims in this article." }]),
+        "generativelanguage.googleapis.com": async () => geminiExtractResponse("I could not find any claims in this article."),
       }));
       const result = await new FactCheckGroundedSkill().run("ירושלים היא בירת ישראל.", baseConfig);
       expect(result.verdict).toBe("warn");
@@ -886,22 +877,36 @@ describe("FactCheckGroundedSkill", () => {
 
     test("a valid empty claims array still reports a claim-free article", async () => {
       mockFetch(urlRouter({
-        "api.minimax.io": async () => minimaxResponse([{ type: "text", text: "[]" }]),
+        "generativelanguage.googleapis.com": async () => geminiExtractResponse("[]"),
       }));
       const result = await new FactCheckGroundedSkill().run("סתם משפט בלי טענות.", baseConfig);
       expect(result.verdict).toBe("warn");
       expect(result.summary).toBe("No specific verifiable claims detected");
     });
 
+    test("a Gemini HTTP 500 on extraction reports extraction failure, not an unhandled throw", async () => {
+      // The Gemini caller throws "Gemini LLM error: HTTP 500" on a non-OK
+      // response. extractClaims must catch it and degrade to the graceful
+      // "extraction failed" warn path (guards the try/catch around call()).
+      mockFetch(urlRouter({
+        "generativelanguage.googleapis.com": async () => new Response("upstream error", { status: 500 }),
+      }));
+      const result = await new FactCheckGroundedSkill().run("ירושלים היא בירת ישראל.", baseConfig);
+      expect(result.verdict).toBe("warn");
+      expect(result.summary).not.toContain("No specific verifiable claims");
+      expect(result.summary).toContain("Claim extraction failed");
+      expect(result.findings[0]?.status).toBe("provider_error");
+    });
+
     test("extraction failure on Hebrew text attaches a truthful Hebrew/RTL audit shell", async () => {
-      // Thinking-only response: no text block → extraction returns null.
+      // Empty Gemini response: caller throws → extraction returns null.
       // The result must carry an `audit` with the correct language/direction,
       // truthful zero-coverage, and must survive a safeParseAuditRecord round-trip.
       const { safeParseAuditRecord } = await import("../audit/types.ts");
       const { generateReport } = await import("../report.ts");
 
       mockFetch(urlRouter({
-        "api.minimax.io": async () => minimaxResponse([{ type: "thinking", thinking: "..." }]),
+        "generativelanguage.googleapis.com": async () => geminiEmptyResponse(),
       }));
 
       const HEBREW_TEXT = "ירושלים היא עיר הבירה של ישראל ומרכז היסטורי ותרבותי.";
@@ -942,6 +947,14 @@ describe("FactCheckGroundedSkill", () => {
       expect(html).toContain("שגיאת ספק");
       expect(html).not.toContain("(low)");
     });
+  });
+
+  test("located quote for a verbatim Hebrew source sentence is an exact match (regression guard)", () => {
+    const article = "כותרת המאמר\n\nסט 43013 מכיל כ-520 חלקים.\n\nפסקה אחרת.";
+    const located = locateQuote(article, "סט 43013 מכיל כ-520 חלקים.");
+    expect(located.quote).toBe("סט 43013 מכיל כ-520 חלקים.");
+    expect(located.location?.matchQuality).toBe("exact");
+    expect(located.language).toBe("he");
   });
 
   describe("computeRetryAfterDelayMs", () => {

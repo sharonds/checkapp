@@ -5,9 +5,9 @@ import { chmodSync, mkdirSync } from "fs";
 import type { SkillResult } from "./skills/types.ts";
 import {
   parseStoredAuditRecord,
-  serializeAuditRecord,
   type AuditRecord,
 } from "./audit/types.ts";
+import { serializeAuditForStorage } from "./audit/persistence.ts";
 
 const DB_DIR = join(homedir(), ".checkapp");
 // CHECKAPP_DB_PATH lets tests and E2E harnesses redirect the default DB to a
@@ -154,13 +154,14 @@ export function insertCheck(
     INSERT INTO checks (source, word_count, results_json, total_cost, article_text, audit_json)
     VALUES (?, ?, ?, ?, ?, ?)
   `);
+  const { json: auditJson } = serializeAuditForStorage(record.audit, { source: "cli" });
   const result = stmt.run(
     record.source,
     record.wordCount,
     JSON.stringify(record.results),
     record.totalCostUsd,
     record.articleText ?? "",
-    serializeAuditRecord(record.audit),
+    auditJson,
   );
   return result.lastInsertRowid as number;
 }

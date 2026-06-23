@@ -13,6 +13,7 @@ export interface ScenarioExaResult {
 
 export interface ScenarioGroundedClaim {
   claim: string;
+  source?: string;
   supported: boolean | null;
   note: string;
   sources: string[];

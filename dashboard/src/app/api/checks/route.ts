@@ -6,7 +6,8 @@ import { guardLocalMutation, guardLocalReadOnly } from "@/lib/guard-local";
 import { emitTierSelectedEvent } from "../../../../../src/telemetry/audit-events";
 import { publicCheckSummary } from "../../../../../shared/check-summary";
 import { NextRequest } from "next/server";
-import { redactAuditRecordText, sanitizeProviderError, serializeAuditRecord } from "../../../../../src/audit/types";
+import { redactAuditRecordText, sanitizeProviderError } from "../../../../../src/audit/types";
+import { serializeAuditForStorage } from "../../../../../src/audit/persistence";
 
 const MAX_TEXT_LENGTH = 50_000;
 
@@ -61,17 +62,27 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    const { json: auditJson, failed: auditFailed } = serializeAuditForStorage(audit, { source: "dashboard" });
     const id = insertCheckWithTags({
       source: sourceLabel,
       wordCount,
       resultsJson: JSON.stringify(results),
-      auditJson: serializeAuditRecord(audit),
+      auditJson,
       totalCost: totalCostUsd,
       articleText: text,
       tags,
     });
 
-    return jsonWithCors({ id, results, totalCostUsd, audit: redactAuditRecordText(audit) }, { status: 201 });
+    return jsonWithCors(
+      {
+        id,
+        results,
+        totalCostUsd,
+        audit: redactAuditRecordText(audit),
+        ...(auditFailed ? { auditUnavailable: true } : {}),
+      },
+      { status: 201 },
+    );
   } catch (err) {
     const error = sanitizeProviderError(err instanceof Error ? err.message : String(err)) || "Check failed";
     return jsonWithCors({ error }, { status: 500 });

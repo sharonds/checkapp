@@ -544,7 +544,7 @@ test("Gemini grounded fact-check report shows provider and source evidence", () 
   expect(html).toContain("Evidence");
 });
 
-test("passing Gemini grounded fact-check report shows verified info source evidence", () => {
+test("passing Gemini grounded fact-check report collapses verified claims to a count, not per-claim cards", () => {
   const html = generateReport({
     source: "article.md",
     wordCount: 800,
@@ -557,6 +557,7 @@ test("passing Gemini grounded fact-check report shows verified info source evide
       summary: "1 claims checked — 0 unsupported, 0 unverified (via gemini-grounded)",
       findings: [{
         severity: "info",
+        status: "supported",
         text: "Verified (medium confidence): \"Claim\" — Supported by sources",
         sources: [{ url: "https://example.com/evidence", title: "Evidence" }],
         confidence: "medium",
@@ -567,8 +568,32 @@ test("passing Gemini grounded fact-check report shows verified info source evide
   });
 
   expect(html).toContain("Gemini 3.1 Pro + Google Search");
-  expect(html).toContain("https://example.com/evidence");
-  expect(html).toContain("Evidence");
+  // Verified claims are not problems — they are collapsed to a single count line
+  // rather than rendering a card (and its evidence) per verified claim.
+  expect(html).toContain("1 claim verified");
+  expect(html).not.toContain("https://example.com/evidence");
+});
+
+test("non-claim info findings on a fact-check skill (setup guidance) stay visible, not collapsed as verified", () => {
+  const html = generateReport({
+    source: "article.md",
+    wordCount: 800,
+    totalCostUsd: 0,
+    results: [{
+      skillId: "fact-check",
+      name: "Fact Check",
+      score: 50,
+      verdict: "warn",
+      summary: "Skipped — no fact-check provider configured",
+      // An info finding WITHOUT status "supported" is setup guidance, not a
+      // verified claim: it must render, not be hidden + miscounted as verified.
+      findings: [{ severity: "info", text: "Configure a fact-check provider in Settings → Providers (e.g. Exa)" }],
+      costUsd: 0,
+    }],
+  });
+
+  expect(html).toContain("Configure a fact-check provider");
+  expect(html).not.toContain("claim verified");
 });
 
 test("SEO-only report does not disclose third-party processors", () => {
@@ -726,11 +751,11 @@ test("Hebrew report localizes supported findings' confidence (no raw or duplicat
       costUsd: 0,
       provider: "gemini-grounded",
       findings: [{
-        severity: "info",
-        status: "supported",
+        severity: "error",
+        status: "unsupported",
         confidence: "high",
-        text: "טענה מאומתת",
-        explanation: "המקורות מאשרים את הטענה.",
+        text: "טענה לא נתמכת",
+        explanation: "המקורות סותרים את הטענה.",
         explanationLanguage: "he",
         sources: [{ url: "https://example.com/source", title: "מקור" }],
       }],

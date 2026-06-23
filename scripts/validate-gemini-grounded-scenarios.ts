@@ -16,6 +16,8 @@ interface GroundedClaim {
   supported: boolean | null;
   note: string;
   sources: string[];
+  source?: string;
+  expectApproximate?: boolean;
 }
 
 interface PlagiarismMatch {
@@ -100,8 +102,20 @@ try {
   globalThis.fetch = originalFetch;
 }
 
+function assertSourcesLocatable(scenario: Scenario, article: string): void {
+  if (scenario.kind !== "fact-check") return;
+  for (const claim of scenario.claims ?? []) {
+    if (claim.expectApproximate) continue;
+    const source = claim.source ?? claim.claim;
+    if (!article.includes(source)) {
+      throw new Error(`${scenario.id}: claim source not verbatim-locatable in article: ${JSON.stringify(source)}`);
+    }
+  }
+}
+
 async function runScenario(scenario: Scenario): Promise<ScenarioSummary> {
   const article = readFileSync(join(fixtureRoot, scenario.article), "utf8").trim();
+  assertSourcesLocatable(scenario, article);
   const config = scenario.kind === "fact-check"
     ? factCheckConfig()
     : plagiarismConfig();
@@ -113,7 +127,7 @@ async function runScenario(scenario: Scenario): Promise<ScenarioSummary> {
   }
 
   try {
-    const { results, totalCostUsd } = await runCheckCore(article, config);
+    const { results, totalCostUsd, audit } = await runCheckCore(article, config);
     const result = results[0];
     if (!result) throw new Error(`${scenario.id}: no skill result produced`);
 
@@ -122,6 +136,12 @@ async function runScenario(scenario: Scenario): Promise<ScenarioSummary> {
       wordCount: article.split(/\s+/).filter(Boolean).length,
       results,
       totalCostUsd,
+      // The merged audit record carries the dominant article language, which the
+      // report uses to localize the issues-only fact-check view (e.g. the Hebrew
+      // "טענות אומתו" verified-count line). Plagiarism scenarios predate this
+      // locale wiring and assert against the English rendering, so we only attach
+      // the audit for fact-check scenarios to avoid disturbing them.
+      audit: scenario.kind === "fact-check" ? audit : undefined,
       createdAt: "2026-05-27 00:00",
     };
     const html = generateReport(record);
@@ -209,27 +229,32 @@ function plagiarismConfig(): Config {
 function prepareFactCheckFetch(scenario: Scenario): void {
   const claims = scenario.claims ?? [];
   let groundedCursor = 0;
-  globalThis.fetch = async (input) => {
+  globalThis.fetch = async (input, init) => {
     const url = requestUrl(input);
-    if (hostnameIs(url, "api.minimax.io")) {
-      return new Response(JSON.stringify({
-        id: `msg_${scenario.id}`,
-        type: "message",
-        role: "assistant",
-        model: "MiniMax-M2.7",
-        content: [{
-          type: "text",
-          text: JSON.stringify(claims.map((claim) => claim.claim)),
-        }],
-        stop_reason: "end_turn",
-        usage: { input_tokens: 10, output_tokens: 10 },
-      }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
 
+    // Extraction and grounding now both run on Gemini and hit the same host AND
+    // model. Branch on the request body: grounding requests carry
+    // `tools: [{ google_search: {} }]`; extraction requests are plain `contents`.
     if (hostnameIs(url, "generativelanguage.googleapis.com")) {
+      const body = parseRequestBody(input, init);
+      const isGrounding = Boolean(body?.tools);
+
+      if (!isGrounding) {
+        // Claim extraction (Gemini generateContent shape).
+        return new Response(JSON.stringify({
+          candidates: [{
+            content: {
+              parts: [{
+                text: JSON.stringify(claims.map((claim) => ({ assertion: claim.claim, source: claim.source ?? claim.claim }))),
+              }],
+            },
+          }],
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
       const claim = claims[Math.min(groundedCursor, Math.max(0, claims.length - 1))];
       groundedCursor++;
       if (!claim) {
@@ -253,7 +278,7 @@ function prepareFactCheckFetch(scenario: Scenario): void {
             })),
             groundingSupports: claim.sources.map((_, index) => ({
               groundingChunkIndices: [index],
-              segment: { text: claim.claim },
+              segment: { text: claim.source ?? claim.claim },
             })),
           },
         }],
@@ -270,6 +295,19 @@ function prepareFactCheckFetch(scenario: Scenario): void {
 
     return new Response("Unexpected validation request", { status: 500 });
   };
+}
+
+function parseRequestBody(_input: RequestInfo | URL, init?: RequestInit): { tools?: unknown } | null {
+  // The grounded skill and the Gemini LLM caller both invoke
+  // fetch(urlString, { method, headers, body: JSON.stringify(...) }), so the
+  // JSON payload arrives as a string in init.body.
+  const body = init?.body;
+  if (typeof body !== "string") return null;
+  try {
+    return JSON.parse(body) as { tools?: unknown };
+  } catch {
+    return null;
+  }
 }
 
 function requestUrl(input: RequestInfo | URL): string {

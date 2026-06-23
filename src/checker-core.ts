@@ -4,6 +4,7 @@ import { SkillRegistry } from "./skills/registry.ts";
 import { applyThreshold } from "./thresholds.ts";
 import { buildSkills, type RunCheckHooks } from "./checker.ts";
 import { openDb, loadAllContexts, type DB } from "./db.ts";
+import { analyzeDocument } from "./audit/document.ts";
 import type { Config } from "./config.ts";
 import type { SkillResult } from "./skills/types.ts";
 import type { AuditRecord } from "./audit/types.ts";
@@ -24,7 +25,20 @@ export async function runCheckCore(text: string, config: Config, hooks?: RunChec
     verdict: applyThreshold(r.score, r.verdict, config.thresholds?.[r.skillId]),
   }));
   const totalCostUsd = results.reduce((s, r) => s + r.costUsd, 0);
-  return { results, totalCostUsd, audit: raw.audit };
+  // The merged record-level audit can lose its top-level language/direction (the
+  // per-skill audits carry it, but the merge starts from a record that may have
+  // none). Stamp it from the article so the HTML report renders in the right
+  // language and direction (e.g. RTL Hebrew) instead of defaulting to English.
+  let audit = raw.audit;
+  if (audit && (!audit.language || !audit.direction)) {
+    const doc = analyzeDocument(text);
+    audit = {
+      ...audit,
+      language: audit.language ?? doc.language,
+      direction: audit.direction ?? doc.direction,
+    };
+  }
+  return { results, totalCostUsd, audit };
 }
 
 /** Load DB contexts and return config with contexts attached. Caller owns db.close(). */

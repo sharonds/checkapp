@@ -22,6 +22,7 @@ import {
   getCheckById,
 } from "./db.ts";
 import type { AuditRecord } from "./audit/types.ts";
+import { serializeAuditRecord } from "./audit/types.ts";
 
 let db: Database;
 
@@ -131,6 +132,57 @@ describe("insertCheck", () => {
     expect(getCheckById(db, id)?.audit?.auditId).toBe("audit-db");
     expect(getCheckById(db, id)?.audit?.providerAttempts).toHaveLength(1);
     expect(queryRecent(db, 1)[0]?.audit).toBeUndefined();
+  });
+
+  test("a valid grounded+plagiarism Hebrew audit survives serialize→store→read with language and segments intact", () => {
+    const hebrewAudit: AuditRecord = {
+      ...auditRecord,
+      auditId: "audit-he",
+      language: "he",
+      direction: "rtl",
+      segments: [
+        { id: "seg-1", text: "פסקה ראשונה בעברית", paragraphIndex: 0 },
+        { id: "seg-2", text: "פסקה שנייה בעברית", paragraphIndex: 1 },
+      ],
+      claims: [
+        { id: "c1", quote: "טענה לא נתמכת", normalizedClaim: "unsupported claim", type: "general" },
+      ],
+      factAssessments: [
+        {
+          id: "a1",
+          claimId: "c1",
+          status: "unsupported",
+          sources: [{ url: "https://example.com/source" }],
+        },
+      ],
+      plagiarismFindings: [
+        {
+          id: "plag-1",
+          quote: "טקסט מועתק",
+          source: { url: "https://source.example/page" },
+          status: "plagiarism_match",
+        },
+      ],
+    };
+
+    // Guard: the realistic audit must serialize without being dropped.
+    const serialized = serializeAuditRecord(hebrewAudit);
+    expect(serialized.ok).toBe(true);
+
+    const id = insertCheck(db, {
+      source: "./article-he.md",
+      wordCount: 5,
+      results: [],
+      totalCostUsd: 0,
+      audit: hebrewAudit,
+    });
+
+    const readBack = getCheckById(db, id)?.audit;
+    expect(readBack?.language).toBe("he");
+    expect(readBack?.direction).toBe("rtl");
+    expect(readBack?.segments.length).toBeGreaterThan(0);
+    expect(readBack?.factAssessments[0]?.status).toBe("unsupported");
+    expect(readBack?.plagiarismFindings).toHaveLength(1);
   });
 });
 
