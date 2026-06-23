@@ -460,6 +460,18 @@ describe("parseExtractedClaims", () => {
     const raw = JSON.stringify([{ foo: "bar" }, "bare string", { assertion: "  ", source: "  " }]);
     expect(parseExtractedClaims(raw)).toEqual([]);
   });
+
+  test("drops rows whose assertion/source are not strings instead of String()-coercing them", () => {
+    const raw = JSON.stringify([
+      { assertion: null, source: "סט 43013 מכיל כ-520 חלקים." },          // null → not "null"
+      { assertion: "LEGO set 43013 contains 490 pieces", source: { a: 1 } }, // object → not "[object Object]"
+      { assertion: 42, source: "ok" },                                       // number → dropped
+      { assertion: "valid atomic claim", source: "משפט תקין מהכתבה." },      // kept
+    ]);
+    expect(parseExtractedClaims(raw)).toEqual([
+      { assertion: "valid atomic claim", source: "משפט תקין מהכתבה." },
+    ]);
+  });
 });
 
 test("extractClaimsPromptGrounded asks for atomic assertion + verbatim source per claim", () => {

@@ -50,16 +50,12 @@ export class PlagiarismSkill implements Skill {
     const documentAnalysis = analyzeDocument(text);
     const baseAudit = createAuditRecordBase(this.id, text);
     const auditId = baseAudit.auditId;
-    const findings: Finding[] = result.matches.slice(0, 5).flatMap((m, index) => {
-      // Drop the finding for an unsafe/empty source URL to match buildPlagiarismAudit's
-      // audit-side drop, so Finding.auditRef.plagiarismFindingId never points at an
-      // audit plagiarismFinding that was dropped (a dangling reference).
-      if (!sanitizeAuditUrl(m.url)) return [];
+    const safeMatches = selectSafePlagiarismMatches(result.matches, "copyscape");
+    const findings: Finding[] = safeMatches.slice(0, 5).map(({ match: m, plagiarismFindingId }) => {
       const articleQuote = extractArticleQuote(m.snippet);
       const located = locateQuote(text, articleQuote, documentAnalysis);
       const confidence = result.verdict === "rewrite" ? "high" : "medium";
-      const plagiarismFindingId = `plagiarism-${index + 1}`;
-      return [{
+      return {
       severity: result.verdict === "rewrite" ? "error" : "warn",
       text: `${m.wordsMatched} words matched at ${displayUrl(m.url)}`,
       quote: located.quote || articleQuote || undefined,
@@ -73,7 +69,7 @@ export class PlagiarismSkill implements Skill {
       confidenceRationale: confidenceRationale(1, confidence),
       provider: "copyscape",
       auditRef: { auditId, plagiarismFindingId },
-    }];
+    };
     });
 
     const score = Math.max(0, 100 - result.similarityPct * 2);
@@ -89,7 +85,7 @@ export class PlagiarismSkill implements Skill {
       provider: "copyscape",
       error: result.error,
     };
-    return { ...skillResult, audit: buildPlagiarismAudit(baseAudit, documentAnalysis, text, result.matches, "copyscape", auditId, result.verdict === "rewrite" ? "high" : "medium") };
+    return { ...skillResult, audit: buildPlagiarismAudit(baseAudit, documentAnalysis, text, safeMatches, "copyscape", auditId, result.verdict === "rewrite" ? "high" : "medium") };
   }
 
   async #runGeminiGrounded(text: string, config: Config, fallbackReason?: string): Promise<SkillRunOutput> {
@@ -111,16 +107,12 @@ export class PlagiarismSkill implements Skill {
     const documentAnalysis = analyzeDocument(text);
     const baseAudit = createAuditRecordBase(this.id, text);
     const auditId = baseAudit.auditId;
-    const findings: Finding[] = result.matches.slice(0, 5).flatMap((m, index) => {
-      // Drop the finding for an unsafe/empty source URL to match buildPlagiarismAudit's
-      // audit-side drop, so Finding.auditRef.plagiarismFindingId never points at an
-      // audit plagiarismFinding that was dropped (a dangling reference).
-      if (!sanitizeAuditUrl(m.url)) return [];
+    const safeMatches = selectSafePlagiarismMatches(result.matches, "gemini-grounded-plagiarism");
+    const findings: Finding[] = safeMatches.slice(0, 5).map(({ match: m, plagiarismFindingId }) => {
       const confidence = extractConfidence(m.snippet) ?? result.confidence;
       const articleQuote = extractArticleQuote(m.snippet);
       const located = locateQuote(text, articleQuote, documentAnalysis);
-      const plagiarismFindingId = `plagiarism-${index + 1}`;
-      return [{
+      return {
       severity: result.verdict === "rewrite" ? "error" : "warn",
       text: `${m.wordsMatched} words matched at ${displayUrl(m.url)}`,
       quote: located.quote || articleQuote || undefined,
@@ -137,7 +129,7 @@ export class PlagiarismSkill implements Skill {
       provider: "gemini-grounded-plagiarism",
       model: result.model,
       auditRef: { auditId, plagiarismFindingId },
-    }];
+    };
     });
 
     const score = Math.max(0, 100 - result.similarityPct * 2);
@@ -165,7 +157,7 @@ export class PlagiarismSkill implements Skill {
         baseAudit,
         documentAnalysis,
         text,
-        result.matches,
+        safeMatches,
         "gemini-grounded-plagiarism",
         auditId,
         result.confidence,
@@ -184,32 +176,50 @@ function extractConfidence(snippet: string | undefined): Finding["confidence"] {
   return undefined;
 }
 
+interface SafePlagiarismMatch {
+  match: CopyscapeMatch;
+  plagiarismFindingId: string;
+  safeUrl: string;
+}
+
+// Drop matches whose source URL can't be sanitized (Copyscape's empty <url>
+// default, relative/unsafe provider URIs) up front — BEFORE any display cap or
+// id assignment — then number the survivors contiguously. Filtering first means
+// a valid match is never displaced from the top-5 window by an unsafe one, and
+// the shared contiguous ids keep Finding[] auditRefs aligned with the audit's
+// plagiarismFindings (an unsafe finding would otherwise reject the whole audit
+// or leave a dangling auditRef). Dropping a finding is logged + surfaced.
+function selectSafePlagiarismMatches(matches: CopyscapeMatch[], provider: string): SafePlagiarismMatch[] {
+  const safe: SafePlagiarismMatch[] = [];
+  matches.forEach((match, index) => {
+    const safeUrl = sanitizeAuditUrl(match.url);
+    if (!safeUrl) {
+      emitAuditFailedEvent({ stage: "plagiarism-finding-dropped", provider, matchIndex: index, reason: "unsafe-source-url" });
+      console.warn(
+        `[audit] dropping plagiarism finding (provider=${provider}, match #${index + 1}) with unsafe source URL; the rest of the audit is preserved`,
+      );
+      return;
+    }
+    safe.push({ match, plagiarismFindingId: `plagiarism-${safe.length + 1}`, safeUrl });
+  });
+  return safe;
+}
+
 function buildPlagiarismAudit(
   baseAudit: Omit<AuditRecord, "coverage">,
   documentAnalysis: ReturnType<typeof analyzeDocument>,
   text: string,
-  matches: CopyscapeMatch[],
+  safeMatches: SafePlagiarismMatch[],
   provider: string,
   auditId: string,
   confidence: "high" | "medium" | "low",
   searchQueries: string[] = [],
   model?: string,
 ): AuditRecord {
-  const plagiarismFindings: PlagiarismFinding[] = matches.flatMap((match, index) => {
-    // Sanitize the provider-supplied source URL at production time. Copyscape can
-    // emit an empty <url> (copyscape.ts default) and grounded providers can return
-    // relative/unsafe URIs; an unsanitizable URL makes normalizeSource reject the
-    // finding, which previously rejected the WHOLE audit (language/segments dropped).
-    // We never emit an unsafe source: a finding with no usable source link is not
-    // actionable, so we drop ONLY that finding via an explicit, logged policy.
-    const safeSourceUrl = sanitizeAuditUrl(match.url);
-    if (!safeSourceUrl) {
-      emitAuditFailedEvent({ stage: "plagiarism-finding-dropped", provider, matchIndex: index, reason: "unsafe-source-url" });
-      console.warn(
-        `[audit] dropping plagiarism finding #${index + 1} with unsafe source URL (provider=${provider}); the rest of the audit is preserved`,
-      );
-      return [];
-    }
+  // safeMatches is pre-filtered to safe-URL survivors with contiguous ids by
+  // selectSafePlagiarismMatches, so these ids match the Finding[] auditRefs; the
+  // audit keeps every survivor while the Finding[] display caps at the top 5.
+  const plagiarismFindings: PlagiarismFinding[] = safeMatches.map(({ match, plagiarismFindingId, safeUrl }) => {
     const articleQuote = extractArticleQuote(match.snippet);
     const located = locateQuote(text, articleQuote, documentAnalysis);
     const findingConfidence = provider === "gemini-grounded-plagiarism"
@@ -218,15 +228,11 @@ function buildPlagiarismAudit(
     const rationale = provider === "gemini-grounded-plagiarism"
       ? plagiarismConfidenceRationale(match.groundingMode, findingConfidence)
       : confidenceRationale(1, findingConfidence);
-    return [{
-      // IDs are derived from the original match index so they line up positionally
-      // with the Finding[] auditRef.plagiarismFindingId built in the run() paths
-      // (which keep every match). IDs may be sparse when a finding is dropped above;
-      // uniqueness is preserved and the positional cross-reference stays intact.
-      id: `plagiarism-${index + 1}`,
+    return {
+      id: plagiarismFindingId,
       quote: located.quote || articleQuote,
       source: {
-        url: safeSourceUrl,
+        url: safeUrl,
         title: match.title,
         quote: match.matchedSourceText ?? match.snippet,
         accepted: true,
@@ -244,7 +250,7 @@ function buildPlagiarismAudit(
       language: located.language,
       direction: located.direction,
       location: located.location,
-    }];
+    };
   });
   return {
     ...baseAudit,

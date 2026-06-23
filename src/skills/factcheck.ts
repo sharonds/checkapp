@@ -33,9 +33,14 @@ export function parseExtractedClaims(rawJson: string): ExtractedClaim[] | null {
   }
   if (!Array.isArray(parsed)) return null;
   const claims = parsed
-    .filter((row): row is { assertion: unknown; source: unknown } =>
-      !!row && typeof row === "object" && "assertion" in row && "source" in row)
-    .map((row) => ({ assertion: String(row.assertion).trim(), source: String(row.source).trim() }))
+    // Require both fields to already be strings — a key-only check would let a
+    // malformed row like {assertion: null} or {source: {...}} through and
+    // String()-coerce it into a bogus "null"/"[object Object]" claim.
+    .filter((row): row is { assertion: string; source: string } =>
+      !!row && typeof row === "object"
+      && typeof (row as { assertion?: unknown }).assertion === "string"
+      && typeof (row as { source?: unknown }).source === "string")
+    .map((row) => ({ assertion: row.assertion.trim(), source: row.source.trim() }))
     .filter((c) => c.assertion.length > 0 && c.source.length > 0)
     .slice(0, 20);
   return claims; // may be [] (parsed ok, no usable claims) — distinct from null (parse failed)
