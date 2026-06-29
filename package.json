@@ -68,7 +68,7 @@
     "check:package": "bun run scripts/check-package-surface.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.99.0",
+    "@anthropic-ai/sdk": "^0.106.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "exa-js": "^2.11.0",
     "ink": "^7",
