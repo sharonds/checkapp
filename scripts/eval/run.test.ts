@@ -118,6 +118,39 @@ describe("runEval", () => {
     }
   });
 
+  test("rejects a label whose doc is not a plain file name (no reading or writing outside the folders)", async () => {
+    const p = setup();
+    writeFileSync(p.labels, JSON.stringify([{ id: "x", doc: "../a.md", class: "article", sentence: "s", verdict: "supported" }]));
+    await expect(runEval({ ...p, mode: "dry-run", yes: false }, { readConfig: baseConfig, runCheckCore: fakeCore as any }))
+      .rejects.toThrow(/file name/i);
+  });
+
+  test("refuses a variant output folder that is a symlink into a git repository", async () => {
+    const { symlinkSync } = await import("node:fs");
+    const p = setup();
+    mkdirSync(p.out);
+    symlinkSync(join(process.cwd(), "scripts"), join(p.out, "test-variant"));
+    await expect(runEval({ ...p, mode: "dry-run", yes: false }, { readConfig: baseConfig, runCheckCore: fakeCore as any }))
+      .rejects.toThrow(/inside a git repository/i);
+  });
+
+  test("replay fails when a request was missing from the cassette, even if the app swallowed the error", async () => {
+    const p = setup();
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async () => new Response('{"ok":1}')) as typeof fetch;
+    try {
+      await runEval({ ...p, mode: "record", yes: true }, { readConfig: baseConfig, runCheckCore: fakeCore as any });
+      const swallowing = async (text: string, config: Config) => {
+        try { await globalThis.fetch("https://h/models/m:generateContent", { method: "POST", body: '{"changed":"prompt"}' }); } catch { /* the app turns this into a provider error */ }
+        return fakeCore(text, config);
+      };
+      await expect(runEval({ ...p, mode: "replay", yes: false }, { readConfig: baseConfig, runCheckCore: swallowing as any }))
+        .rejects.toThrow(/not in the cassette/i);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
   test("refuses an output folder inside a git repository", async () => {
     const p = setup();
     await expect(runEval({ ...p, out: join(process.cwd(), "eval-out"), mode: "dry-run", yes: false }, { readConfig: baseConfig, runCheckCore: fakeCore as any }))

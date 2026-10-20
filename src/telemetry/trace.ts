@@ -112,10 +112,19 @@ function pruneOldTraces(dir: string): void {
   }
 }
 
+let lastStandalonePrune = "";
+
 /** Records one provider call. Outside a run it goes to <date>/adhoc.jsonl. */
 export function traceProviderCall(input: TraceInput): void {
   const dir = resolveTraceDir();
   if (!dir) return;
+  // Standalone calls (Deep Audit create/poll) never enter withTraceRun; apply retention here too,
+  // at most once per folder and day.
+  const pruneKey = `${dir}|${new Date().toISOString().slice(0, 10)}`;
+  if (!runStore.getStore() && lastStandalonePrune !== pruneKey) {
+    lastStandalonePrune = pruneKey;
+    pruneOldTraces(dir);
+  }
   const ctx = runStore.getStore() ?? { runId: "adhoc", file: runFile(dir, "adhoc") };
   const { grounded, ...rest } = input;
   const record: TraceRecord = { ts: new Date().toISOString(), runId: ctx.runId, ...rest };

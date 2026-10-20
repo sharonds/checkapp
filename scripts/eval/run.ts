@@ -125,6 +125,12 @@ export async function runEval(opts: EvalOptions, deps: EvalDeps): Promise<EvalRe
   }
   const allGold = JSON.parse(readFileSync(opts.labels, "utf-8")) as GoldRow[];
   const gold = opts.docs?.length ? allGold.filter((g) => opts.docs!.includes(g.doc)) : allGold;
+  for (const g of gold) {
+    // doc is joined into corpus and output paths: plain file names only.
+    if (!/^[^/\\]+$/.test(g.doc) || g.doc === "." || g.doc === "..") {
+      throw new Error(`Label ${g.id}: doc ${JSON.stringify(g.doc)} must be a plain file name inside --corpus.`);
+    }
+  }
   const docs = [...new Set(gold.map((g) => g.doc))];
 
   const texts = new Map<string, string>();
@@ -138,6 +144,8 @@ export async function runEval(opts: EvalOptions, deps: EvalDeps): Promise<EvalRe
     .map((g) => g.id);
 
   const runDir = join(opts.out, variant.name, `${new Date().toISOString().replace(/[:.]/g, "-")}-${opts.mode}`);
+  // The variant folder holds the cassette, runs and traces: re-check it (it may be a symlink).
+  assertOutsideGitRepo(join(opts.out, variant.name));
   mkdirSync(join(runDir, "docs"), { recursive: true, mode: 0o700 });
 
   // config.ts reads LLM_PROVIDER and the API keys at read time, so read it inside the variant env.
@@ -184,6 +192,10 @@ export async function runEval(opts: EvalOptions, deps: EvalDeps): Promise<EvalRe
     globalThis.fetch = realFetch;
     restoreExa();
     if (cassette && opts.mode === "record") cassette.save();
+  }
+
+  if (cassette && opts.mode === "replay" && cassette.misses > 0) {
+    throw new Error(`Replay incomplete: ${cassette.misses} request(s) were not in the cassette. Record this variant again.`);
   }
 
   const rows = scoreRows(gold, appClaims);

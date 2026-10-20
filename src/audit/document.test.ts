@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { analyzeDocument, locateQuote, factRewriteSuggestion, plagiarismRewriteSuggestion } from "./document.ts";
+import { analyzeDocument, createAuditRecordBase, locateQuote, factRewriteSuggestion, plagiarismRewriteSuggestion } from "./document.ts";
 
 describe("audit document analysis", () => {
   test("segments multi-section English documents with stable locations", () => {
@@ -41,6 +41,21 @@ describe("audit document analysis", () => {
     const text = "## FAQ\n\nIs it limited? Yes, definitely. Acme makes these sets only for the 2030 season.";
     const located = locateQuote(text, "Yes, definitely. Acme makes these sets only for the 2030 season.");
     expect(located.quote).toBe("Acme makes these sets only for the 2030 season.");
+  });
+
+  test("an exact heading match wins over a body sentence the heading merely contains", () => {
+    const text = "### Acme D-8 dryer 12 kg\n\n12 kg";
+    const located = locateQuote(text, "### Acme D-8 dryer 12 kg");
+    expect(located.quote).toBe("Acme D-8 dryer 12 kg");
+    expect(located.location?.matchQuality).toBe("exact");
+  });
+
+  test("heading segments are persisted in the audit record so heading segment ids resolve", () => {
+    const text = "### Acme D-8 dryer 12 kg\n\nPros: quiet.";
+    const base = createAuditRecordBase("fact-check", text);
+    const located = locateQuote(text, "Acme D-8 dryer 12 kg");
+    expect(base.segments.some((s) => s.id === located.segmentId)).toBe(true);
+    expect(analyzeDocument(text).sentencesScanned).toBe(1);
   });
 
   test("fuzzy quote matches are labeled approximate and omit exact offsets", () => {

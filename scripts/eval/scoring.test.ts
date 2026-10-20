@@ -51,6 +51,17 @@ describe("audit → app claims", () => {
   });
 });
 
+describe("exact matches win over fuzzy ones", () => {
+  test("a quote that exactly matches one gold sentence does not also count for a similar one", () => {
+    const rows = scoreRows(
+      [gold({ id: "toaster", sentence: "The toaster has 6 slots." }), gold({ id: "blender", sentence: "The blender has 6 slots." })],
+      [{ doc: "a.md", quote: "The toaster has 6 slots.", status: "unsupported" }],
+    );
+    expect(rows.find((r) => r.id === "toaster")!.matched).toBe(true);
+    expect(rows.find((r) => r.id === "blender")!.matched).toBe(false);
+  });
+});
+
 describe("provider errors", () => {
   test("a claim the provider failed on is not counted as checked", () => {
     const rows = scoreRows([gold({ verdict: "unsupported" })], [{ doc: "a.md", quote: "The kettle holds 1.7 litres.", status: "provider_error" }]);

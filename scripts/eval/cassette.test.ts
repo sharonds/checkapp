@@ -33,6 +33,24 @@ describe("request keys", () => {
 });
 
 describe("cassette record/replay", () => {
+  test("grounded detection reads the request's tools, not the article text in the prompt", () => {
+    const extraction = JSON.stringify({ contents: [{ parts: [{ text: "An article that mentions google_search and googleSearch." }] }] });
+    expect(isGroundedRequest("https://h/models/m:generateContent", extraction)).toBe(false);
+    expect(isGroundedRequest("https://h/models/m:generateContent", JSON.stringify({ tools: [{ googleSearch: {} }] }))).toBe(true);
+  });
+
+  test("error responses (429, 5xx) are never recorded, so a later run retries the provider", async () => {
+    const dir = tmp();
+    const path = join(dir, "c.json");
+    const rec = new Cassette(path, "record", { allowGrounded: false, reuseRecorded: true, innerFetch: async () => new Response("{}", { status: 429 }) });
+    await rec.fetch("https://h/models/m:generateContent", { method: "POST", body: '{"contents":["x"]}' });
+    rec.save();
+    let live = 0;
+    const again = new Cassette(path, "record", { allowGrounded: false, reuseRecorded: true, innerFetch: async () => { live++; return new Response('{"ok":1}'); } });
+    expect(await (await again.fetch("https://h/models/m:generateContent", { method: "POST", body: '{"contents":["x"]}' })).json()).toEqual({ ok: 1 });
+    expect(live).toBe(1);
+  });
+
   test("records non-grounded responses without request secrets, then replays them offline", async () => {
     const dir = tmp();
     const path = join(dir, "c.json");

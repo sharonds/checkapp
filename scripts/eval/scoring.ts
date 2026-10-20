@@ -148,9 +148,12 @@ function goldBinary(row: GoldRow): GoldBinary {
 }
 
 export function scoreRows(gold: GoldRow[], app: AppClaim[]): RowScore[] {
+  // A quote that exactly matches a gold sentence counts only for that sentence; fuzzy matching
+  // is the fallback, so "The toaster has 6 slots" never also credits "The blender has 6 slots".
+  const exactRows = app.map((c) => gold.filter((g) => g.doc === c.doc && normalizeSentence(g.sentence) === normalizeSentence(c.quote)));
   return gold.map((row) => {
     const all = app
-      .filter((c) => c.doc === row.doc && sentencesMatch(row.sentence, c.quote))
+      .filter((c, i) => c.doc === row.doc && (exactRows[i]!.length ? exactRows[i]!.includes(row) : sentencesMatch(row.sentence, c.quote)))
       .map((c) => c.status);
     const statuses = all.filter((s) => s !== "provider_error");
     return {

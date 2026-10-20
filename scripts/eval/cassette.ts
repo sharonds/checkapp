@@ -37,8 +37,15 @@ export function requestKey(kind: string, url: string, body: string): string {
   return createHash("sha256").update(`${kind}\n${stripKey(url)}\n${body}`).digest("hex");
 }
 
+/** Google Search grounding is a tool in the request; the prompt (article text) may mention it too. */
 export function isGroundedRequest(url: string, body: string): boolean {
-  return body.includes("google_search") || body.includes("googleSearch") || /\/interactions(\/|$|\?)/.test(url);
+  if (/\/interactions(\/|$|\?)/.test(url)) return true;
+  try {
+    const tools = (JSON.parse(body) as { tools?: unknown }).tools;
+    return Array.isArray(tools) && tools.some((t) => !!t && typeof t === "object" && ("google_search" in t || "googleSearch" in t));
+  } catch {
+    return body.includes("google_search") || body.includes("googleSearch"); // not JSON: stay conservative
+  }
 }
 
 export interface CassetteOptions {
@@ -52,6 +59,8 @@ export class Cassette {
   /** Responses per request key, in the order they were recorded (identical requests can repeat). */
   private entries: Record<string, Entry[]> = {};
   private readonly served = new Map<string, number>();
+  /** Replay requests that were not in the cassette (the app may swallow the thrown error). */
+  misses = 0;
   /** Captured at construction: once installed, globalThis.fetch is this cassette itself. */
   private readonly inner: FetchFn;
   readonly fetch: FetchFn;
@@ -99,6 +108,7 @@ export class Cassette {
       if (hit?.kind === "fetch") {
         return new Response(hit.body, { status: hit.status, headers: { "content-type": hit.contentType } });
       }
+      this.misses++;
       if (grounded && !this.options.allowGrounded) {
         throw new Error(`Grounded Google Search response was not recorded (grounding terms); run this variant live: ${stripKey(url)}`);
       }
@@ -112,7 +122,8 @@ export class Cassette {
     const res = await this.inner(input, init);
     const text = await res.text();
     const contentType = res.headers.get("content-type") ?? "application/json";
-    if (!grounded || this.options.allowGrounded) {
+    // Error responses (429, 5xx) are not recorded, so a later run retries the provider.
+    if (res.ok && (!grounded || this.options.allowGrounded)) {
       this.record(key, { kind: "fetch", url: stripKey(url), status: res.status, contentType, body: text });
     }
     return new Response(text, { status: res.status, headers: { "content-type": contentType } });
@@ -128,7 +139,10 @@ export class Cassette {
       if (cassette.mode === "replay" || cassette.options.reuseRecorded) {
         const hit = cassette.next(key, "exa", cassette.mode === "replay");
         if (hit?.kind === "exa") return hit.result;
-        if (cassette.mode === "replay") throw new Error(`Cassette miss for Exa query: ${query.slice(0, 80)}`);
+        if (cassette.mode === "replay") {
+          cassette.misses++;
+          throw new Error(`Cassette miss for Exa query: ${query.slice(0, 80)}`);
+        }
       }
       const result = await original.call(this, query, options);
       cassette.record(key, { kind: "exa", query, result });

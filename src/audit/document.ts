@@ -99,7 +99,8 @@ export function createAuditRecordBase(skillId: string, text: string): Omit<Audit
     auditId: `${skillId}-${hashText(text).slice(0, 12)}`,
     language: analysis.language,
     direction: analysis.direction,
-    segments: analysis.segments,
+    // Headings are persisted too, so a claim located in a heading has a segment id that resolves.
+    segments: [...analysis.segments, ...analysis.headings].sort((a, b) => (a.startOffset ?? 0) - (b.startOffset ?? 0)),
     claims: [],
     claimDecisions: [],
     factAssessments: [],
@@ -110,14 +111,16 @@ export function createAuditRecordBase(skillId: string, text: string): Omit<Audit
 }
 
 export function locateQuote(text: string, quote: string, analysis = analyzeDocument(text)): LocatedQuote {
-  const exact = findExactLocatedQuote(quote, analysis.segments);
-  if (exact) return exact;
   // A claim from a heading (product pages put model, capacity and brand there) may arrive with
-  // its markdown "#" prefix; without this it snapped to the most similar body sentence.
+  // its markdown "#" prefix. An exact heading match comes first: body matching also accepts
+  // containment, so a short body line like "12 kg" would otherwise win.
   const headings = analysis.headings ?? [];
   const headingQuote = quote.replace(/^\s{0,3}#{1,6}\s+/, "").trim();
   const heading = headings.find((h) => h.text === headingQuote);
   if (heading) return toLocatedQuote(heading);
+
+  const exact = findExactLocatedQuote(quote, analysis.segments);
+  if (exact) return exact;
 
   const best = findBestSegment(quote, [...analysis.segments, ...headings]);
   if (best) return toLocatedQuote(best, undefined, undefined, undefined, "fuzzy");

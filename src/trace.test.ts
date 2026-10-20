@@ -72,6 +72,16 @@ describe("per-run trace log", () => {
     expect(left).toContain("not-a-date");
   });
 
+  test("standalone provider calls (outside a run, e.g. Deep Audit polling) also prune old date folders", async () => {
+    const { mkdirSync, writeFileSync } = await import("node:fs");
+    process.env.CHECKAPP_TRACE_DIR = dir;
+    const old = new Date(Date.now() - 31 * 86_400_000).toISOString().slice(0, 10);
+    mkdirSync(join(dir, old));
+    writeFileSync(join(dir, old, "adhoc.jsonl"), "{}\n");
+    traceProviderCall({ stage: "deep-research.poll", provider: "gemini-deep-research" });
+    expect(readdirSync(dir)).not.toContain(old);
+  });
+
   test("CHECKAPP_TRACE=0 disables tracing even with a directory", () => {
     process.env.CHECKAPP_TRACE_DIR = dir;
     process.env.CHECKAPP_TRACE = "0";
