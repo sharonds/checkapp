@@ -26,6 +26,8 @@ const DEFAULT_TIMEOUT_MS = 3_000;
  */
 export const GEMINI_MIN_OUTPUT_TOKENS = 32_768;
 export const GEMINI_MAX_OUTPUT_TOKENS = 65_536;
+
+const COUNT_TOKENS_PING = { contents: [{ parts: [{ text: "ping" }] }] };
 const DEFAULT_CACHE_TTL_MS = 5 * 60_000;
 
 export type GeminiTask = "chat" | "grounded" | "deep-research";
@@ -123,32 +125,15 @@ export function createGeminiCapability(options: GeminiCapabilityOptions = {}): G
       };
     }
 
-    const [pro, grounding, deepResearch] = await Promise.all([
-      probeModel(`${baseUrl}/models/${models.pro}:generateContent`, {
-        contents: [{ role: "user", parts: [{ text: "ping" }] }],
-        generationConfig: { maxOutputTokens: 1 },
-      }),
-      probeModel(`${baseUrl}/models/${models.pro}:generateContent`, {
-        contents: [{ role: "user", parts: [{ text: "ping" }] }],
-        tools: [{ google_search: {} }],
-        generationConfig: { maxOutputTokens: 1 },
-      }),
-      probeModel(`${baseUrl}/interactions`, {
-        input: "ping",
-        agent: models.deepResearch,
-        // Gemini requires background=true AND store=true for agent
-        // interactions — anything else returns HTTP 400. This creates a
-        // real background job every probe, but it's cheap (~1 prompt-level
-        // token) and the 5-min health cache keeps the frequency low.
-        background: true,
-        store: true,
-        agent_config: {
-          type: "deep-research",
-          thinking_summaries: "auto",
-          visualization: "off",
-        },
-      }),
+    // Free availability check: countTokens only runs the tokenizer, so it never starts a
+    // Deep Research job (~$1-3 each) or bills a grounded search. It returns 404 for retired
+    // models, which GET /models/{id} does not. Grounding is a tool on the pro model, so its
+    // health follows the pro probe instead of spending a billed search query.
+    const [pro, deepResearch] = await Promise.all([
+      probeModel(`${baseUrl}/models/${models.pro}:countTokens`, COUNT_TOKENS_PING),
+      probeModel(`${baseUrl}/models/${models.deepResearch}:countTokens`, COUNT_TOKENS_PING),
     ]);
+    const grounding = pro;
 
     return {
       pro,

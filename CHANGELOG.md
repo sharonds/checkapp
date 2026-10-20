@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Selecting the `parallel-task` fact-check provider no longer sends the Parallel key to Exa; it is skipped as not implemented.
 - The flash fallback model is `gemini-3.8-flash`; `gemini-3.5-flash` was deprecated on 2026-10-08.
 - Test runs no longer write mock telemetry into the real `~/.checkapp/audit-events.jsonl`.
+- The startup Gemini health check no longer starts a real Deep Research job (Google estimates $1–3 per task) or a grounded request (billed per search query). It now calls `countTokens` for the pro and Deep Research models, which runs only the tokenizer and returns 404 for retired models. Grounding health follows the pro model.
 
 ## [1.4.0] - 2026-06-11
 

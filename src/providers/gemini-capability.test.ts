@@ -4,7 +4,7 @@ import {
   primeGeminiCapabilityHealthCheck,
   resetGeminiCapabilityHealthCache,
 } from "./gemini-capability.ts";
-import { jsonResponse, mockFetch, urlRouter } from "../testing/mock-fetch.ts";
+import { jsonResponse, mockFetch } from "../testing/mock-fetch.ts";
 
 const ENV_KEYS = [
   "GEMINI_MODEL_PRO",
@@ -118,60 +118,34 @@ describe("createGeminiCapability", () => {
     restoreEnv(env);
   });
 
-  test("reports independent health states for pro, grounding, and deep research", async () => {
+  // The probe must be free: countTokens only runs the tokenizer. It never starts a Deep
+  // Research job (~$1-3 each per Google's docs) or a grounded request (billed per search).
+  // countTokens returns 404 for retired models, which a GET /models/{id} does not.
+  test("health probe only calls countTokens: no Deep Research job, no grounded search", async () => {
     process.env.GEMINI_API_KEY = "test-key";
-
-    mockFetch(urlRouter({
-      "models/": async (req) => {
-        const body = JSON.parse(await req.text()) as { tools?: unknown[] };
-        if (body.tools?.length) {
-          return jsonResponse({ error: "grounding down" }, 503);
-        }
-        return jsonResponse({ ok: true });
-      },
-      "interactions": async () => jsonResponse({ id: "dr-1" }, 201),
-    }));
+    const seen: Array<{ url: string; body: string }> = [];
+    mockFetch(async (req) => {
+      seen.push({ url: req.url, body: await req.text() });
+      return jsonResponse({ totalTokens: 1 });
+    });
 
     const capability = createGeminiCapability();
     const health = await capability.checkHealth();
 
-    expect(health.pro).toBe(true);
-    expect(health.grounding).toBe(false);
-    expect(health.deepResearch).toBe(true);
-    expect(typeof health.checkedAt).toBe("number");
+    expect(health).toMatchObject({ pro: true, grounding: true, deepResearch: true });
+    expect(seen.map((r) => r.url).sort()).toEqual([
+      `https://generativelanguage.googleapis.com/v1beta/models/${capability.models.deepResearch}:countTokens`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${capability.models.pro}:countTokens`,
+    ].sort());
+    expect(seen.some((r) => r.url.includes("/interactions"))).toBe(false);
+    expect(seen.some((r) => r.body.includes("google_search"))).toBe(false);
   });
 
-  test("falls back to flash for chat and grounded when cached health marks pro or grounding unavailable", async () => {
+  test("reports deep research unhealthy independently (retired or unknown agent returns 404)", async () => {
     process.env.GEMINI_API_KEY = "test-key";
-
-    mockFetch(urlRouter({
-      "models/": async (req) => {
-        const body = JSON.parse(await req.text()) as { tools?: unknown[] };
-        if (body.tools?.length) {
-          return jsonResponse({ error: "grounding down" }, 503);
-        }
-        return jsonResponse({ error: "pro down" }, 503);
-      },
-      "interactions": async () => jsonResponse({ id: "dr-1" }, 201),
-    }));
-
-    const capability = createGeminiCapability();
-    const health = await capability.checkHealth();
-
-    expect(health.pro).toBe(false);
-    expect(health.grounding).toBe(false);
-    expect(capability.getModel("chat")).toBe(capability.models.flash);
-    expect(capability.getModel("grounded")).toBe(capability.models.flash);
-    expect(capability.getModel("deep-research")).toBe(capability.models.deepResearch);
-  });
-
-  test("falls back from deep research to pro when deep research is unhealthy", async () => {
-    process.env.GEMINI_API_KEY = "test-key";
-
-    mockFetch(urlRouter({
-      "models/": async () => jsonResponse({ ok: true }),
-      "interactions": async () => jsonResponse({ error: "deep research down" }, 503),
-    }));
+    mockFetch(async (req) => req.url.includes("deep-research")
+      ? jsonResponse({ error: { message: "is no longer available" } }, 404)
+      : jsonResponse({ totalTokens: 1 }));
 
     const capability = createGeminiCapability();
     const health = await capability.checkHealth();
@@ -179,7 +153,25 @@ describe("createGeminiCapability", () => {
     expect(health.pro).toBe(true);
     expect(health.grounding).toBe(true);
     expect(health.deepResearch).toBe(false);
+    expect(typeof health.checkedAt).toBe("number");
     expect(capability.getModel("deep-research")).toBe(capability.models.pro);
+  });
+
+  test("falls back to flash for chat and grounded when the pro model is unavailable", async () => {
+    process.env.GEMINI_API_KEY = "test-key";
+    mockFetch(async (req) => req.url.includes("deep-research")
+      ? jsonResponse({ totalTokens: 1 })
+      : jsonResponse({ error: { message: "is no longer available" } }, 404));
+
+    const capability = createGeminiCapability();
+    const health = await capability.checkHealth();
+
+    expect(health.pro).toBe(false);
+    // Grounding is a tool on the pro model; it is not probed separately (that would bill a search).
+    expect(health.grounding).toBe(false);
+    expect(capability.getModel("chat")).toBe(capability.models.flash);
+    expect(capability.getModel("grounded")).toBe(capability.models.flash);
+    expect(capability.getModel("deep-research")).toBe(capability.models.deepResearch);
   });
 
   test("caches health results for five minutes", async () => {
@@ -187,16 +179,10 @@ describe("createGeminiCapability", () => {
 
     let clock = 0;
     let calls = 0;
-    mockFetch(urlRouter({
-      "models/": async () => {
-        calls++;
-        return jsonResponse({ ok: true });
-      },
-      "interactions": async () => {
-        calls++;
-        return jsonResponse({ id: "dr-1" }, 201);
-      },
-    }));
+    mockFetch(async () => {
+      calls++;
+      return jsonResponse({ totalTokens: 1 });
+    });
 
     const capability = createGeminiCapability({
       now: () => clock,
@@ -206,34 +192,28 @@ describe("createGeminiCapability", () => {
     const second = await capability.checkHealth();
 
     expect(first).toEqual(second);
-    expect(calls).toBe(3);
+    expect(calls).toBe(2);
 
     clock = 5 * 60_000 + 1;
     const third = await capability.checkHealth();
 
     expect(third.checkedAt).not.toBe(first.checkedAt);
-    expect(calls).toBe(6);
+    expect(calls).toBe(4);
   });
 
   test("startup priming uses the shared module-level cache", async () => {
     process.env.GEMINI_API_KEY = "test-key";
 
     let calls = 0;
-    mockFetch(urlRouter({
-      "models/": async () => {
-        calls++;
-        return jsonResponse({ ok: true });
-      },
-      "interactions": async () => {
-        calls++;
-        return jsonResponse({ id: "dr-1" }, 201);
-      },
-    }));
+    mockFetch(async () => {
+      calls++;
+      return jsonResponse({ totalTokens: 1 });
+    });
 
     await primeGeminiCapabilityHealthCheck();
     const capability = createGeminiCapability();
     await capability.checkHealth();
 
-    expect(calls).toBe(3);
+    expect(calls).toBe(2);
   });
 });
