@@ -69,6 +69,23 @@ describe("interactions-api", () => {
     expect(extractText(data)).toBe("## Report\nBody");
   });
 
+  test("extractText falls back to an earlier model_output step, then to legacy outputs, when the last step has no text", () => {
+    expect(extractText({
+      id: "int-1",
+      status: "completed",
+      steps: [
+        { type: "model_output", content: [{ type: "text", text: "report" }] },
+        { type: "model_output", content: [] },
+      ],
+    } as never)).toBe("report");
+    expect(extractText({
+      id: "int-1",
+      status: "completed",
+      steps: [{ type: "model_output", content: [] }],
+      outputs: [{ text: "legacy" }],
+    } as never)).toBe("legacy");
+  });
+
   test("extractText prefers steps over legacy outputs when both are present", () => {
     expect(extractText({
       id: "int-1",

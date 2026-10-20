@@ -88,13 +88,15 @@ function summaryMarkdown(variant: Variant, mode: EvalMode, docs: string[], m: Me
     `# Fact-check eval — ${variant.name}`,
     "",
     `Mode: ${mode} · Documents: ${docs.length} · Scorable claims: ${m.counts.scorable} (true ${m.counts.goldTrue}, false/partial ${m.counts.goldFalse}) · Traceability: ${m.counts.traceability} · Excluded: ${m.counts.excluded}`,
+    ...(m.counts.providerErrors ? ["", `**Warning:** ${m.counts.providerErrors} gold claims got only provider errors; they count as not checked. Check the traces before trusting these numbers.`] : []),
     "",
     "| Metric | Value |",
     "|---|---|",
     `| **Recall on false/partial claims (lenient: unsupported or unverified)** | ${pct(m.recallFalseLenient)} |`,
     `| Recall on false/partial claims (strict: unsupported) | ${pct(m.recallFalseStrict)} |`,
     `| Recall on false/partial claims the app checked | ${pct(m.matchedRecallFalseLenient)} |`,
-    `| False-alarm rate on true claims it checked | ${pct(m.falseAlarmRate)} |`,
+    `| False-alarm rate on true claims it checked (strict: unsupported) | ${pct(m.falseAlarmRate)} |`,
+    `| False-alarm rate on true claims it checked (lenient: unsupported or unverified) | ${pct(m.falseAlarmRateLenient)} |`,
     `| Coverage (scorable claims checked at all) | ${pct(m.coverage)} |`,
     `| Traceability claims flagged | ${pct(m.traceabilityFlagRate)} |`,
     `| Cohen's kappa (gold false vs unsupported) | ${m.kappa === null ? "n/a" : m.kappa.toFixed(2)} |`,
@@ -115,6 +117,9 @@ function summaryMarkdown(variant: Variant, mode: EvalMode, docs: string[], m: Me
 export async function runEval(opts: EvalOptions, deps: EvalDeps): Promise<EvalReport> {
   assertOutsideGitRepo(opts.out);
   const variant = JSON.parse(readFileSync(opts.variant, "utf-8")) as Variant;
+  if (!/^[\w.-]+$/.test(variant.name ?? "") || variant.name.startsWith(".")) {
+    throw new Error(`Invalid variant name ${JSON.stringify(variant.name)}: use letters, digits, ".", "_" or "-".`);
+  }
   const allGold = JSON.parse(readFileSync(opts.labels, "utf-8")) as GoldRow[];
   const gold = opts.docs?.length ? allGold.filter((g) => opts.docs!.includes(g.doc)) : allGold;
   const docs = [...new Set(gold.map((g) => g.doc))];
@@ -132,7 +137,9 @@ export async function runEval(opts: EvalOptions, deps: EvalDeps): Promise<EvalRe
   const runDir = join(opts.out, variant.name, `${new Date().toISOString().replace(/[:.]/g, "-")}-${opts.mode}`);
   mkdirSync(join(runDir, "docs"), { recursive: true, mode: 0o700 });
 
-  const config = buildConfig(deps.readConfig(), variant);
+  // config.ts reads LLM_PROVIDER and the API keys at read time, so read it inside the variant env.
+  const variantEnv = { ...(variant.env ?? {}), CHECKAPP_TRACE_DIR: join(runDir, "traces") };
+  const config = await withEnv(variantEnv, async () => buildConfig(deps.readConfig(), variant));
   if (opts.mode === "dry-run") {
     const metrics = computeMetrics(scoreRows(gold, []), []);
     writePrivate(join(runDir, "dry-run.json"), JSON.stringify({ docs, missingSentences, labelled: gold.filter((g) => g.verdict).length }, null, 1));
@@ -150,16 +157,15 @@ export async function runEval(opts: EvalOptions, deps: EvalDeps): Promise<EvalRe
     : new Cassette(join(opts.out, variant.name, "cassette.json"), opts.mode, { allowGrounded: !!opts.allowGroundedRecording });
   const realFetch = globalThis.fetch;
   let restoreExa = () => {};
-  if (cassette) {
-    globalThis.fetch = cassette.fetch as typeof fetch;
-    const proto = deps.exaPrototype ?? ((await import("exa-js")).default.prototype as unknown as EvalDeps["exaPrototype"]);
-    if (proto) restoreExa = cassette.wrapExa(proto);
-  }
-
   const appClaims: AppClaim[] = [];
   const runs: Array<{ doc: string; costUsd: number; wallMs: number }> = [];
   try {
-    await withEnv({ ...(variant.env ?? {}), CHECKAPP_TRACE_DIR: join(runDir, "traces") }, async () => {
+    if (cassette) {
+      globalThis.fetch = cassette.fetch as typeof fetch;
+      const proto = deps.exaPrototype ?? ((await import("exa-js")).default.prototype as unknown as EvalDeps["exaPrototype"]);
+      if (proto) restoreExa = cassette.wrapExa(proto);
+    }
+    await withEnv(variantEnv, async () => {
       for (const doc of docs) {
         const started = Date.now();
         const core = await deps.runCheckCore(texts.get(doc)!, config);
@@ -179,6 +185,8 @@ export async function runEval(opts: EvalOptions, deps: EvalDeps): Promise<EvalRe
 
   const rows = scoreRows(gold, appClaims);
   const metrics = computeMetrics(rows, runs);
+  // Replayed responses are instant, so their wall-clock time says nothing about latency.
+  if (opts.mode === "replay") metrics.latencyMs = { p50: null, p90: null };
   writePrivate(join(runDir, "rows.json"), JSON.stringify(rows, null, 1));
   writePrivate(join(runDir, "metrics.json"), JSON.stringify({ variant: variant.name, mode: opts.mode, docs, metrics }, null, 1));
   writePrivate(join(runDir, "summary.md"), summaryMarkdown(variant, opts.mode, docs, metrics));

@@ -88,12 +88,15 @@ export async function pollUntilComplete(
 }
 
 export function extractText(data: InteractionResponse | null | undefined): string {
-  const finalOutput = data?.steps?.filter((step) => step.type === "model_output").at(-1);
-  if (finalOutput) {
-    return (finalOutput.content ?? [])
+  // The report is in the last model_output step that has text; earlier steps and legacy
+  // outputs are fallbacks so an empty final step doesn't hide a report.
+  const outputs = data?.steps?.filter((step) => step.type === "model_output") ?? [];
+  for (const step of outputs.reverse()) {
+    const text = (step.content ?? [])
       .filter((item) => item.type === "text" && item.text)
       .map((item) => item.text)
       .join("\n");
+    if (text) return text;
   }
   return data?.outputs?.find((output) => output.text)?.text ?? "";
 }

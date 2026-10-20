@@ -37,6 +37,8 @@ export interface RowScore {
   flaggedStrict: boolean;
   /** The app said "unsupported" or "unverified" (a human would review it). */
   flaggedLenient: boolean;
+  /** The app tried to check this sentence but the provider failed; not counted as checked. */
+  providerError: boolean;
 }
 
 export interface Rate {
@@ -47,7 +49,7 @@ export interface Rate {
 }
 
 export interface Metrics {
-  counts: { scorable: number; goldTrue: number; goldFalse: number; traceability: number; excluded: number };
+  counts: { scorable: number; goldTrue: number; goldFalse: number; traceability: number; excluded: number; providerErrors: number };
   /** Share of gold-false claims the app flagged, counting claims it never checked as misses. The product metric. */
   recallFalseStrict: Rate;
   recallFalseLenient: Rate;
@@ -55,6 +57,8 @@ export interface Metrics {
   matchedRecallFalseLenient: Rate;
   /** Share of checked gold-true claims the app called unsupported. */
   falseAlarmRate: Rate;
+  /** Share of checked gold-true claims the app called unsupported or unverified; pairs with lenient recall. */
+  falseAlarmRateLenient: Rate;
   /** Share of scorable gold claims the app checked at all. */
   coverage: Rate;
   /** Share of traceability rows (claims only the client could confirm) the app flagged. */
@@ -71,6 +75,9 @@ const FALSE_VERDICTS = new Set<GoldVerdict>(["partially_supported", "misattribut
 export function normalizeSentence(s: string): string {
   return s
     .normalize("NFKC")
+    .replace(/[\u0591-\u05BD\u05BF-\u05C7]/g, "") // niqqud and cantillation
+    .replace(/\u05BE/g, "-") // maqaf
+    .replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, "") // zero-width and bidi marks
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1") // markdown links → text
     .replace(/[*_#|>`]/g, " ")
     .replace(/[״“”„]/g, '"')
@@ -97,6 +104,7 @@ export function sentencesMatch(a: string, b: string): boolean {
   if (!na || !nb) return false;
   if (na === nb) return true;
   const [short, long] = na.length <= nb.length ? [na, nb] : [nb, na];
+  if (isDecimalSplitFragment(short, long)) return true;
   // A planted error usually changes one number; never treat different numbers as the same sentence.
   const longNums = new Set(numbersIn(long));
   if (!numbersIn(short).every((n) => longNums.has(n))) return false;
@@ -107,6 +115,19 @@ export function sentencesMatch(a: string, b: string): boolean {
   for (const t of ta) if (tb.has(t)) inter++;
   const jaccard = inter / (ta.size + tb.size - inter);
   return jaccard >= 0.6;
+}
+
+/**
+ * The audit's sentence splitter breaks on every ".", so "holds 1.7 litres" can come back as the
+ * quote "holds 1." or "7 litres". Accept a fragment of the gold sentence cut at a decimal point.
+ */
+function isDecimalSplitFragment(short: string, long: string): boolean {
+  if (short.length < 8) return false;
+  const at = long.indexOf(short);
+  if (at < 0) return false;
+  const cutBefore = /\d\.$/.test(long.slice(0, at)) && /^\d/.test(short);
+  const cutAfter = /\d$/.test(short) && /^\.\d/.test(long.slice(at + short.length));
+  return cutBefore || cutAfter;
 }
 
 /** Flattens a fact-check AuditRecord into one entry per checked claim. */
@@ -128,9 +149,10 @@ function goldBinary(row: GoldRow): GoldBinary {
 
 export function scoreRows(gold: GoldRow[], app: AppClaim[]): RowScore[] {
   return gold.map((row) => {
-    const statuses = app
+    const all = app
       .filter((c) => c.doc === row.doc && sentencesMatch(row.sentence, c.quote))
       .map((c) => c.status);
+    const statuses = all.filter((s) => s !== "provider_error");
     return {
       id: row.id,
       doc: row.doc,
@@ -140,6 +162,7 @@ export function scoreRows(gold: GoldRow[], app: AppClaim[]): RowScore[] {
       appStatuses: statuses,
       flaggedStrict: statuses.includes("unsupported"),
       flaggedLenient: statuses.some((s) => s === "unsupported" || s === "unverified"),
+      providerError: statuses.length === 0 && all.length > 0,
     };
   });
 }
@@ -171,6 +194,7 @@ function coreRates(rows: readonly RowScore[]) {
   return {
     recallFalseLenient: rate(count(falses, (r) => r.flaggedLenient), falses.length),
     falseAlarmRate: rate(count(matchedTrues, (r) => r.flaggedStrict), matchedTrues.length),
+    falseAlarmRateLenient: rate(count(matchedTrues, (r) => r.flaggedLenient), matchedTrues.length),
     coverage: rate(count(scorable, (r) => r.matched), scorable.length),
   };
 }
@@ -211,11 +235,13 @@ export function computeMetrics(
       goldFalse: falses.length,
       traceability: trace.length,
       excluded: count(rows, (r) => r.goldBinary === "excluded"),
+      providerErrors: count(rows, (r) => r.providerError),
     },
     recallFalseStrict: rate(count(falses, (r) => r.flaggedStrict), falses.length),
     recallFalseLenient: core.recallFalseLenient,
     matchedRecallFalseLenient: rate(count(matchedFalses, (r) => r.flaggedLenient), matchedFalses.length),
     falseAlarmRate: core.falseAlarmRate,
+    falseAlarmRateLenient: core.falseAlarmRateLenient,
     coverage: core.coverage,
     traceabilityFlagRate: rate(count(trace, (r) => r.flaggedLenient), trace.length),
     kappa: cohenKappa(kappaPairs),

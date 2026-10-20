@@ -196,6 +196,21 @@ describe("FactCheckDeepResearchSkill", () => {
     db.close();
   });
 
+  test("fetchResult warns instead of passing when a completed audit has no report text", async () => {
+    // An empty report is not evidence that the article checks out.
+    const db = new Database(":memory:");
+    createSchema(db);
+    const auditId = insertDeepAudit(db, { parentType: "content_hash", parentKey: "hash-empty", requestedBy: "dashboard", startedAt: 100 });
+    db.run("UPDATE deep_audits SET interaction_id = ?, status = 'in_progress' WHERE id = ?", ["int-empty", auditId]);
+    mockFetch(async () => jsonResponse({ id: "int-empty", status: "completed", steps: [{ type: "model_output", content: [] }] }));
+
+    const result = await new FactCheckDeepResearchSkill({ db, now: () => 1_000 }).fetchResult("int-empty", baseConfig);
+
+    expect(result?.verdict).toBe("warn");
+    expect(result?.summary).toMatch(/no report text/i);
+    db.close();
+  });
+
   test("fetchResult sanitizes failed provider errors before persistence and output", async () => {
     const db = new Database(":memory:");
     createSchema(db);

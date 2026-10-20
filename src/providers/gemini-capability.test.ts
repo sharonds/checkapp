@@ -157,6 +157,23 @@ describe("createGeminiCapability", () => {
     expect(capability.getModel("deep-research")).toBe(capability.models.pro);
   });
 
+  test("a transient probe failure (429, 5xx, timeout) does not mark a model unavailable", async () => {
+    // Health is cached for the life of the MCP process; one startup blip must not downgrade every call.
+    process.env.GEMINI_API_KEY = "test-key";
+    mockFetch(async (req) => req.url.includes("deep-research")
+      ? jsonResponse({ error: { message: "Resource exhausted" } }, 429)
+      : jsonResponse({ error: { message: "Internal error" } }, 503));
+    const health = await createGeminiCapability().checkHealth();
+    expect(health.pro).toBe(true);
+    expect(health.deepResearch).toBe(true);
+
+    resetGeminiCapabilityHealthCache();
+    mockFetch(async () => { throw new DOMException("aborted", "AbortError"); });
+    const timedOut = await createGeminiCapability().checkHealth();
+    expect(timedOut.pro).toBe(true);
+    expect(timedOut.deepResearch).toBe(true);
+  });
+
   test("falls back to flash for chat and grounded when the pro model is unavailable", async () => {
     process.env.GEMINI_API_KEY = "test-key";
     mockFetch(async (req) => req.url.includes("deep-research")

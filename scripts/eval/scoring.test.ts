@@ -23,6 +23,21 @@ describe("sentence matching", () => {
   });
 });
 
+describe("sentence matching — app quote fragments and Hebrew marks", () => {
+  test("matches an app quote cut at a decimal point (the audit splitter breaks '1.7' into '1.' and '7')", () => {
+    expect(sentencesMatch("The kettle holds 1.7 litres of water.", "The kettle holds 1.")).toBe(true);
+    expect(sentencesMatch("The kettle holds 1.7 litres of water.", "7 litres of water.")).toBe(true);
+    // A fragment of a different sentence is still not a match.
+    expect(sentencesMatch("The kettle holds 1.7 litres of water.", "The toaster holds 1.")).toBe(false);
+    // Planted numbers are still never conflated through a fragment.
+    expect(sentencesMatch("The kettle holds 2.5 litres of water.", "The kettle holds 1.")).toBe(false);
+  });
+
+  test("ignores niqqud, bidi and zero-width marks, and maps maqaf to a hyphen", () => {
+    expect(normalizeSentence("\u200Fשָׁלוֹם\u200B עולם\u05BEחדש")).toBe(normalizeSentence("שלום עולם-חדש"));
+  });
+});
+
 describe("audit → app claims", () => {
   test("joins claims to their assessments by claimId", () => {
     const audit = {
@@ -33,6 +48,17 @@ describe("audit → app claims", () => {
       { doc: "a.md", quote: "Q1", status: "supported" },
       { doc: "a.md", quote: "Q2", status: "unsupported" },
     ]);
+  });
+});
+
+describe("provider errors", () => {
+  test("a claim the provider failed on is not counted as checked", () => {
+    const rows = scoreRows([gold({ verdict: "unsupported" })], [{ doc: "a.md", quote: "The kettle holds 1.7 litres.", status: "provider_error" }]);
+    expect(rows[0]!.matched).toBe(false);
+    expect(rows[0]!.providerError).toBe(true);
+    const m = computeMetrics(rows, []);
+    expect(m.coverage.value).toBe(0);
+    expect(m.counts.providerErrors).toBe(1);
   });
 });
 
@@ -97,6 +123,8 @@ describe("metrics", () => {
     expect(m.recallFalseLenient.value).toBeCloseTo(2 / 3);
     expect(m.matchedRecallFalseLenient.value).toBeCloseTo(1);
     expect(m.falseAlarmRate.value).toBeCloseTo(1 / 2);
+    // Paired with lenient recall: answering "unverified" to everything must not look free.
+    expect(m.falseAlarmRateLenient.value).toBeCloseTo(1 / 2);
     expect(m.coverage.value).toBeCloseTo(4 / 5);
     expect(m.traceabilityFlagRate.value).toBe(0);
     expect(m.byClass.planted.recallFalseLenient.value).toBe(0);

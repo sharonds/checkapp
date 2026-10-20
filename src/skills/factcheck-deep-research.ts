@@ -353,6 +353,18 @@ function requireGeminiApiKey(config: Config): string {
 }
 
 function completedResult(skill: FactCheckDeepResearchSkill, text: string): SkillResult {
+  if (!text.trim()) {
+    return {
+      skillId: skill.id,
+      name: skill.name,
+      score: 50,
+      verdict: "warn",
+      summary: "Deep Audit completed but returned no report text",
+      findings: [{ severity: "warn", text: "The provider returned no report text. Re-run the Deep Audit or check the raw result." }],
+      costUsd: DEFAULT_COST_USD,
+      provider: "gemini-deep-research",
+    };
+  }
   return {
     skillId: skill.id,
     name: skill.name,

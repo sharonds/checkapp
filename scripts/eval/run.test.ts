@@ -77,6 +77,47 @@ describe("runEval", () => {
     }
   });
 
+  test("reads the config inside the variant env (keys and LLM_PROVIDER are read at config time)", async () => {
+    const p = setup();
+    writeFileSync(p.variant, JSON.stringify({ name: "env-variant", env: { CHECKAPP_EVAL_PROBE: "from-variant" } }));
+    let seen: string | undefined;
+    await runEval({ ...p, mode: "live", yes: true }, {
+      readConfig: () => { seen = process.env.CHECKAPP_EVAL_PROBE; return baseConfig(); },
+      runCheckCore: async () => ({ totalCostUsd: 0, results: [], audit: undefined as never }),
+    });
+    expect(seen).toBe("from-variant");
+    expect(process.env.CHECKAPP_EVAL_PROBE).toBeUndefined();
+  });
+
+  test("rejects a variant name that would escape the output folder", async () => {
+    const p = setup();
+    writeFileSync(p.variant, JSON.stringify({ name: "../escape" }));
+    await expect(runEval({ ...p, mode: "dry-run", yes: false }, { readConfig: baseConfig, runCheckCore: fakeCore as any }))
+      .rejects.toThrow(/variant name/i);
+  });
+
+  test("restores global fetch even if loading exa-js fails", async () => {
+    const p = setup();
+    const realFetch = globalThis.fetch;
+    const broken = { get search(): never { throw new Error("exa unavailable"); }, set search(_v: unknown) {} } as never;
+    await expect(runEval({ ...p, mode: "record", yes: true }, { readConfig: baseConfig, runCheckCore: fakeCore as any, exaPrototype: broken }))
+      .rejects.toThrow(/exa unavailable/);
+    expect(globalThis.fetch).toBe(realFetch);
+  });
+
+  test("replay reports latency as n/a (cached responses say nothing about speed)", async () => {
+    const p = setup();
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async () => new Response('{"ok":1}')) as typeof fetch;
+    try {
+      await runEval({ ...p, mode: "record", yes: true }, { readConfig: baseConfig, runCheckCore: fakeCore as any });
+      const replayed = await runEval({ ...p, mode: "replay", yes: false }, { readConfig: baseConfig, runCheckCore: fakeCore as any });
+      expect(replayed.metrics.latencyMs).toEqual({ p50: null, p90: null });
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
   test("refuses an output folder inside a git repository", async () => {
     const p = setup();
     await expect(runEval({ ...p, out: join(process.cwd(), "eval-out"), mode: "dry-run", yes: false }, { readConfig: baseConfig, runCheckCore: fakeCore as any }))

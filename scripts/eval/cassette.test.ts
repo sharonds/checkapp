@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cassette, isGroundedRequest, requestKey } from "./cassette.ts";
@@ -85,5 +85,11 @@ describe("output path guard", () => {
   test("refuses output inside a git working tree (client data must stay out of repos)", () => {
     expect(() => assertOutsideGitRepo(join(process.cwd(), "eval-out"))).toThrow(/inside a git repository/i);
     expect(() => assertOutsideGitRepo(tmp())).not.toThrow();
+  });
+
+  test("follows symlinks: a link outside the repo that points into it is refused", () => {
+    const link = join(tmp(), "link-into-repo");
+    symlinkSync(join(process.cwd(), "scripts"), link);
+    expect(() => assertOutsideGitRepo(join(link, "eval-out", "new"))).toThrow(/inside a git repository/i);
   });
 });

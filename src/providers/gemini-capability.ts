@@ -172,9 +172,11 @@ export function createGeminiCapability(options: GeminiCapabilityOptions = {}): G
         body: JSON.stringify(body),
         signal: controller.signal,
       });
-      return response.ok;
+      // Only a definite answer (404 retired model, 401/403 bad key) marks a model unavailable.
+      // Health is cached for the process, so a rate limit or server blip must not downgrade it.
+      return response.ok || response.status === 429 || response.status >= 500;
     } catch {
-      return false;
+      return true; // timeout or network error: unknown, so keep the default model
     } finally {
       clearTimeout(timer);
     }
