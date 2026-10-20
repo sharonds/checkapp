@@ -8,10 +8,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
-- Per-run trace log: each check writes `~/.checkapp/traces/<date>/<runId>.jsonl`, with one record per provider call (prompt, params, response, search queries, tokens, latency, status). Set `CHECKAPP_TRACE=0` to turn it off. Google Search grounded content is left out unless `CHECKAPP_TRACE_GROUNDED_CONTENT=1`. Trace files are owner-only (0600), and date folders older than 30 days (`CHECKAPP_TRACE_RETENTION_DAYS`) are deleted. Batch runs now go through the same pipeline, with one trace per article.
+- Per-run trace log: each check writes `~/.checkapp/traces/<date>/<runId>.jsonl`, with one record per provider call (prompt, params, response, search queries, tokens, latency, status). Set `CHECKAPP_TRACE=0` to turn it off. Google Search grounded content is left out unless `CHECKAPP_TRACE_GROUNDED_CONTENT=1`. Trace files are owner-only (0600). Retention (`CHECKAPP_TRACE_RETENTION_DAYS`, default 30) deletes old `.jsonl` trace files only in a trace folder CheckApp created itself (marked with `.checkapp-traces`). Batch runs now go through the same pipeline, with one trace per article.
+- Standard-tier claim extraction works breadth-first across the whole article, including headings, list items and table rows. Every sentence gets its first claim before any sentence gets a second, and claims are ordered so the most specific and most likely to be wrong come first. Extraction uses Gemini structured output.
+- `factAudit.extractionSamples` (1–3, default 1) merges several extraction calls. One call varies a lot between runs on the same article.
 - Grounded fact-check findings now show Google Search Suggestions (`searchEntryPoint`) in the HTML report and dashboard, as the Gemini grounding terms require. They render in a sandboxed iframe with no scripts. The suggestions are not included in MCP or `--json` output.
 
+### Changed
+- The grounded verdict prompt has explicit rules:
+  - every specific detail must hold
+  - superlatives need evidence against all alternatives
+  - approximate numbers must fit the rounding they imply
+  - rules of thumb are judged against authoritative typical values
+  - a stated range is supported when the true value falls inside
+- The Standard fact-check cost estimate is now about $0.21 per check (it was $0.16). It now includes the claim-extraction call, measured at about $0.05 per call rather than the $0.001 assumed before.
+
+### Security
+- Next.js in the dashboard was upgraded to 16.3.8. This clears 16 advisories, including 3 critical remote-code-execution issues.
+
 ### Fixed
+- Claims taken from a markdown heading are located at that heading; before, they were attributed to a similar body sentence. A source that spans several sentences is located at the claim, not at a lead-in. A decimal point no longer ends a sentence.
+- Model JSON with an unescaped Hebrew gershayim (`ק"ג`, `פיפ"א`) is repaired. Before, it made the whole article fail claim extraction.
+- An explicitly selected Exa fact-check provider without its own key now uses `EXA_API_KEY`. Before, the check was skipped.
+- A completed Deep Audit with no report text is a warning, not a pass. A rate limit or timeout during the startup health check no longer downgrades models for the life of the process.
 - Deep Audit reads the Interactions API `steps[]` response schema. Google removed the legacy `outputs` field on 2026-06-08, so completed audits came back empty.
 - Gemini requests no longer send `temperature`. It is deprecated and ignored on Gemini 3.6+ and Gemini 4, and Google warns it degrades Gemini 3.x reasoning.
 - Gemini `maxOutputTokens` is now at least 32,768 on all calls (thinking tokens count against the cap); previously 2,048–8,192 could truncate answers.

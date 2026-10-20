@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { estimateRunCost, type AppConfigForEstimate } from "./estimator";
+import { estimateRunCost, type AppConfigForEstimate } from "@/lib/estimator";
 
 const base = (skills: Partial<AppConfigForEstimate["skills"]> = {}): AppConfigForEstimate => ({
   skills: {
@@ -36,7 +36,8 @@ describe("estimateRunCost", () => {
       },
       1000
     );
-    expect(r.perSkill["fact-check"]).toBeCloseTo(0.16, 4);
+    // Mirrors src/cost/estimator.ts: 4 grounded claims at $0.04 plus one extraction call at $0.05.
+    expect(r.perSkill["fact-check"]).toBeCloseTo(0.21, 4);
   });
 
   test("fact-check uses provider pricing when the flag is off", () => {

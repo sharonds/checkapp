@@ -160,6 +160,7 @@ export class FactCheckGroundedSkill implements Skill {
     const documentAnalysis = analyzeDocument(text);
     const samples = Math.min(3, Math.max(1, Math.floor(config.factAudit?.extractionSamples ?? 1)));
     const claims = await extractClaims(text, llm.call, samples);
+    const extractionCostUsd = EXTRACTION_COST_PER_CALL_USD * samples;
     if (claims === null) {
       const baseAudit = createAuditRecordBase(this.id, text);
       const audit: AuditRecord = {
@@ -184,7 +185,7 @@ export class FactCheckGroundedSkill implements Skill {
           status: "provider_error",
           text: "The claim-extraction provider returned an unusable response, so fact-checking could not run. Re-run the check or switch the LLM provider.",
         }],
-        costUsd: 0.001,
+        costUsd: extractionCostUsd,
         provider: resolved.provider,
         audit,
       };
@@ -200,14 +201,14 @@ export class FactCheckGroundedSkill implements Skill {
           severity: "warn",
           text: "No checkable statistics, dates, or research findings found — adding cited facts (studies, percentages, named data) increases credibility and SEO authority",
         }],
-        costUsd: 0.001,
+        costUsd: extractionCostUsd,
         provider: resolved.provider,
       };
     }
 
     const findings: Finding[] = [];
     const perClaimCost = resolved.metadata?.costPerCheckUsd ?? 0.04;
-    let costUsd = 0.001;
+    let costUsd = extractionCostUsd;
 
     const budget = createAuditBudget(config, "standard");
     // Budget selection works on assertion strings; re-zip the index-aligned
@@ -442,6 +443,10 @@ function budgetStopReasonFromKey(key: ReturnType<typeof shouldStopForBudget>): A
   if (key === "maxProviderFailures") return "provider_failure_budget";
   return "provider_call_budget";
 }
+
+// Measured 2026-10-20 from traces: one Standard-tier extraction call is ~5k input + ~3k
+// output/thinking tokens on gemini-3.1-pro ($2 / $12 per million), about $0.046.
+const EXTRACTION_COST_PER_CALL_USD = 0.05;
 
 // Returns null when the extraction provider produced an unusable response
 // (empty, unparseable, non-array, or a thrown provider error). The Gemini

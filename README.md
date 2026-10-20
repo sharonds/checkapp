@@ -74,7 +74,7 @@ Standard is opt-in and stays off by default until Gate 2 passes. Basic remains t
 | Tier | Engine | Cost per article | Typical time | Notes |
 |------|--------|------|------|-------|
 | Basic (default) | Exa + LLM | $0.04 | ~15s | Requires Exa plus an LLM key for claim extraction/assessment |
-| Standard (opt-in) | Gemini 3.1 Pro + Google Search grounding | $0.16 | ~45s | Requires Gemini. Enable with `factCheckTierFlag=true` and `factCheckTier="standard"`, or set `providers["fact-check"].provider = "gemini-grounded"`. |
+| Standard (opt-in) | Gemini 3.1 Pro + Google Search grounding | $0.21 | ~45s | Requires Gemini. Enable with `factCheckTierFlag=true` and `factCheckTier="standard"`, or set `providers["fact-check"].provider = "gemini-grounded"`. |
 | Deep Audit (async) | Gemini Deep Research | $1.50 | 5–15 min | Premium async audit workflow. The normal sync check still runs Basic unless Standard is selected. Initiate via dashboard button or `deep_audit_article` MCP tool. |
 
 Basic, Standard, and sync deep-reasoning fact-checking default to checking up to 4 extracted claims per article to keep latency and provider cost predictable. Advanced users can adjust `factAudit.standardMaxClaims`, `factAudit.deepMaxClaims`, and provider-call budgets in config; structured reports show skipped-claim counts and budget reasons such as `claim_cap` when a cap stops verification.
@@ -584,7 +584,7 @@ Approximate cost per 800-word article check with all skills enabled:
 | Plagiarism | Copyscape / Gemini Grounded Plagiarism | ~$0.09 / ~$0.04 estimate |
 | AI Detection | Copyscape / Gemini | ~$0.03 / ~$0.01 estimate |
 | SEO | Offline | free |
-| Fact Check | Basic: Exa + configured LLM; Standard: Gemini Grounded | ~$0.04 / ~$0.16 |
+| Fact Check | Basic: Exa + configured LLM; Standard: Gemini Grounded | ~$0.04 / ~$0.21 |
 | Tone of Voice | Configured LLM | ~$0.002 |
 | Legal Risk | Configured LLM | ~$0.002 |
 | Content Summary | Configured LLM | ~$0.002 |

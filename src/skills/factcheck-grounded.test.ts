@@ -319,7 +319,8 @@ describe("FactCheckGroundedSkill", () => {
 
     const result = await new FactCheckGroundedSkill().run(
       "Claim one. Claim two. Claim three.",
-      { ...baseConfig, factAudit: { standardMaxClaims: 3, maxUsd: 0.04 } },
+      // Extraction now counts at its measured $0.05, so the budget covers extraction plus one $0.04 claim.
+      { ...baseConfig, factAudit: { standardMaxClaims: 3, maxUsd: 0.09 } },
     );
 
     expect(assessmentCalls).toBe(1);
@@ -1012,6 +1013,23 @@ describe("grounded claim extraction requests", () => {
     expect(extractionBodies).toHaveLength(1);
     expect(extractionBodies[0].generationConfig.responseMimeType).toBe("application/json");
     expect(extractionBodies[0].generationConfig.responseJsonSchema.type).toBe("array");
+  });
+
+  test("reported cost counts each extraction call at its measured price, not a token amount", async () => {
+    // Measured 2026-10-20 from traces: an extraction call is ~5k input + ~3k output/thinking tokens
+    // on gemini-3.1-pro (~$0.046); the old $0.001 hid ~$0.14 per article with three samples.
+    const run = async (samples: number) => {
+      mockFetch(urlRouter({
+        "generativelanguage.googleapis.com": async (req: Request) => {
+          const body = await req.json() as any;
+          if (body.tools) return grounded();
+          return jsonResponse({ candidates: [{ content: { parts: [{ text: JSON.stringify([{ assertion: "Alpha has 3 parts", source: "Alpha has 3 parts." }]) }] } }] });
+        },
+      }));
+      return new FactCheckGroundedSkill().run(article, { ...config, factAudit: { standardMaxClaims: 20, extractionSamples: samples } });
+    };
+    expect((await run(1)).costUsd).toBeCloseTo(0.05 + 0.04, 5);
+    expect((await run(3)).costUsd).toBeCloseTo(3 * 0.05 + 0.04, 5);
   });
 
   test("factAudit.extractionSamples runs several extractions and checks the union of their sentences", async () => {

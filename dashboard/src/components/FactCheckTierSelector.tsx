@@ -26,7 +26,7 @@ const FACT_CHECK_TIERS: Array<{
     value: "standard",
     label: "Standard (recommended)",
     description: "Gemini + Google Search",
-    price: "$0.16",
+    price: "$0.21",
     disabledWithoutGemini: true,
   },
   {
