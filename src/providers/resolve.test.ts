@@ -28,6 +28,17 @@ describe("resolveProvider", () => {
     expect(r?.apiKey).toBe("k-legacy");
   });
 
+  test("an explicitly selected Exa provider without its own key uses EXA_API_KEY (config.exaApiKey)", () => {
+    // Gemini providers already fall back to config.geminiApiKey; Exa was silently skipped instead.
+    for (const provider of ["exa-search", "exa-deep-reasoning"] as const) {
+      const r = resolveProvider({ ...base, exaApiKey: "k-env", providers: { "fact-check": { provider } } } as Config, "fact-check");
+      expect(r?.provider).toBe(provider);
+      expect(r?.apiKey).toBe("k-env");
+    }
+    const own = resolveProvider({ ...base, exaApiKey: "k-env", providers: { "fact-check": { provider: "exa-search", apiKey: "k-own" } } } as Config, "fact-check");
+    expect(own?.apiKey).toBe("k-own");
+  });
+
   test("resolves gemini-grounded with config.geminiApiKey for fact-check", () => {
     const provider = PROVIDER_REGISTRY["fact-check"]?.find((p) => p.id === "gemini-grounded");
     const r = resolveProvider(
