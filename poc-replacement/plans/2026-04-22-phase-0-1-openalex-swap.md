@@ -38,7 +38,7 @@ Throughout this document, "legacy SS fallback" means the existing **unauthentica
 
 **Memory checkpoint (no file mod — documentation step):**
 - `~/checkapp/.remember/remember.md` — append "Phase 1 complete" entry
-- `~/.claude/projects/-Users-sharonsciammas-checkapp/memory/project_checkapp_plan3_pocs.md` — append production status entry
+- `<your project notes>` — append production status entry
 
 ---
 
@@ -864,7 +864,7 @@ describe.skipIf(!RUN)("OpenAlex live API", () => {
 
 - [ ] **Step 2: Run locally with real API**
 
-Run: `OPENALEX_INTEGRATION=1 OPENALEX_MAILTO=sharon.spirit@gmail.com bun test tests/integration/academic-openalex.test.ts`
+Run: `OPENALEX_INTEGRATION=1 OPENALEX_MAILTO=you@example.com bun test tests/integration/academic-openalex.test.ts`
 Expected: PASS, 2 tests. First test confirms the BMJ Martineau 2017 paper is found.
 
 - [ ] **Step 3: Verify the test is skipped by default**
@@ -956,7 +956,7 @@ Expected: PASS (comparison against the committed baseline).
 
 - [ ] **Step 4: Run the live-API integration test**
 
-Run: `OPENALEX_INTEGRATION=1 OPENALEX_MAILTO=sharon.spirit@gmail.com bun test tests/integration/academic-openalex.test.ts`
+Run: `OPENALEX_INTEGRATION=1 OPENALEX_MAILTO=you@example.com bun test tests/integration/academic-openalex.test.ts`
 Expected: PASS, 2 tests (not skipped).
 
 - [ ] **Step 5: Run the dashboard test suite**
@@ -979,7 +979,7 @@ Expected: JSON output with citations from Semantic Scholar (or "skipped" with a 
 - [ ] **Step 7: Manual smoke test — user WITH OPENALEX_MAILTO**
 
 ```bash
-OPENALEX_MAILTO=sharon.spirit@gmail.com bun src/index.tsx check poc/articles/01-health.md --skills academic > /tmp/smoke-after.json
+OPENALEX_MAILTO=you@example.com bun src/index.tsx check poc/articles/01-health.md --skills academic > /tmp/smoke-after.json
 ```
 
 Expected: JSON output with citations from OpenAlex. At least one citation should be returned (topical to vitamin D / respiratory infection claims in the article). Do NOT assert a specific DOI — OpenAlex ranking can drift.
@@ -1012,7 +1012,7 @@ Fix any critical gaps as a new atomic commit.
 
 **Files:**
 - Modify: `~/checkapp/.remember/remember.md`
-- Modify: `~/.claude/projects/-Users-sharonsciammas-checkapp/memory/project_checkapp_plan3_pocs.md`
+- Modify: `<your project notes>`
 
 - [ ] **Step 1: Append to `.remember/remember.md`**
 
@@ -1036,7 +1036,7 @@ Open `~/checkapp/.remember/remember.md`. Append at the end:
 - Users with `OPENALEX_MAILTO`: citations work (OpenAlex polite pool).
 - Users without: unchanged (SS legacy path, still subject to SS 429 issue).
 
-**Production action:** set `OPENALEX_MAILTO=sharon.spirit@gmail.com` in deployment env.
+**Production action:** set `OPENALEX_MAILTO=you@example.com` in deployment env.
 
 **Cost impact:** $0 per citation call (OpenAlex polite pool is free).
 
@@ -1048,7 +1048,7 @@ Replace `YYYY-MM-DD` with today's date and `#___` with the actual PR number.
 
 - [ ] **Step 2: Append to the Plan 3 memory file**
 
-Open `~/.claude/projects/-Users-sharonsciammas-checkapp/memory/project_checkapp_plan3_pocs.md`. Append at the end:
+Open `<your project notes>`. Append at the end:
 
 ```markdown
 
@@ -1064,7 +1064,7 @@ Open `~/.claude/projects/-Users-sharonsciammas-checkapp/memory/project_checkapp_
 - `.env.example` documents `OPENALEX_MAILTO`; README has a citations section
 
 **Deployment checklist:**
-- [ ] Production `.env` includes `OPENALEX_MAILTO=sharon.spirit@gmail.com`
+- [ ] Production `.env` includes `OPENALEX_MAILTO=you@example.com`
 - [ ] Post-deploy telemetry check: academic skill call success rate > 95% for 7 days
 - [ ] If any user reports SS still being hit unexpectedly, confirm their env var set
 ```
@@ -1074,7 +1074,7 @@ Open `~/.claude/projects/-Users-sharonsciammas-checkapp/memory/project_checkapp_
 ```bash
 git add poc-replacement/plans/2026-04-22-phase-0-1-openalex-swap.md  # the plan itself, if not already committed
 cd ~/checkapp
-git add ~/.claude/projects/-Users-sharonsciammas-checkapp/memory/project_checkapp_plan3_pocs.md
+git add <your project notes>
 git commit -m "docs(memory): Phase 0+1 complete — SS → OpenAlex swap shipped"
 ```
 
@@ -1108,7 +1108,7 @@ Fixes the production bug where users get HTTP 429 errors on every academic-citat
 - [ ] Manual smoke: `bun src/index.tsx check poc/articles/01-health.md --skills academic` with and without `OPENALEX_MAILTO` set
 
 ## Deployment action
-Set `OPENALEX_MAILTO=sharon.spirit@gmail.com` in production `.env` after merge.
+Set `OPENALEX_MAILTO=you@example.com` in production `.env` after merge.
 
 ## References
 - Plan: `poc-replacement/plans/2026-04-22-phase-0-1-openalex-swap.md`

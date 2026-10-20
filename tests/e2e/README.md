@@ -55,4 +55,4 @@ Opt-in only. Tests in this lane must set `CHECKAPP_ALLOW_LIVE_PROVIDERS=1` expli
 
 ## Known issues
 
-See `docs/superpowers/plans/2026-04-22-e2e-issues.md`.
+Tracked in GitHub issues.

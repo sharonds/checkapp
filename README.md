@@ -764,7 +764,6 @@ checkapp/
 ├── demo/
 │   ├── english-demo.md       # English article with Wikipedia passages (33% — REWRITE)
 │   ├── hebrew-demo.md        # Hebrew article with Hebrew Wikipedia passages (39% — REWRITE)
-│   └── superpharm-demo.md    # Hebrew article with Ynet sentences (33% — REWRITE)
 ├── build.sh                  # Compiles four platform binaries to dist/
 ├── package.json
 └── README.md

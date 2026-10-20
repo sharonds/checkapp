@@ -48,8 +48,8 @@
     "article": "articles/en-fact-ambiguous.md",
     "claims": [
       {
-        "claim": "Super-Pharm offers the best pharmacy shopping experience in Israel.",
-        "source": "Super-Pharm offers the best pharmacy shopping experience in Israel.",
+        "claim": "Acme Pharm offers the best pharmacy shopping experience in Israel.",
+        "source": "Acme Pharm offers the best pharmacy shopping experience in Israel.",
         "supported": null,
         "note": "The claim is subjective and cannot be verified as a factual statement from grounded sources.",
         "sources": []
@@ -69,11 +69,11 @@
     "article": "articles/he-fact-supported.md",
     "claims": [
       {
-        "claim": "סופר-פארם נוסדה בישראל בשנת 1978.",
-        "source": "סופר-פארם נוסדה בישראל בשנת 1978.",
+        "claim": "אקמה-פארם נוסדה בישראל בשנת 1978.",
+        "source": "אקמה-פארם נוסדה בישראל בשנת 1978.",
         "supported": true,
-        "note": "מקורות ציבוריים תומכים בכך שסופר-פארם נוסדה בשנת 1978.",
-        "sources": ["https://www.ynet.co.il/articles/0,7340,L-4066088,00.html"]
+        "note": "מקורות ציבוריים תומכים בכך שאקמה-פארם נוסדה בשנת 1978.",
+        "sources": ["https://news.example.com/acme-pharm-history"]
       }
     ],
     "expect": {
@@ -90,11 +90,11 @@
     "article": "articles/he-fact-false.md",
     "claims": [
       {
-        "claim": "סופר-פארם נוסדה בישראל בשנת 1968.",
-        "source": "סופר-פארם נוסדה בישראל בשנת 1968.",
+        "claim": "אקמה-פארם נוסדה בישראל בשנת 1968.",
+        "source": "אקמה-פארם נוסדה בישראל בשנת 1968.",
         "supported": false,
         "note": "המקורות מציינים את שנת 1978 ולא את 1968.",
-        "sources": ["https://www.ynet.co.il/articles/0,7340,L-4066088,00.html"]
+        "sources": ["https://news.example.com/acme-pharm-history"]
       }
     ],
     "expect": {
@@ -115,10 +115,10 @@
       "confidence": "high",
       "matches": [
         {
-          "sourceUrl": "https://en.wikipedia.org/wiki/Super-Pharm",
-          "sourceTitle": "Super-Pharm - Wikipedia",
-          "matchedArticleText": "Super-Pharm is an Israeli multinational pharmacy chain. It also operates in Poland.",
-          "matchedSourceText": "Super-Pharm is an Israeli multinational pharmacy chain. It also operates in Poland.",
+          "sourceUrl": "https://example.com/encyclopedia/acme-pharm",
+          "sourceTitle": "Acme Pharm - Example Encyclopedia",
+          "matchedArticleText": "Acme Pharm is an Israeli multinational pharmacy chain. It also operates in Poland.",
+          "matchedSourceText": "Acme Pharm is an Israeli multinational pharmacy chain. It also operates in Poland.",
           "similarityPct": 96,
           "matchType": "exact",
           "confidence": "high",
@@ -130,7 +130,7 @@
       "provider": "gemini-grounded-plagiarism",
       "verdict": "fail",
       "minSources": 1,
-      "reportContains": ["Gemini Grounded Plagiarism", "Confidence: high", "Wikipedia"]
+      "reportContains": ["Gemini Grounded Plagiarism", "Confidence: high", "Example Encyclopedia"]
     }
   },
   {
@@ -162,10 +162,10 @@
       "confidence": "medium",
       "matches": [
         {
-          "sourceUrl": "https://www.ynet.co.il/articles/0,7340,L-4066088,00.html",
-          "sourceTitle": "הערך המוסף של סופר-פארם ללקוחות - ynet",
-          "matchedArticleText": "סופר-פארם נוסדה בשנת 1978 על ידי משפחת קופלר.",
-          "matchedSourceText": "סופר-פארם נוסדה בשנת 1978 על ידי משפחת קופלר.",
+          "sourceUrl": "https://news.example.com/acme-pharm-history",
+          "sourceTitle": "ההיסטוריה של אקמה-פארם - חדשות לדוגמה",
+          "matchedArticleText": "אקמה-פארם נוסדה בשנת 1978 על ידי משפחת אלמוג.",
+          "matchedSourceText": "אקמה-פארם נוסדה בשנת 1978 על ידי משפחת אלמוג.",
           "similarityPct": 92,
           "matchType": "exact",
           "confidence": "medium",
@@ -177,7 +177,7 @@
       "provider": "gemini-grounded-plagiarism",
       "verdict": "fail",
       "minSources": 1,
-      "reportContains": ["Gemini Grounded Plagiarism", "ynet", "Confidence: medium"]
+      "reportContains": ["Gemini Grounded Plagiarism", "חדשות לדוגמה", "Confidence: medium"]
     }
   },
   {
@@ -206,11 +206,11 @@
     "article": "articles/mixed-he-en.md",
     "claims": [
       {
-        "claim": "Super-Pharm was founded in Israel in 1978.",
-        "source": "Super-Pharm was founded in Israel in 1978.",
+        "claim": "Acme Pharm was founded in Israel in 1978.",
+        "source": "Acme Pharm was founded in Israel in 1978.",
         "supported": true,
         "note": "Grounded sources support the 1978 founding date.",
-        "sources": ["https://www.ynet.co.il/articles/0,7340,L-4066088,00.html"]
+        "sources": ["https://news.example.com/acme-pharm-history"]
       }
     ],
     "expect": {
