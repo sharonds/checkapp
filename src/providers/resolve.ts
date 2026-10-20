@@ -17,6 +17,8 @@ const GEMINI_FACT_CHECK_PROVIDERS = new Set<SkillProviderConfig["provider"]>([
   "gemini-deep-research",
 ]);
 
+const EXA_PROVIDERS = new Set<SkillProviderConfig["provider"]>(["exa-search", "exa-deep-reasoning"]);
+
 const GEMINI_PROVIDERS = new Set<SkillProviderConfig["provider"]>([
   ...GEMINI_FACT_CHECK_PROVIDERS,
   "gemini-grounded-plagiarism",
@@ -29,9 +31,11 @@ export function resolveProvider(
 ): { provider: SkillProviderConfig["provider"]; apiKey?: string; metadata?: ProviderMetadata } | null {
   const explicit = config.providers?.[skillId];
   if (explicit?.provider) {
+    // A provider picked without its own key uses the matching environment key (GEMINI_API_KEY, EXA_API_KEY).
     const apiKey =
       explicit.apiKey ??
-      (GEMINI_PROVIDERS.has(explicit.provider) ? config.geminiApiKey : undefined);
+      (GEMINI_PROVIDERS.has(explicit.provider) ? config.geminiApiKey
+        : EXA_PROVIDERS.has(explicit.provider) ? config.exaApiKey : undefined);
     return { provider: explicit.provider, apiKey, metadata: getProvider(skillId, explicit.provider) };
   }
   const legacy = LEGACY_MAP[skillId];
