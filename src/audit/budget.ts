@@ -11,6 +11,8 @@ export interface FactAuditConfig {
   maxConcurrency?: number;
   maxProviderRetries?: number;
   maxProviderFailures?: number;
+  /** Standard tier: number of claim-extraction calls whose sentences are merged (1-3). */
+  extractionSamples?: number;
 }
 
 export interface AuditBudget {
@@ -62,6 +64,7 @@ const DEFAULT_FACT_AUDIT: Required<FactAuditConfig> = {
   maxConcurrency: 4,
   maxProviderRetries: 2,
   maxProviderFailures: 5,
+  extractionSamples: 1,
 };
 
 export function createAuditBudget(config: Pick<Config, "factAudit">, tier: "standard" | "premium" | "basic" = "standard"): AuditBudget {

@@ -984,6 +984,59 @@ describe("FactCheckGroundedSkill", () => {
   });
 });
 
+describe("grounded claim extraction requests", () => {
+  const config: Config = {
+    copyscapeUser: "", copyscapeKey: "", geminiApiKey: "gemini-key",
+    skills: { plagiarism: false, aiDetection: false, seo: false, factCheck: true, tone: false, legal: false, summary: false, brief: false, purpose: false },
+    providers: { "fact-check": { provider: "gemini-grounded" } },
+  };
+  const grounded = () => jsonResponse({
+    candidates: [{
+      content: { parts: [{ text: JSON.stringify({ supported: true, note: "ok" }) }] },
+      groundingMetadata: { webSearchQueries: ["q"], groundingChunks: [{ web: { uri: "https://example.com/a", title: "a" } }] },
+    }],
+  });
+  const article = "Alpha has 3 parts. Beta has 4 parts. Gamma has 5 parts.";
+
+  test("asks Gemini for structured JSON (array of assertion + source)", async () => {
+    const extractionBodies: any[] = [];
+    mockFetch(urlRouter({
+      "generativelanguage.googleapis.com": async (req: Request) => {
+        const body = await req.json() as any;
+        if (body.tools) return grounded();
+        extractionBodies.push(body);
+        return jsonResponse({ candidates: [{ content: { parts: [{ text: JSON.stringify([{ assertion: "Alpha has 3 parts", source: "Alpha has 3 parts." }]) }] } }] });
+      },
+    }));
+    await new FactCheckGroundedSkill().run(article, config);
+    expect(extractionBodies).toHaveLength(1);
+    expect(extractionBodies[0].generationConfig.responseMimeType).toBe("application/json");
+    expect(extractionBodies[0].generationConfig.responseJsonSchema.type).toBe("array");
+  });
+
+  test("factAudit.extractionSamples runs several extractions and checks the union of their sentences", async () => {
+    const samples = [
+      [{ assertion: "Alpha has 3 parts", source: "Alpha has 3 parts." }],
+      [{ assertion: "Beta has 4 parts", source: "Beta has 4 parts." }],
+      null, // one sample fails; the others are still used
+    ];
+    let extraction = 0;
+    let groundedCalls = 0;
+    mockFetch(urlRouter({
+      "generativelanguage.googleapis.com": async (req: Request) => {
+        const body = await req.json() as any;
+        if (body.tools) { groundedCalls++; return grounded(); }
+        const rows = samples[extraction++];
+        return rows ? jsonResponse({ candidates: [{ content: { parts: [{ text: JSON.stringify(rows) }] } }] }) : new Response("{}", { status: 500 });
+      },
+    }));
+    const result = await new FactCheckGroundedSkill().run(article, { ...config, factAudit: { standardMaxClaims: 20, extractionSamples: 3 } });
+    expect(extraction).toBe(3);
+    expect(groundedCalls).toBe(2);
+    expect((result as any).audit.claims.map((c: any) => c.quote)).toEqual(["Alpha has 3 parts.", "Beta has 4 parts."]);
+  });
+});
+
 describe("grounded verdict prompt v2", () => {
   // Eval misses on checked claims: "the largest LEGO set ever made" (false), "about 520 pieces"
   // (490), "7 kg dries in about an hour" (about 2-3 h) were all marked supported.

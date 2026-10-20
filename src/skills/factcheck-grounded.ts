@@ -5,8 +5,8 @@ import { getProvider } from "../providers/registry.ts";
 import { resolveProvider } from "../providers/resolve.ts";
 import { emitGroundedCallEvent } from "../telemetry/audit-events.ts";
 import { traceProviderCall, type TraceInput } from "../telemetry/trace.ts";
-import { getLlmClient, parseJsonResponse } from "./llm.ts";
-import { claimConfidence, formatCitation, extractClaimsPromptGrounded, parseExtractedClaims, type ExtractedClaim } from "./factcheck.ts";
+import { getLlmClient, parseJsonResponse, type LlmClient } from "./llm.ts";
+import { EXTRACTED_CLAIMS_SCHEMA, claimConfidence, formatCitation, extractClaimsPromptGrounded, mergeExtractionSamples, parseExtractedClaims, type ExtractedClaim } from "./factcheck.ts";
 import type { ClaimType, Finding, Skill, SkillResult, Source } from "./types.ts";
 import { isE2E, assertMocksOnly } from "../e2e/mode.ts";
 import { loadScenario } from "../e2e/fixtures.ts";
@@ -158,7 +158,8 @@ export class FactCheckGroundedSkill implements Skill {
     }
 
     const documentAnalysis = analyzeDocument(text);
-    const claims = await extractClaims(text, llm.call);
+    const samples = Math.min(3, Math.max(1, Math.floor(config.factAudit?.extractionSamples ?? 1)));
+    const claims = await extractClaims(text, llm.call, samples);
     if (claims === null) {
       const baseAudit = createAuditRecordBase(this.id, text);
       const audit: AuditRecord = {
@@ -450,19 +451,21 @@ function budgetStopReasonFromKey(key: ReturnType<typeof shouldStopForBudget>): A
 // their thinking block and emit no text at all — same graceful degradation.
 async function extractClaims(
   text: string,
-  call: (prompt: string, maxTokens?: number) => Promise<string>,
+  call: LlmClient["call"],
+  samples = 1,
 ): Promise<ExtractedClaim[] | null> {
-  let claimsText: string;
-  try {
-    // 8192 (the Gemini caller's cap), not 4096: the Gemini pro thinking-model
-    // spends part of the output budget on reasoning, and a 4096 budget made it
-    // intermittently emit empty text on longer articles (zero claims). 8192 is
-    // reliable in practice; flash fits comfortably either way.
-    claimsText = await call(extractClaimsPromptGrounded(text), 8192);
-  } catch {
-    return null;
-  }
-  return parseExtractedClaims(claimsText);
+  // Extraction varies between calls, so several samples can be merged (factAudit.extractionSamples).
+  // Structured output keeps the JSON valid (no unescaped Hebrew gershayim, no prose around it).
+  const results = await Promise.all(Array.from({ length: samples }, async () => {
+    try {
+      return parseExtractedClaims(await call(extractClaimsPromptGrounded(text), 8192, { jsonSchema: EXTRACTED_CLAIMS_SCHEMA }));
+    } catch {
+      return null;
+    }
+  }));
+  const usable = results.filter((r): r is ExtractedClaim[] => r !== null);
+  if (usable.length === 0) return null;
+  return usable.length === 1 ? usable[0]! : mergeExtractionSamples(usable);
 }
 
 // Module-level cursor for deterministic E2E claim-by-claim replay. Reset when

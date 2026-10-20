@@ -167,6 +167,36 @@ describe("getLlmClient", () => {
   });
 });
 
+describe("Gemini structured output", () => {
+  // Structured output makes the model return valid JSON for the schema (no unescaped quotes,
+  // no prose around it). Other providers ignore the option.
+  const schema = { type: "array", items: { type: "object", properties: { a: { type: "string" } }, required: ["a"] } };
+
+  it("sends responseMimeType and responseJsonSchema when a JSON schema is requested", async () => {
+    let body: any = null;
+    mockFetch(async (req) => {
+      body = JSON.parse(await req.text());
+      return jsonResponse({ candidates: [{ content: { parts: [{ text: '[{"a":"x"}]' }] } }] });
+    });
+    const c = getLlmClient({ ...baseConfig, geminiApiKey: "gk", llmProvider: "gemini" });
+    await c!.call("prompt", 8192, { jsonSchema: schema });
+    expect(body.generationConfig.responseMimeType).toBe("application/json");
+    expect(body.generationConfig.responseJsonSchema).toEqual(schema);
+  });
+
+  it("sends neither field without a schema", async () => {
+    let body: any = null;
+    mockFetch(async (req) => {
+      body = JSON.parse(await req.text());
+      return jsonResponse({ candidates: [{ content: { parts: [{ text: "x" }] } }] });
+    });
+    const c = getLlmClient({ ...baseConfig, geminiApiKey: "gk", llmProvider: "gemini" });
+    await c!.call("prompt");
+    expect(body.generationConfig.responseMimeType).toBeUndefined();
+    expect(body.generationConfig.responseJsonSchema).toBeUndefined();
+  });
+});
+
 describe("parseJsonResponse", () => {
   it("parses clean JSON", () => {
     expect(parseJsonResponse('{"a":1}')).toEqual({ a: 1 });

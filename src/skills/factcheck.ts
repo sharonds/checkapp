@@ -43,9 +43,36 @@ export function parseExtractedClaims(rawJson: string): ExtractedClaim[] | null {
       && typeof (row as { source?: unknown }).source === "string")
     .map((row) => ({ assertion: row.assertion.trim(), source: row.source.trim() }))
     .filter((c) => c.assertion.length > 0 && c.source.length > 0);
-  // Breadth before depth: models split a sentence into several facts, which spent the claim cap
-  // on one sentence while the rest of the article went unchecked. Keep each atomic fact (one false
-  // fact must still fail its sentence), but give every sentence its first claim before any second.
+  return orderBreadthFirst(claims); // may be [] (parsed ok, no usable claims) — distinct from null (parse failed)
+}
+
+/** Gemini structured-output schema for {@link extractClaimsPromptGrounded}. */
+export const EXTRACTED_CLAIMS_SCHEMA = {
+  type: "array",
+  items: {
+    type: "object",
+    properties: { assertion: { type: "string" }, source: { type: "string" } },
+    required: ["assertion", "source"],
+  },
+} as const;
+
+/**
+ * Union of several extraction calls (extraction varies a lot between calls). Each sample is in
+ * priority order: take their top claims in turn, then the same breadth-first rule and cap.
+ */
+export function mergeExtractionSamples(samples: ExtractedClaim[][]): ExtractedClaim[] {
+  const interleaved: ExtractedClaim[] = [];
+  const longest = Math.max(0, ...samples.map((s) => s.length));
+  for (let rank = 0; rank < longest; rank++) {
+    for (const sample of samples) if (sample[rank]) interleaved.push(sample[rank]!);
+  }
+  return orderBreadthFirst(interleaved);
+}
+
+// Breadth before depth: models split a sentence into several facts, which spent the claim cap
+// on one sentence while the rest of the article went unchecked. Keep each atomic fact (one false
+// fact must still fail its sentence), but give every sentence its first claim before any second.
+function orderBreadthFirst(claims: ExtractedClaim[]): ExtractedClaim[] {
   const firsts: ExtractedClaim[] = [];
   const extras: ExtractedClaim[] = [];
   const seenSources = new Set<string>();
@@ -61,7 +88,7 @@ export function parseExtractedClaims(rawJson: string): ExtractedClaim[] | null {
       firsts.push(claim);
     }
   }
-  return [...firsts, ...extras].slice(0, 20); // may be [] (parsed ok, no usable claims) — distinct from null (parse failed)
+  return [...firsts, ...extras].slice(0, 20);
 }
 
 export function extractClaimsPrompt(articleText: string): string {

@@ -1,5 +1,5 @@
 import { test, expect, describe, mock, beforeEach } from "bun:test";
-import { extractClaimsPrompt, extractClaimsPromptGrounded, claimConfidence, formatCitation, FactCheckSkill, parseExtractedClaims } from "./factcheck.ts";
+import { EXTRACTED_CLAIMS_SCHEMA, extractClaimsPrompt, extractClaimsPromptGrounded, claimConfidence, formatCitation, FactCheckSkill, mergeExtractionSamples, parseExtractedClaims } from "./factcheck.ts";
 import type { Config } from "../config.ts";
 import { mockFetch, urlRouter, jsonResponse } from "../testing/mock-fetch.ts";
 
@@ -566,6 +566,35 @@ test("extractClaimsPromptGrounded covers the whole article, breadth first, riski
   expect(p).toMatch(/superlative/i);
   expect(p).toMatch(/order[^.]*priority/i);
   expect(p).toMatch(/only after every/i);
+});
+
+describe("mergeExtractionSamples — union of several extraction calls", () => {
+  // Extraction varies a lot between calls (10, 12 and 20 claims for the same article), so
+  // several samples can be merged. Each sample is in priority order; take their top
+  // claims in turn, then apply the same breadth-first rule and 20-claim cap.
+  const c = (s: string, a = s) => ({ assertion: a, source: s });
+
+  test("interleaves samples by rank, merges repeats of a sentence, and keeps breadth first", () => {
+    const merged = mergeExtractionSamples([
+      [c("S1"), c("S2"), c("S3")],
+      [c("S1"), c("S4")],
+      [c("S5"), c("S1", "a second fact about S1")],
+    ]);
+    expect(merged.map((x) => x.source)).toEqual(["S1", "S5", "S2", "S4", "S3", "S1"]);
+    expect(merged.at(-1)!.assertion).toBe("a second fact about S1");
+  });
+
+  test("caps the union at 20 claims", () => {
+    const many = (p: string) => Array.from({ length: 15 }, (_, i) => c(`${p}${i}`));
+    expect(mergeExtractionSamples([many("a"), many("b")])).toHaveLength(20);
+  });
+
+  test("the schema describes an array of {assertion, source} strings", () => {
+    expect(EXTRACTED_CLAIMS_SCHEMA).toMatchObject({
+      type: "array",
+      items: { type: "object", required: ["assertion", "source"] },
+    });
+  });
 });
 
 test("extractClaimsPromptGrounded keeps the risky part of a sentence in the assertion", () => {

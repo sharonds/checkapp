@@ -31,11 +31,16 @@ export const LLM_MODEL = {
 
 export type LlmProvider = "minimax" | "anthropic" | "gemini" | "openrouter";
 
+export interface LlmCallOptions {
+  /** Ask for JSON matching this schema (Gemini structured output). Other providers ignore it. */
+  jsonSchema?: Record<string, unknown>;
+}
+
 export interface LlmClient {
   provider: LlmProvider;
   model: string;
   /** Send a prompt and get text back. Handles SDK differences internally. */
-  call: (prompt: string, maxTokens?: number) => Promise<string>;
+  call: (prompt: string, maxTokens?: number, options?: LlmCallOptions) => Promise<string>;
 }
 
 function createAnthropicCaller(client: Anthropic, model: string): LlmClient["call"] {
@@ -76,7 +81,7 @@ interface GeminiGenerateContentResponse {
 }
 
 function createGeminiCaller(apiKey: string, model: string): LlmClient["call"] {
-  return async (prompt: string, maxTokens = 1024) => {
+  return async (prompt: string, maxTokens = 1024, options?: LlmCallOptions) => {
     assertMocksOnly("llm:gemini");
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
@@ -90,6 +95,7 @@ function createGeminiCaller(apiKey: string, model: string): LlmClient["call"] {
             // truncate the answer; spend is controlled by thinkingLevel instead.
             maxOutputTokens: Math.min(Math.max(maxTokens, GEMINI_MIN_OUTPUT_TOKENS), GEMINI_MAX_OUTPUT_TOKENS),
             thinkingConfig: { thinkingLevel: "low" },
+            ...(options?.jsonSchema ? { responseMimeType: "application/json", responseJsonSchema: options.jsonSchema } : {}),
           },
         }),
       },
@@ -133,18 +139,19 @@ export function getLlmClient(config: Config): LlmClient | null {
 function withCallTrace(client: LlmClient): LlmClient {
   return {
     ...client,
-    call: async (prompt: string, maxTokens?: number) => {
+    call: async (prompt: string, maxTokens?: number, options?: LlmCallOptions) => {
       const startedAt = Date.now();
+      const params = { maxTokens, structured: !!options?.jsonSchema };
       try {
-        const response = await client.call(prompt, maxTokens);
+        const response = await client.call(prompt, maxTokens, options);
         traceProviderCall({
           stage: "llm", provider: client.provider, model: client.model,
-          params: { maxTokens }, prompt, response, latencyMs: Date.now() - startedAt,
+          params, prompt, response, latencyMs: Date.now() - startedAt,
         });
         return response;
       } catch (error) {
         traceProviderCall({
-          stage: "llm", provider: client.provider, model: client.model, params: { maxTokens }, prompt,
+          stage: "llm", provider: client.provider, model: client.model, params, prompt,
           latencyMs: Date.now() - startedAt, error: error instanceof Error ? error.message : String(error),
         });
         throw error;
