@@ -104,6 +104,35 @@ describe("cassette record/replay", () => {
     }
   });
 
+  test("concurrent identical requests replay in invocation order, even when they finish in reverse", async () => {
+    const dir = tmp();
+    const path = join(dir, "c.json");
+    let n = 0;
+    // The first call finishes last.
+    const inner = async () => { const id = ++n; await new Promise((r) => setTimeout(r, (4 - id) * 15)); return new Response(`{"n":${id}}`); };
+    const rec = new Cassette(path, "record", { allowGrounded: false, innerFetch: inner });
+    const req = () => ["https://h/models/m:generateContent", { method: "POST", body: '{"contents":["same"]}' }] as const;
+    const live = await Promise.all([rec.fetch(...req()), rec.fetch(...req()), rec.fetch(...req())].map(async (r) => (await (await r).json() as any).n));
+    rec.save();
+    const replay = new Cassette(path, "replay", { allowGrounded: false });
+    const replayed = await Promise.all([replay.fetch(...req()), replay.fetch(...req()), replay.fetch(...req())].map(async (r) => (await (await r).json() as any).n));
+    expect(live).toEqual([1, 2, 3]);
+    expect(replayed).toEqual(live);
+  });
+
+  test("recording again without reuse replaces a request's earlier responses", async () => {
+    const dir = tmp();
+    const path = join(dir, "c.json");
+    const req = () => ["https://h/models/m:generateContent", { method: "POST", body: '{"contents":["x"]}' }] as const;
+    for (const v of [1, 2]) {
+      const rec = new Cassette(path, "record", { allowGrounded: false, innerFetch: async () => new Response(`{"v":${v}}`) });
+      await rec.fetch(...req());
+      rec.save();
+    }
+    const replay = new Cassette(path, "replay", { allowGrounded: false });
+    expect(await (await replay.fetch(...req())).json()).toEqual({ v: 2 });
+  });
+
   test("does not record grounded responses unless allowed, and says why on replay", async () => {
     const dir = tmp();
     const path = join(dir, "c.json");

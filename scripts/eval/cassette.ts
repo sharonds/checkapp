@@ -56,8 +56,11 @@ export interface CassetteOptions {
 }
 
 export class Cassette {
-  /** Responses per request key, in the order they were recorded (identical requests can repeat). */
-  private entries: Record<string, Entry[]> = {};
+  /** Responses loaded from disk, per request key, in invocation order (identical requests repeat). */
+  private loaded: Record<string, Entry[]> = {};
+  /** Responses recorded in this session. Slots are reserved when a request is made, so concurrent
+   *  identical requests keep invocation order; a failed request leaves its slot empty. */
+  private readonly fresh = new Map<string, Array<Entry | null>>();
   private readonly served = new Map<string, number>();
   /** Replay requests that were not in the cassette (the app may swallow the thrown error). */
   misses = 0;
@@ -73,7 +76,7 @@ export class Cassette {
     if (existsSync(path)) {
       const stored = (JSON.parse(readFileSync(path, "utf-8")) as { entries: Record<string, Entry | Entry[]> }).entries;
       // Version 1 cassettes kept one response per key.
-      this.entries = Object.fromEntries(Object.entries(stored).map(([k, v]) => [k, Array.isArray(v) ? v : [v]]));
+      this.loaded = Object.fromEntries(Object.entries(stored).map(([k, v]) => [k, Array.isArray(v) ? v : [v]]));
     } else if (mode === "replay") {
       throw new Error(`No cassette at ${path}; record this variant first.`);
     }
@@ -81,9 +84,9 @@ export class Cassette {
     this.fetch = (input, init) => this.handleFetch(input, init);
   }
 
-  /** Next recorded response for a key; in replay, the last one repeats once the list runs out. */
+  /** Next loaded response for a key; in replay, the last one repeats once the list runs out. */
   private next(key: string, kind: Entry["kind"], allowRepeat: boolean): Entry | undefined {
-    const list = (this.entries[key] ?? []).filter((e) => e.kind === kind);
+    const list = (this.loaded[key] ?? []).filter((e) => e.kind === kind);
     const index = this.served.get(key) ?? 0;
     if (index < list.length) {
       this.served.set(key, index + 1);
@@ -92,9 +95,11 @@ export class Cassette {
     return allowRepeat ? list.at(-1) : undefined;
   }
 
-  private record(key: string, entry: Entry): void {
-    (this.entries[key] ??= []).push(entry);
-    this.served.set(key, (this.served.get(key) ?? 0) + 1);
+  private reserve(key: string): (entry: Entry | null) => void {
+    const slots = this.fresh.get(key) ?? [];
+    this.fresh.set(key, slots);
+    const index = slots.push(null) - 1;
+    return (entry) => { slots[index] = entry; };
   }
 
   private async handleFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
@@ -119,12 +124,13 @@ export class Cassette {
     if (recorded?.kind === "fetch") {
       return new Response(recorded.body, { status: recorded.status, headers: { "content-type": recorded.contentType } });
     }
+    const fill = this.reserve(key);
     const res = await this.inner(input, init);
     const text = await res.text();
     const contentType = res.headers.get("content-type") ?? "application/json";
     // Error responses (429, 5xx) are not recorded, so a later run retries the provider.
     if (res.ok && (!grounded || this.options.allowGrounded)) {
-      this.record(key, { kind: "fetch", url: stripKey(url), status: res.status, contentType, body: text });
+      fill({ kind: "fetch", url: stripKey(url), status: res.status, contentType, body: text });
     }
     return new Response(text, { status: res.status, headers: { "content-type": contentType } });
   }
@@ -144,8 +150,9 @@ export class Cassette {
           throw new Error(`Cassette miss for Exa query: ${query.slice(0, 80)}`);
         }
       }
+      const fill = cassette.reserve(key);
       const result = await original.call(this, query, options);
-      cassette.record(key, { kind: "exa", query, result });
+      fill({ kind: "exa", query, result });
       return result;
     };
     return () => {
@@ -153,8 +160,19 @@ export class Cassette {
     };
   }
 
+  /** A fresh recording replaces a key's old responses; with reuseRecorded, new ones follow the reused ones. */
+  private merged(): Record<string, Entry[]> {
+    const entries = { ...this.loaded };
+    for (const [key, slots] of this.fresh) {
+      const recorded = slots.filter((e): e is Entry => e !== null);
+      if (recorded.length === 0) continue;
+      entries[key] = this.options.reuseRecorded ? [...(this.loaded[key] ?? []), ...recorded] : recorded;
+    }
+    return entries;
+  }
+
   save(): void {
     // Owner-only: cassettes contain article text and provider responses.
-    writeFileSync(this.path, JSON.stringify({ version: 2, entries: this.entries }), { encoding: "utf-8", mode: 0o600 });
+    writeFileSync(this.path, JSON.stringify({ version: 2, entries: this.merged() }), { encoding: "utf-8", mode: 0o600 });
   }
 }
