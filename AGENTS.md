@@ -125,7 +125,7 @@ The structured audit contract is versioned with `audit.version`. Additive fields
 | `PARALLEL_API_KEY` | No | Parallel AI for passage evidence |
 | `TONE_GUIDE_FILE` | No | Path to brand voice `.md` file |
 | `CHECKAPP_TRACE` | No | Set to `0` to disable per-run trace files |
-| `CHECKAPP_TRACE_DIR` | No | Trace folder (default `~/.checkapp/traces`) |
+| `CHECKAPP_TRACE_DIR` | No | Trace folder (default `~/.checkapp/traces`). Use a dedicated folder: retention deletes old `<date>/*.jsonl` files, but only in a folder CheckApp created itself (it writes a `.checkapp-traces` marker) |
 | `CHECKAPP_TRACE_RETENTION_DAYS` | No | Days to keep trace date folders (default 30) |
 | `CHECKAPP_TRACE_GROUNDED_CONTENT` | No | Set to `1` to also store Google Search grounded responses and sources in traces (check the Gemini grounding terms first) |
 

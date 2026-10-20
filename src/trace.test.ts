@@ -56,17 +56,21 @@ describe("per-run trace log", () => {
     }
   });
 
+  // Retention deletes old trace files, so it must only touch a folder CheckApp created (marker file)
+  // and only .jsonl files inside date folders: CHECKAPP_TRACE_DIR may point at a user's folder.
   test("starting a run deletes date folders older than the 30-day retention window", async () => {
     const { mkdirSync, writeFileSync } = await import("node:fs");
-    process.env.CHECKAPP_TRACE_DIR = dir;
+    const root = join(dir, "traces");
+    process.env.CHECKAPP_TRACE_DIR = root;
+    await withTraceRun({}, async () => undefined); // CheckApp creates the folder and its marker
     const old = new Date(Date.now() - 31 * 86_400_000).toISOString().slice(0, 10);
     const recent = new Date(Date.now() - 5 * 86_400_000).toISOString().slice(0, 10);
     for (const d of [old, recent, "not-a-date"]) {
-      mkdirSync(join(dir, d));
-      writeFileSync(join(dir, d, "x.jsonl"), "{}\n");
+      mkdirSync(join(root, d));
+      writeFileSync(join(root, d, "x.jsonl"), "{}\n");
     }
     await withTraceRun({}, async () => undefined);
-    const left = readdirSync(dir);
+    const left = readdirSync(root);
     expect(left).not.toContain(old);
     expect(left).toContain(recent);
     expect(left).toContain("not-a-date");
@@ -74,12 +78,42 @@ describe("per-run trace log", () => {
 
   test("standalone provider calls (outside a run, e.g. Deep Audit polling) also prune old date folders", async () => {
     const { mkdirSync, writeFileSync } = await import("node:fs");
-    process.env.CHECKAPP_TRACE_DIR = dir;
+    const root = join(dir, "traces");
+    process.env.CHECKAPP_TRACE_DIR = root;
+    await withTraceRun({}, async () => undefined);
     const old = new Date(Date.now() - 31 * 86_400_000).toISOString().slice(0, 10);
-    mkdirSync(join(dir, old));
-    writeFileSync(join(dir, old, "adhoc.jsonl"), "{}\n");
+    mkdirSync(join(root, old));
+    writeFileSync(join(root, old, "adhoc.jsonl"), "{}\n");
     traceProviderCall({ stage: "deep-research.poll", provider: "gemini-deep-research" });
-    expect(readdirSync(dir)).not.toContain(old);
+    expect(readdirSync(root)).not.toContain(old);
+  });
+
+  test("never prunes a folder CheckApp did not create (CHECKAPP_TRACE_DIR pointing at a user folder)", async () => {
+    const { mkdirSync, writeFileSync } = await import("node:fs");
+    process.env.CHECKAPP_TRACE_DIR = dir; // already exists, no marker
+    const old = new Date(Date.now() - 60 * 86_400_000).toISOString().slice(0, 10);
+    mkdirSync(join(dir, old));
+    writeFileSync(join(dir, old, "photo.jpg"), "user data");
+    writeFileSync(join(dir, old, "notes.jsonl"), "user data");
+    await withTraceRun({}, async () => undefined);
+    expect(readFileSync(join(dir, old, "photo.jpg"), "utf-8")).toBe("user data");
+    expect(readFileSync(join(dir, old, "notes.jsonl"), "utf-8")).toBe("user data");
+  });
+
+  test("inside an old date folder, only .jsonl trace files are deleted; other files and the folder stay", async () => {
+    const { mkdirSync, writeFileSync } = await import("node:fs");
+    const root = join(dir, "traces");
+    process.env.CHECKAPP_TRACE_DIR = root;
+    await withTraceRun({}, async () => undefined);
+    const old = new Date(Date.now() - 31 * 86_400_000).toISOString().slice(0, 10);
+    mkdirSync(join(root, old, "sub"), { recursive: true });
+    writeFileSync(join(root, old, "run.jsonl"), "{}\n");
+    writeFileSync(join(root, old, "keep.txt"), "x");
+    writeFileSync(join(root, old, "sub", "deep.jsonl"), "{}\n");
+    await withTraceRun({}, async () => undefined);
+    expect(existsSync(join(root, old, "run.jsonl"))).toBe(false);
+    expect(existsSync(join(root, old, "keep.txt"))).toBe(true);
+    expect(existsSync(join(root, old, "sub", "deep.jsonl"))).toBe(true);
   });
 
   test("CHECKAPP_TRACE=0 disables tracing even with a directory", () => {
@@ -126,7 +160,9 @@ describe("per-run trace log", () => {
     const { statSync } = await import("node:fs");
     process.env.CHECKAPP_TRACE_DIR = join(dir, "nested");
     traceProviderCall({ stage: "llm", provider: "gemini", prompt: "article text" });
-    const day = readdirSync(join(dir, "nested"))[0]!;
+    const entries = readdirSync(join(dir, "nested"));
+    expect(entries).toContain(".checkapp-traces"); // ownership marker for safe retention
+    const day = entries.find((e) => /^\d{4}-\d{2}-\d{2}$/.test(e))!;
     const file = readdirSync(join(dir, "nested", day))[0]!;
     expect(statSync(join(dir, "nested", day, file)).mode & 0o777).toBe(0o600);
     expect(statSync(join(dir, "nested", day)).mode & 0o777).toBe(0o700);
