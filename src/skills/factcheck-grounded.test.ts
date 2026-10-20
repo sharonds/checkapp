@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Config } from "../config.ts";
 import { jsonResponse, mockFetch, urlRouter } from "../testing/mock-fetch.ts";
-import { FactCheckGroundedSkill, computeRetryAfterDelayMs } from "./factcheck-grounded.ts";
+import { FactCheckGroundedSkill, buildGroundedPrompt, computeRetryAfterDelayMs } from "./factcheck-grounded.ts";
 import { locateQuote } from "../audit/document.ts";
 
 describe("FactCheckGroundedSkill", () => {
@@ -981,5 +981,45 @@ describe("FactCheckGroundedSkill", () => {
     test("returns 0 for negative values", () => {
       expect(computeRetryAfterDelayMs("-5")).toBe(0);
     });
+  });
+});
+
+describe("grounded verdict prompt v2", () => {
+  // Eval misses on checked claims: "the largest LEGO set ever made" (false), "about 520 pieces"
+  // (490), "7 kg dries in about an hour" (about 2-3 h) were all marked supported.
+  const prompt = buildGroundedPrompt("LEGO set 43013 contains about 520 pieces", "הסט מורכב מכ-520 חלקים.", "2026-10-20");
+
+  test("anchors the check to today's date", () => {
+    expect(prompt).toContain("2026-10-20");
+  });
+
+  test("every specific detail must hold", () => {
+    expect(prompt).toMatch(/every (specific )?detail/i);
+  });
+
+  test("superlatives need evidence against all alternatives, and are not supported by default", () => {
+    expect(prompt).toMatch(/superlative/i);
+    expect(prompt).toMatch(/the only|the first|the largest/i);
+    expect(prompt).toMatch(/counterexample/i);
+  });
+
+  test("approximate numbers must fit the rounding they imply", () => {
+    expect(prompt).toMatch(/about 500.*490/i);
+    expect(prompt).toMatch(/about 520.*not/i);
+  });
+
+  test("rules of thumb are judged against authoritative typical values, including which variants they hold for", () => {
+    expect(prompt).toMatch(/typical|rule of thumb/i);
+    expect(prompt).toMatch(/only (for|to) (a|some) (subset|type|variant)/i);
+  });
+
+  test("a stated range or alternatives is fine when the true value falls inside", () => {
+    expect(prompt).toMatch(/range or alternatives/i);
+  });
+
+  test("keeps the output contract and same-language note", () => {
+    expect(prompt).toContain('{"supported":true|false|null,"note":"string"}');
+    expect(prompt).toContain("SAME LANGUAGE");
+    expect(prompt).toContain("הסט מורכב מכ-520 חלקים.");
   });
 });

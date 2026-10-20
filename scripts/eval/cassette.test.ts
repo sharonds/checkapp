@@ -50,6 +50,23 @@ describe("cassette record/replay", () => {
     expect(await r2.json()).toEqual({ ok: 1 });
   });
 
+  test("record mode can reuse recorded responses, so one stage can be changed while the rest is held fixed", async () => {
+    // E.g. a verdict-prompt A/B: reuse the recorded claim extraction, call grounded verification live.
+    const dir = tmp();
+    const path = join(dir, "c.json");
+    const first = new Cassette(path, "record", { allowGrounded: false, innerFetch: async () => new Response('{"v":1}') });
+    await first.fetch("https://h/models/m:generateContent", { method: "POST", body: '{"contents":["extract"]}' });
+    first.save();
+
+    let live = 0;
+    const second = new Cassette(path, "record", { allowGrounded: false, reuseRecorded: true, innerFetch: async () => { live++; return new Response('{"v":2}'); } });
+    const reused = await second.fetch("https://h/models/m:generateContent", { method: "POST", body: '{"contents":["extract"]}' });
+    expect(await reused.json()).toEqual({ v: 1 });
+    const grounded = await second.fetch("https://h/models/m:generateContent", { method: "POST", body: '{"tools":[{"google_search":{}}]}' });
+    expect(await grounded.json()).toEqual({ v: 2 });
+    expect(live).toBe(1);
+  });
+
   test("does not record grounded responses unless allowed, and says why on replay", async () => {
     const dir = tmp();
     const path = join(dir, "c.json");

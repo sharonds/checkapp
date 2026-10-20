@@ -3,6 +3,7 @@
  *
  *   bun scripts/eval/run.ts --labels <labels.json> --corpus <dir> --variant <variant.json> \
  *     --out <private dir> --mode dry-run|live|record|replay [--docs a.md,b.md] [--yes] [--allow-grounded-recording]
+ *     [--reuse-recorded]   (record mode: serve requests already in the variant's cassette, call live on a miss)
  *
  * labels.json: [{ id, doc, class, sentence, verdict }]; doc is a file name inside --corpus.
  * variant.json: { name, config?: Partial<Config>, env?: Record<string,string> }.
@@ -27,6 +28,8 @@ export interface EvalOptions {
   yes: boolean;
   docs?: string[];
   allowGroundedRecording?: boolean;
+  /** Record mode: reuse responses already in this variant's cassette (e.g. hold extraction fixed). */
+  reuseRecorded?: boolean;
 }
 
 export interface EvalDeps {
@@ -154,7 +157,7 @@ export async function runEval(opts: EvalOptions, deps: EvalDeps): Promise<EvalRe
 
   const cassette = opts.mode === "live"
     ? null
-    : new Cassette(join(opts.out, variant.name, "cassette.json"), opts.mode, { allowGrounded: !!opts.allowGroundedRecording });
+    : new Cassette(join(opts.out, variant.name, "cassette.json"), opts.mode, { allowGrounded: !!opts.allowGroundedRecording, reuseRecorded: !!opts.reuseRecorded });
   const realFetch = globalThis.fetch;
   let restoreExa = () => {};
   const appClaims: AppClaim[] = [];
@@ -214,6 +217,7 @@ function parseArgs(argv: string[]): EvalOptions {
     yes: argv.includes("--yes"),
     docs: get("docs")?.split(",").filter(Boolean),
     allowGroundedRecording: argv.includes("--allow-grounded-recording"),
+    reuseRecorded: argv.includes("--reuse-recorded"),
   };
 }
 

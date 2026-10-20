@@ -43,6 +43,8 @@ export function isGroundedRequest(url: string, body: string): boolean {
 
 export interface CassetteOptions {
   allowGrounded: boolean;
+  /** Record mode only: serve requests already in the cassette, call live only on a miss. */
+  reuseRecorded?: boolean;
   innerFetch?: FetchFn;
 }
 
@@ -83,6 +85,10 @@ export class Cassette {
       throw new Error(`Cassette miss for ${stripKey(url)}`);
     }
 
+    const recorded = this.options.reuseRecorded ? this.entries[key] : undefined;
+    if (recorded?.kind === "fetch") {
+      return new Response(recorded.body, { status: recorded.status, headers: { "content-type": recorded.contentType } });
+    }
     const res = await this.inner(input, init);
     const text = await res.text();
     const contentType = res.headers.get("content-type") ?? "application/json";
@@ -99,10 +105,10 @@ export class Cassette {
     const cassette = this;
     proto.search = async function (this: unknown, query: string, options?: unknown) {
       const key = requestKey("exa", query, JSON.stringify(options ?? {}));
-      if (cassette.mode === "replay") {
+      if (cassette.mode === "replay" || cassette.options.reuseRecorded) {
         const hit = cassette.entries[key];
         if (hit?.kind === "exa") return hit.result;
-        throw new Error(`Cassette miss for Exa query: ${query.slice(0, 80)}`);
+        if (cassette.mode === "replay") throw new Error(`Cassette miss for Exa query: ${query.slice(0, 80)}`);
       }
       const result = await original.call(this, query, options);
       cassette.entries[key] = { kind: "exa", query, result };

@@ -737,10 +737,19 @@ function groundedRetryDelayMs(): number {
   return Number.isFinite(configured) && configured >= 0 ? configured : 3_000;
 }
 
-function buildGroundedPrompt(assertion: string, source: string): string {
+export function buildGroundedPrompt(assertion: string, source: string, today = new Date().toISOString().slice(0, 10)): string {
   return [
-    "Use Google Search grounding to assess whether this claim is supported by current, credible sources.",
+    `Use Google Search grounding to assess whether this claim is supported by current, credible sources. Today is ${today}.`,
     `Claim: "${assertion}"`,
+    "How to judge:",
+    [
+      "- Every specific detail must hold: names, brands, model or set numbers, numbers and units, dates and ratings. If one detail is wrong, the claim is not supported.",
+      '- Superlatives and exclusives ("the only", "the first", "the largest", "the most") need evidence that they hold against all alternatives. If you find a counterexample, set false. If you cannot confirm the superlative, set null, not true.',
+      '- Approximate numbers must fit the rounding they imply: "about 500" fits a published 490, but "about 520" does not fit 490. If the published figure falls outside, set false and give it.',
+      '- Rules of thumb and typical values ("usually", "about an hour", "typically 2000 W") must match authoritative typical values (manufacturer specifications, standards bodies, energy agencies). If the claim is true only for a subset, type or variant (for example one kind of appliance), set false and say where it holds.',
+      "- A stated range or alternatives (\"B/C\", \"A++/A+++\", \"7-8 kg\") is supported when the true value falls inside it.",
+      "- Prefer manufacturer, official and primary sources over retailers and blogs.",
+    ].join("\n"),
     'Return a short explanation and include a JSON object exactly in this shape somewhere in the response: {"supported":true|false|null,"note":"string"}',
     "Set supported=true when the claim is well-supported, false when evidence contradicts it, and null when evidence is insufficient or mixed.",
     `Write the "note" in the SAME LANGUAGE as this source text: «${source}». When supported=false, the note must state the correct fact.`,
