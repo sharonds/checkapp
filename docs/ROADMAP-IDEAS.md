@@ -2,8 +2,6 @@
 
 ## Phase 7 — Research-Backed Editor (planning)
 
-Full strategy doc (in checkapp-landing repo): `docs/superpowers/roadmap/2026-04-17-phase7-research-backed-editor.md`
-
 **Thesis:** Turn CheckApp from a quality gate (runs after you write) into a research-backed editor (runs with you, gives evidence + fixes, not just flags). Every flagged issue ends with: evidence, rewrite suggestion, cited source, and a grammar pass.
 
 ### New skills

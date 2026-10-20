@@ -84,7 +84,8 @@ async function runOpenAlex(claim: string, limit = 5): Promise<EngineResult> {
   // Note: OpenAlex's polite pool (free, 100k req/day) requires only mailto.
   // ALEX_API key was provided but rejected as api_key param (HTTP 400) —
   // OpenAlex doesn't document an api_key mechanism. Polite pool is sufficient.
-  url.searchParams.set("mailto", "sharon.spirit@gmail.com");
+  const mailto = process.env.OPENALEX_MAILTO; // your contact email, for the polite pool
+  if (mailto) url.searchParams.set("mailto", mailto);
 
   const delays = [3000, 8000];
   for (let attempt = 0; attempt <= delays.length; attempt++) {
