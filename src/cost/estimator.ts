@@ -26,7 +26,8 @@ export function estimateFactCheckCost(tier: Config["factCheckTier"] = "basic"): 
     case "basic":
       return 0.04;
     case "standard":
-      return 0.16;
+      // 4 grounded claims at ~$0.04 plus one claim-extraction call at ~$0.05 (measured 2026-10-20).
+      return 0.21;
     case "premium":
       return 1.5;
     default:

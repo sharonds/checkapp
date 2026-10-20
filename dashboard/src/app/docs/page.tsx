@@ -157,7 +157,7 @@ function SkillsReference() {
     {
       name: "Fact Check",
       engine: "Exa + LLM / Gemini Grounded",
-      cost: "~$0.04 / ~$0.16",
+      cost: "~$0.04 / ~$0.21",
       desc: "Basic extracts factual claims, searches evidence via Exa, and uses the configured LLM to assess support. Standard uses Gemini 3.1 Pro with Google Search grounding. Claims without returned source URLs are treated as unverified, not verified.",
     },
     {
@@ -491,7 +491,7 @@ function Faq() {
     },
     {
       q: "What's the cost per check?",
-      a: "With all skills enabled, cost depends on enabled providers and article length. Copyscape plagiarism starts at $0.03 and scales by word count; Gemini Grounded Plagiarism is recorded as an in-app estimate of about $0.04/check; Basic Fact Check is about $0.04/check; Standard Gemini grounded fact-check is about $0.16/check; Copyscape AI detection is about $0.03/check; Gemini AI detection is about $0.01/check; most MiniMax-based skills are about $0.002/check.",
+      a: "With all skills enabled, cost depends on enabled providers and article length. Copyscape plagiarism starts at $0.03 and scales by word count; Gemini Grounded Plagiarism is recorded as an in-app estimate of about $0.04/check; Basic Fact Check is about $0.04/check; Standard Gemini grounded fact-check is about $0.21/check (4 claims plus claim extraction); Copyscape AI detection is about $0.03/check; Gemini AI detection is about $0.01/check; most MiniMax-based skills are about $0.002/check.",
     },
     {
       q: "Can I add custom skills?",

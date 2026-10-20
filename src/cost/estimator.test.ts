@@ -16,7 +16,8 @@ const base = (skills: Partial<Config["skills"]> = {}): Config => ({
 describe("estimateRunCost", () => {
   test("estimateFactCheckCost returns the configured tier pricing", () => {
     expect(estimateFactCheckCost("basic")).toBe(0.04);
-    expect(estimateFactCheckCost("standard")).toBe(0.16);
+    // 4 grounded claims at $0.04 plus one extraction call at $0.05 (measured 2026-10-20).
+    expect(estimateFactCheckCost("standard")).toBe(0.21);
     expect(estimateFactCheckCost("premium")).toBe(1.5);
   });
 
@@ -37,7 +38,7 @@ describe("estimateRunCost", () => {
       providers: { "fact-check": { provider: "exa-search", apiKey: "k" } },
     };
     const r = estimateRunCost(cfg, 1000);
-    expect(r.perSkill["fact-check"]).toBeCloseTo(0.16, 4);
+    expect(r.perSkill["fact-check"]).toBeCloseTo(0.21, 4);
   });
 
   test("fact-check uses basic provider pricing when the flag is off", () => {
