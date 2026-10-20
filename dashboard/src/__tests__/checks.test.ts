@@ -18,8 +18,7 @@ import { GET as GET_SEARCH } from "@/app/api/search/route";
 import { getDb, closeDb } from "@/lib/db";
 import { sql } from "drizzle-orm";
 import { writeFileSync, mkdirSync } from "fs";
-import { homedir, tmpdir } from "os";
-import { join } from "path";
+import { dirname, join } from "path";
 
 beforeEach(() => {
   // Use memory DB for tests
@@ -181,11 +180,11 @@ afterEach(() => {
 
 describe("POST /api/checks", () => {
   it("POST /api/checks returns the id of the specific check it just created", async () => {
-    // Write a minimal config with SEO enabled
-    const configDir = join(homedir(), ".checkapp");
-    mkdirSync(configDir, { recursive: true });
+    // Write a minimal config with SEO enabled (temp path set by vitest.setup.ts, never ~/.checkapp)
+    const configPath = process.env.CHECKAPP_CONFIG_PATH!;
+    mkdirSync(dirname(configPath), { recursive: true });
     writeFileSync(
-      join(configDir, "config.json"),
+      configPath,
       JSON.stringify({
         skills: { seo: true },
         plagiarism: false,
@@ -212,11 +211,11 @@ describe("POST /api/checks", () => {
   });
 
   it("two concurrent POSTs do NOT return the same id", async () => {
-    // Write a minimal config with SEO enabled
-    const configDir = join(homedir(), ".checkapp");
-    mkdirSync(configDir, { recursive: true });
+    // Write a minimal config with SEO enabled (temp path set by vitest.setup.ts, never ~/.checkapp)
+    const configPath = process.env.CHECKAPP_CONFIG_PATH!;
+    mkdirSync(dirname(configPath), { recursive: true });
     writeFileSync(
-      join(configDir, "config.json"),
+      configPath,
       JSON.stringify({
         skills: { seo: true },
         plagiarism: false,
