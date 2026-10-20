@@ -199,6 +199,7 @@ function toLocatedQuote(
 function findExactLocatedQuote(quote: string, segments: AuditSegment[]): LocatedQuote | undefined {
   const normalizedQuote = normalizeText(quote);
   if (!normalizedQuote) return undefined;
+  let contained: AuditSegment | undefined;
   for (const segment of segments) {
     const rawIndex = segment.text.indexOf(quote);
     if (rawIndex >= 0) {
@@ -217,9 +218,13 @@ function findExactLocatedQuote(quote: string, segments: AuditSegment[]): Located
 
     const normalizedSegment = normalizeText(segment.text);
     if (normalizedSegment.includes(normalizedQuote)) return toLocatedQuote(segment, quote, undefined, undefined, "fuzzy");
-    if (normalizedQuote.includes(normalizedSegment)) return toLocatedQuote(segment, undefined, undefined, undefined, "fuzzy");
+    // The quote spans several sentences: keep the longest one it contains (the claim itself,
+    // not a lead-in like "Yes, definitely."), unless a later segment matches better.
+    if (normalizedQuote.includes(normalizedSegment) && (!contained || normalizedSegment.length > normalizeText(contained.text).length)) {
+      contained = segment;
+    }
   }
-  return undefined;
+  return contained ? toLocatedQuote(contained, undefined, undefined, undefined, "fuzzy") : undefined;
 }
 
 const CASE_FOLD_COLLATOR = new Intl.Collator(undefined, { sensitivity: "accent", usage: "search" });

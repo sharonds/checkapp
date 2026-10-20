@@ -568,6 +568,15 @@ test("extractClaimsPromptGrounded covers the whole article, breadth first, riski
   expect(p).toMatch(/only after every/i);
 });
 
+test("extractClaimsPromptGrounded keeps the risky part of a sentence in the assertion", () => {
+  // Eval: "the largest LEGO set ever made is the World Cup set (43020)" was extracted as
+  // "the World Cup set is 43020", so the false superlative was never checked.
+  const p = extractClaimsPromptGrounded("מאמר לדוגמה");
+  expect(p).toMatch(/keep (the|that) (risky|riskiest) part/i);
+  expect(p).toMatch(/largest LEGO set ever/i);
+  expect(p).toMatch(/qualifiers?[^.]*(about|up to|only)/i);
+});
+
 test("extractClaimsPromptGrounded asks for atomic assertion + verbatim source per claim", () => {
   const p = extractClaimsPromptGrounded("מאמר לדוגמה");
   expect(p).toContain("assertion");

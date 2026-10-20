@@ -36,6 +36,13 @@ describe("audit document analysis", () => {
     expect(analysis.sentencesScanned).toBe(2);
   });
 
+  test("a source spanning two sentences is located at the substantive one, not a short lead-in", () => {
+    // FAQ answers often start with "Yes, definitely." before the claim itself.
+    const text = "## FAQ\n\nIs it limited? Yes, definitely. Acme makes these sets only for the 2030 season.";
+    const located = locateQuote(text, "Yes, definitely. Acme makes these sets only for the 2030 season.");
+    expect(located.quote).toBe("Acme makes these sets only for the 2030 season.");
+  });
+
   test("fuzzy quote matches are labeled approximate and omit exact offsets", () => {
     const text = "# Games\n\nRummikub is a tile game for two to four players.";
     const analysis = analyzeDocument(text);
