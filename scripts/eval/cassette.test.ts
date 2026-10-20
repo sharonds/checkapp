@@ -67,6 +67,25 @@ describe("cassette record/replay", () => {
     expect(live).toBe(1);
   });
 
+  test("identical requests keep every recorded response and replay them in order", async () => {
+    // A union of several extraction calls sends the same request several times; replaying one
+    // response for all of them would collapse the union into a single sample.
+    const dir = tmp();
+    const path = join(dir, "c.json");
+    let n = 0;
+    const rec = new Cassette(path, "record", { allowGrounded: false, innerFetch: async () => new Response(`{"n":${++n}}`) });
+    const req = () => ["https://h/models/m:generateContent", { method: "POST", body: '{"contents":["same"]}' }] as const;
+    await Promise.all([rec.fetch(...req()), rec.fetch(...req()), rec.fetch(...req())]);
+    rec.save();
+
+    for (const mode of ["replay", "record"] as const) {
+      const again = new Cassette(path, mode, { allowGrounded: false, reuseRecorded: true, innerFetch: async () => { throw new Error("network"); } });
+      const bodies = [];
+      for (let i = 0; i < 3; i++) bodies.push(await (await again.fetch(...req())).json());
+      expect(bodies.map((b: any) => b.n).sort()).toEqual([1, 2, 3]);
+    }
+  });
+
   test("does not record grounded responses unless allowed, and says why on replay", async () => {
     const dir = tmp();
     const path = join(dir, "c.json");

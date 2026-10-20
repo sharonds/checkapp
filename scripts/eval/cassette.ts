@@ -49,7 +49,9 @@ export interface CassetteOptions {
 }
 
 export class Cassette {
-  private entries: Record<string, Entry> = {};
+  /** Responses per request key, in the order they were recorded (identical requests can repeat). */
+  private entries: Record<string, Entry[]> = {};
+  private readonly served = new Map<string, number>();
   /** Captured at construction: once installed, globalThis.fetch is this cassette itself. */
   private readonly inner: FetchFn;
   readonly fetch: FetchFn;
@@ -60,12 +62,30 @@ export class Cassette {
     private readonly options: CassetteOptions,
   ) {
     if (existsSync(path)) {
-      this.entries = (JSON.parse(readFileSync(path, "utf-8")) as { entries: Record<string, Entry> }).entries;
+      const stored = (JSON.parse(readFileSync(path, "utf-8")) as { entries: Record<string, Entry | Entry[]> }).entries;
+      // Version 1 cassettes kept one response per key.
+      this.entries = Object.fromEntries(Object.entries(stored).map(([k, v]) => [k, Array.isArray(v) ? v : [v]]));
     } else if (mode === "replay") {
       throw new Error(`No cassette at ${path}; record this variant first.`);
     }
     this.inner = options.innerFetch ?? globalThis.fetch.bind(globalThis);
     this.fetch = (input, init) => this.handleFetch(input, init);
+  }
+
+  /** Next recorded response for a key; in replay, the last one repeats once the list runs out. */
+  private next(key: string, kind: Entry["kind"], allowRepeat: boolean): Entry | undefined {
+    const list = (this.entries[key] ?? []).filter((e) => e.kind === kind);
+    const index = this.served.get(key) ?? 0;
+    if (index < list.length) {
+      this.served.set(key, index + 1);
+      return list[index];
+    }
+    return allowRepeat ? list.at(-1) : undefined;
+  }
+
+  private record(key: string, entry: Entry): void {
+    (this.entries[key] ??= []).push(entry);
+    this.served.set(key, (this.served.get(key) ?? 0) + 1);
   }
 
   private async handleFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
@@ -75,7 +95,7 @@ export class Cassette {
     const grounded = isGroundedRequest(url, body);
 
     if (this.mode === "replay") {
-      const hit = this.entries[key];
+      const hit = this.next(key, "fetch", true);
       if (hit?.kind === "fetch") {
         return new Response(hit.body, { status: hit.status, headers: { "content-type": hit.contentType } });
       }
@@ -85,7 +105,7 @@ export class Cassette {
       throw new Error(`Cassette miss for ${stripKey(url)}`);
     }
 
-    const recorded = this.options.reuseRecorded ? this.entries[key] : undefined;
+    const recorded = this.options.reuseRecorded ? this.next(key, "fetch", false) : undefined;
     if (recorded?.kind === "fetch") {
       return new Response(recorded.body, { status: recorded.status, headers: { "content-type": recorded.contentType } });
     }
@@ -93,7 +113,7 @@ export class Cassette {
     const text = await res.text();
     const contentType = res.headers.get("content-type") ?? "application/json";
     if (!grounded || this.options.allowGrounded) {
-      this.entries[key] = { kind: "fetch", url: stripKey(url), status: res.status, contentType, body: text };
+      this.record(key, { kind: "fetch", url: stripKey(url), status: res.status, contentType, body: text });
     }
     return new Response(text, { status: res.status, headers: { "content-type": contentType } });
   }
@@ -106,12 +126,12 @@ export class Cassette {
     proto.search = async function (this: unknown, query: string, options?: unknown) {
       const key = requestKey("exa", query, JSON.stringify(options ?? {}));
       if (cassette.mode === "replay" || cassette.options.reuseRecorded) {
-        const hit = cassette.entries[key];
+        const hit = cassette.next(key, "exa", cassette.mode === "replay");
         if (hit?.kind === "exa") return hit.result;
         if (cassette.mode === "replay") throw new Error(`Cassette miss for Exa query: ${query.slice(0, 80)}`);
       }
       const result = await original.call(this, query, options);
-      cassette.entries[key] = { kind: "exa", query, result };
+      cassette.record(key, { kind: "exa", query, result });
       return result;
     };
     return () => {
@@ -121,6 +141,6 @@ export class Cassette {
 
   save(): void {
     // Owner-only: cassettes contain article text and provider responses.
-    writeFileSync(this.path, JSON.stringify({ version: 1, entries: this.entries }), { encoding: "utf-8", mode: 0o600 });
+    writeFileSync(this.path, JSON.stringify({ version: 2, entries: this.entries }), { encoding: "utf-8", mode: 0o600 });
   }
 }
