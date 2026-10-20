@@ -64,7 +64,7 @@ export function estimateRunCost(cfg: AppConfigForEstimate, wordCount: number): E
     const syncTier = configuredTier === "premium" ? "basic" : configuredTier;
     perSkill["fact-check"] = syncTier
       ? syncTier === "standard"
-        ? 0.16
+        ? 0.21 // 4 grounded claims at ~$0.04 plus claim extraction (~$0.05); mirrors src/cost/estimator.ts
         : 0.04
       : providerBase(cfg, "fact-check") * FACT_CHECK_MAX_CLAIMS;
   }
