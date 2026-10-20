@@ -17,6 +17,8 @@ export interface DocumentAnalysis {
   sentencesScanned: number;
   wordsScanned: number;
   segments: AuditSegment[];
+  /** Markdown headings. Not counted as scanned sentences, but claims can be located in them. */
+  headings: AuditSegment[];
 }
 
 export interface LocatedQuote {
@@ -32,6 +34,7 @@ export function analyzeDocument(text: string): DocumentAnalysis {
   const direction = auditDirection(language);
   const paragraphs = splitParagraphs(text);
   const segments: AuditSegment[] = [];
+  const headings: AuditSegment[] = [];
   let currentSectionId = "section-1";
   let currentSectionTitle: string | undefined;
   let sectionCount = 1;
@@ -43,6 +46,18 @@ export function analyzeDocument(text: string): DocumentAnalysis {
       sectionCount += paragraphIndex === 0 && segments.length === 0 ? 0 : 1;
       currentSectionId = `section-${sectionCount}`;
       currentSectionTitle = heading[1].trim();
+      const headingStart = paragraph.start + paragraph.text.indexOf(currentSectionTitle);
+      headings.push({
+        id: `heading-${headings.length + 1}`,
+        sectionId: currentSectionId,
+        sectionTitle: currentSectionTitle,
+        text: currentSectionTitle,
+        language: auditLanguage(currentSectionTitle),
+        direction: auditDirection(auditLanguage(currentSectionTitle)),
+        paragraphIndex,
+        startOffset: headingStart,
+        endOffset: headingStart + currentSectionTitle.length,
+      });
       continue;
     }
 
@@ -73,6 +88,7 @@ export function analyzeDocument(text: string): DocumentAnalysis {
     sentencesScanned: segments.length,
     wordsScanned: countWords(text),
     segments,
+    headings,
   };
 }
 
@@ -96,8 +112,14 @@ export function createAuditRecordBase(skillId: string, text: string): Omit<Audit
 export function locateQuote(text: string, quote: string, analysis = analyzeDocument(text)): LocatedQuote {
   const exact = findExactLocatedQuote(quote, analysis.segments);
   if (exact) return exact;
+  // A claim from a heading (product pages put model, capacity and brand there) may arrive with
+  // its markdown "#" prefix; without this it snapped to the most similar body sentence.
+  const headings = analysis.headings ?? [];
+  const headingQuote = quote.replace(/^\s{0,3}#{1,6}\s+/, "").trim();
+  const heading = headings.find((h) => h.text === headingQuote);
+  if (heading) return toLocatedQuote(heading);
 
-  const best = findBestSegment(quote, analysis.segments);
+  const best = findBestSegment(quote, [...analysis.segments, ...headings]);
   if (best) return toLocatedQuote(best, undefined, undefined, undefined, "fuzzy");
 
   const fallbackLanguage = auditLanguage(quote || text);
@@ -250,7 +272,8 @@ function splitParagraphs(text: string): Array<{ text: string; start: number }> {
 
 function splitSentences(paragraph: string, paragraphStart: number): Array<{ text: string; start: number; end: number }> {
   const sentences: Array<{ text: string; start: number; end: number }> = [];
-  const regex = /[^.!?。！？\n]+[.!?。！？]?/g;
+  // A "." between two digits (1.7, 7.5) is a decimal point, not the end of a sentence.
+  const regex = /(?:[^.!?。！？\n]|(?<=\d)\.(?=\d))+[.!?。！？]?/g;
   let match: RegExpExecArray | null;
   while ((match = regex.exec(paragraph)) !== null) {
     const raw = match[0];

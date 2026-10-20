@@ -16,6 +16,26 @@ describe("audit document analysis", () => {
     expect(located.location?.matchQuality).toBe("exact");
   });
 
+  test("a decimal point does not end a sentence", () => {
+    const analysis = analyzeDocument("The kettle holds 1.7 litres. It boils in 3 minutes.");
+    expect(analysis.segments.map((s) => s.text)).toEqual(["The kettle holds 1.7 litres.", "It boils in 3 minutes."]);
+  });
+
+  test("a claim taken from a heading is located at that heading, not snapped to a similar body sentence", () => {
+    // Product pages put the model number, capacity and brand in headings.
+    const text = "## Recommended models\n\n### Acme D-8 dryer 12 kg\n\nPros: the Acme D-8 dryer has an 8 kg drum.\n\n### Zeta Z9 dryer 9 kg\n\nPros: quiet.";
+    const analysis = analyzeDocument(text);
+    for (const quote of ["### Acme D-8 dryer 12 kg", "Acme D-8 dryer 12 kg"]) {
+      const located = locateQuote(text, quote, analysis);
+      expect(located.quote).toBe("Acme D-8 dryer 12 kg");
+      expect(located.location?.matchQuality).toBe("exact");
+      expect(located.location?.sectionTitle).toBe("Acme D-8 dryer 12 kg");
+      expect(text.slice(located.location!.startOffset!, located.location!.endOffset!)).toBe("Acme D-8 dryer 12 kg");
+    }
+    // Headings are not counted as scanned sentences.
+    expect(analysis.sentencesScanned).toBe(2);
+  });
+
   test("fuzzy quote matches are labeled approximate and omit exact offsets", () => {
     const text = "# Games\n\nRummikub is a tile game for two to four players.";
     const analysis = analyzeDocument(text);

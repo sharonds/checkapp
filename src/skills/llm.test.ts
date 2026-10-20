@@ -184,3 +184,16 @@ describe("parseJsonResponse", () => {
     expect(() => parseJsonResponse("not json")).toThrow();
   });
 });
+
+describe("parseJsonResponse — Hebrew gershayim", () => {
+  // Gemini sometimes copies Hebrew abbreviations such as ק"ג or פיפ"א into a JSON string without
+  // escaping the quote, which made a whole article fail claim extraction.
+  it("repairs an unescaped ASCII quote between two Hebrew letters", () => {
+    const raw = '[{"assertion":"FIFA set","source":"ערכת פיפ"א (סט 43020) שוקלת 2 ק"ג."}]';
+    expect(parseJsonResponse<Array<{ source: string }>>(raw)[0]!.source).toBe('ערכת פיפ"א (סט 43020) שוקלת 2 ק"ג.');
+  });
+
+  it("still throws on JSON that is broken for other reasons", () => {
+    expect(() => parseJsonResponse("[{\"a\": }]")).toThrow();
+  });
+});

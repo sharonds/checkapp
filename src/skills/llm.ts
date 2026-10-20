@@ -244,5 +244,13 @@ export function getTextBlock(content: Anthropic.Messages.ContentBlock[]): string
  */
 export function parseJsonResponse<T>(raw: string): T {
   const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
-  return JSON.parse(cleaned) as T;
+  try {
+    return JSON.parse(cleaned) as T;
+  } catch (error) {
+    // Models sometimes copy Hebrew abbreviations (ק"ג, פיפ"א) into a JSON string without escaping
+    // the quote. A JSON delimiter quote is never between two Hebrew letters, so escaping those is safe.
+    const repaired = cleaned.replace(/(?<=[\u05D0-\u05EA])"(?=[\u05D0-\u05EA])/g, '\\"');
+    if (repaired === cleaned) throw error;
+    return JSON.parse(repaired) as T;
+  }
 }
