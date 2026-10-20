@@ -1,5 +1,6 @@
 /** Pure check pipeline — text + config → skill results. */
 
+import { traceRunMeta, withTraceRun } from "./telemetry/trace.ts";
 import { SkillRegistry } from "./skills/registry.ts";
 import { applyThreshold } from "./thresholds.ts";
 import { buildSkills, type RunCheckHooks } from "./checker.ts";
@@ -17,6 +18,10 @@ export interface CoreResult {
 
 /** Pure pipeline: text + config → skill results. No DB write, no I/O beyond skills' own network calls. */
 export async function runCheckCore(text: string, config: Config, hooks?: RunCheckHooks): Promise<CoreResult> {
+  return withTraceRun(traceRunMeta(text, config), () => runCheckCoreUntraced(text, config, hooks));
+}
+
+async function runCheckCoreUntraced(text: string, config: Config, hooks?: RunCheckHooks): Promise<CoreResult> {
   const skills = buildSkills(config, hooks);
   const registry = new SkillRegistry(skills);
   const raw = await registry.runAllWithAudit(text, config);

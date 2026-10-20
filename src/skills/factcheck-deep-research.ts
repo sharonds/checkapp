@@ -18,7 +18,7 @@ import {
   emitAuditPollEvent,
   emitAuditRequestedEvent,
 } from "../telemetry/audit-events.ts";
-import { BASE, createInteraction, extractText, type InteractionResponse } from "../utils/interactions-api.ts";
+import { BASE, createInteraction, extractText, interactionErrorText, traceInteractionPoll, type InteractionResponse } from "../utils/interactions-api.ts";
 import type { Skill, SkillResult } from "./types.ts";
 import { isE2E, assertMocksOnly } from "../e2e/mode.ts";
 import { loadScenario } from "../e2e/fixtures.ts";
@@ -176,14 +176,15 @@ export class FactCheckDeepResearchSkill implements Skill {
       provider: "gemini-deep-research",
       interactionId,
     });
+    const pollStartedAt = Date.now();
     let response: { status: number; ok: boolean; json: () => Promise<unknown> };
     if (isE2E()) {
       response = mockDeepResearchPoll();
     } else {
       assertMocksOnly("gemini-deep-research");
-      response = await fetch(
-        `${BASE}/interactions/${encodeURIComponent(interactionId)}?key=${encodeURIComponent(apiKey)}`,
-      );
+      response = await fetch(`${BASE}/interactions/${encodeURIComponent(interactionId)}`, {
+        headers: { "x-goog-api-key": apiKey },
+      });
     }
 
     if (response.status === 404) {
@@ -212,13 +213,14 @@ export class FactCheckDeepResearchSkill implements Skill {
     }
 
     const data = (await response.json()) as InteractionResponse;
+    traceInteractionPoll(interactionId, response.status, data, Date.now() - pollStartedAt);
     const status = normalizeInteractionStatus(data.status);
     if (status === "in_progress") {
       return null;
     }
 
     if (status === "failed") {
-      const error = sanitizeProviderError(data.error?.trim() || "") || `Interaction ${interactionId} failed`;
+      const error = sanitizeProviderError(interactionErrorText(data).trim()) || `Interaction ${interactionId} failed`;
       return this.withDb((db) => {
         updateAuditStatus(db, interactionId, "failed", {
           errorMessage: error,
@@ -330,6 +332,7 @@ function mockDeepResearchPoll(): { status: number; ok: boolean; json: () => Prom
   const body: InteractionResponse = {
     id: s.providers.deepResearch?.initiateResponse.interaction_id ?? "int_e2e_mock",
     status: state.status,
+    steps: state.steps,
     outputs: state.outputs,
     error: state.error,
   };
@@ -350,6 +353,18 @@ function requireGeminiApiKey(config: Config): string {
 }
 
 function completedResult(skill: FactCheckDeepResearchSkill, text: string): SkillResult {
+  if (!text.trim()) {
+    return {
+      skillId: skill.id,
+      name: skill.name,
+      score: 50,
+      verdict: "warn",
+      summary: "Deep Audit completed but returned no report text",
+      findings: [{ severity: "warn", text: "The provider returned no report text. Re-run the Deep Audit or check the raw result." }],
+      costUsd: DEFAULT_COST_USD,
+      provider: "gemini-deep-research",
+    };
+  }
   return {
     skillId: skill.id,
     name: skill.name,

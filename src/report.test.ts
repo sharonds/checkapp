@@ -786,3 +786,42 @@ test("passing report is marked ready for review, not guaranteed publishable", ()
   expect(html).toContain("Ready for review");
   expect(html).not.toContain("Ready to publish");
 });
+
+test("grounded findings render Google Search Suggestions in a script-free sandboxed iframe", () => {
+  const suggestions = `<style>.chip{color:red}</style><div class="chip"><a href="https://www.google.com/search?q=a&amp;b">a "q"</a></div><script>alert(1)</script>`;
+  const html = generateReport({
+    source: "article.md",
+    wordCount: 100,
+    totalCostUsd: 0,
+    results: [{
+      skillId: "fact-check-grounded", name: "Fact Check", score: 100, verdict: "pass", summary: "ok", costUsd: 0,
+      findings: [{ severity: "info", text: "Verified", searchSuggestionsHtml: suggestions }],
+    }],
+  });
+  const iframe = html.match(/<iframe[^>]*data-search-suggestions[^>]*>/)?.[0] ?? "";
+  expect(iframe).toContain('sandbox="allow-popups allow-popups-to-escape-sandbox"');
+  expect(iframe).not.toContain("allow-scripts");
+  expect(iframe).not.toContain("allow-same-origin");
+  // srcdoc must be attribute-escaped so it cannot break out of the iframe tag.
+  expect(iframe).toContain("srcdoc=\"&lt;style&gt;");
+  expect(html).not.toContain("<script>alert(1)</script>");
+});
+
+test("Search Suggestions are shown even when every grounded claim is verified (collapsed to a count)", () => {
+  const html = generateReport({
+    source: "article.md",
+    wordCount: 100,
+    totalCostUsd: 0,
+    results: [{
+      skillId: "fact-check-grounded", name: "Fact Check", score: 100, verdict: "pass", summary: "ok", costUsd: 0,
+      findings: [
+        { severity: "info", status: "supported", text: "Verified A", searchSuggestionsHtml: "<div>chips-a</div>" },
+        { severity: "info", status: "supported", text: "Verified B", searchSuggestionsHtml: "<div>chips-a</div>" },
+        { severity: "info", status: "supported", text: "Verified C", searchSuggestionsHtml: "<div>chips-c</div>" },
+      ],
+    }],
+  });
+  expect(html).not.toContain("Verified A");
+  // One frame per distinct suggestion block, no duplicates.
+  expect(html.match(/data-search-suggestions/g)?.length).toBe(2);
+});

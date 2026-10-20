@@ -1,11 +1,12 @@
 import type { Config } from "../config.ts";
 import type { SkillRunOutput } from "../audit/contribution.ts";
-import { createGeminiCapability } from "../providers/gemini-capability.ts";
+import { createGeminiCapability, GEMINI_MIN_OUTPUT_TOKENS } from "../providers/gemini-capability.ts";
 import { getProvider } from "../providers/registry.ts";
 import { resolveProvider } from "../providers/resolve.ts";
 import { emitGroundedCallEvent } from "../telemetry/audit-events.ts";
-import { getLlmClient, parseJsonResponse } from "./llm.ts";
-import { claimConfidence, formatCitation, extractClaimsPromptGrounded, parseExtractedClaims, type ExtractedClaim } from "./factcheck.ts";
+import { traceProviderCall, type TraceInput } from "../telemetry/trace.ts";
+import { getLlmClient, parseJsonResponse, type LlmClient } from "./llm.ts";
+import { EXTRACTED_CLAIMS_SCHEMA, claimConfidence, formatCitation, extractClaimsPromptGrounded, mergeExtractionSamples, parseExtractedClaims, type ExtractedClaim } from "./factcheck.ts";
 import type { ClaimType, Finding, Skill, SkillResult, Source } from "./types.ts";
 import { isE2E, assertMocksOnly } from "../e2e/mode.ts";
 import { loadScenario } from "../e2e/fixtures.ts";
@@ -36,6 +37,7 @@ interface GeminiGroundingSupport {
 }
 
 interface GeminiGroundingMetadata {
+  searchEntryPoint?: { renderedContent?: string };
   groundingChunks?: GeminiGroundedChunk[];
   groundingSupports?: GeminiGroundingSupport[];
   webSearchQueries?: string[];
@@ -69,9 +71,13 @@ interface GroundedClaimResult {
   assessment: GroundedAssessment;
   sources: Source[];
   webSearchQueries: string[];
+  searchSuggestionsHtml?: string;
   attempts: ProviderAttemptDraft[];
   providerError?: boolean;
 }
+
+/** Search Suggestions are Google-provided HTML; cap the size we persist and render. */
+const MAX_SEARCH_SUGGESTIONS_HTML = 32_000;
 
 type ProviderAttemptDraft = Omit<ProviderAttempt, "id">;
 
@@ -152,7 +158,8 @@ export class FactCheckGroundedSkill implements Skill {
     }
 
     const documentAnalysis = analyzeDocument(text);
-    const claims = await extractClaims(text, llm.call);
+    const samples = Math.min(3, Math.max(1, Math.floor(config.factAudit?.extractionSamples ?? 1)));
+    const claims = await extractClaims(text, llm.call, samples);
     if (claims === null) {
       const baseAudit = createAuditRecordBase(this.id, text);
       const audit: AuditRecord = {
@@ -270,7 +277,7 @@ export class FactCheckGroundedSkill implements Skill {
       attemptIdsByResult.set(resultIndex, ids);
     }
 
-    for (const [index, { assertion, source, assessment, sources, webSearchQueries, providerError }] of groundedResults.entries()) {
+    for (const [index, { assertion, source, assessment, sources, webSearchQueries, searchSuggestionsHtml, providerError }] of groundedResults.entries()) {
       const supported = providerError ? null : sources.length === 0 && assessment.supported === true ? null : assessment.supported;
       const located = locateQuote(text, source, documentAnalysis);
       const locationApproximate = !located.location || located.location.matchQuality === "fuzzy";
@@ -334,6 +341,7 @@ export class FactCheckGroundedSkill implements Skill {
         model: groundedModel,
         auditRef: { auditId, claimId, assessmentId },
         rewrite,
+        searchSuggestionsHtml,
       } satisfies Partial<Finding>;
       if (providerError) {
         findings.push({
@@ -443,19 +451,21 @@ function budgetStopReasonFromKey(key: ReturnType<typeof shouldStopForBudget>): A
 // their thinking block and emit no text at all — same graceful degradation.
 async function extractClaims(
   text: string,
-  call: (prompt: string, maxTokens?: number) => Promise<string>,
+  call: LlmClient["call"],
+  samples = 1,
 ): Promise<ExtractedClaim[] | null> {
-  let claimsText: string;
-  try {
-    // 8192 (the Gemini caller's cap), not 4096: the Gemini pro thinking-model
-    // spends part of the output budget on reasoning, and a 4096 budget made it
-    // intermittently emit empty text on longer articles (zero claims). 8192 is
-    // reliable in practice; flash fits comfortably either way.
-    claimsText = await call(extractClaimsPromptGrounded(text), 8192);
-  } catch {
-    return null;
-  }
-  return parseExtractedClaims(claimsText);
+  // Extraction varies between calls, so several samples can be merged (factAudit.extractionSamples).
+  // Structured output keeps the JSON valid (no unescaped Hebrew gershayim, no prose around it).
+  const results = await Promise.all(Array.from({ length: samples }, async () => {
+    try {
+      return parseExtractedClaims(await call(extractClaimsPromptGrounded(text), 8192, { jsonSchema: EXTRACTED_CLAIMS_SCHEMA }));
+    } catch {
+      return null;
+    }
+  }));
+  const usable = results.filter((r): r is ExtractedClaim[] => r !== null);
+  if (usable.length === 0) return null;
+  return usable.length === 1 ? usable[0]! : mergeExtractionSamples(usable);
 }
 
 // Module-level cursor for deterministic E2E claim-by-claim replay. Reset when
@@ -535,6 +545,7 @@ async function assessClaimGrounded(
     assessment,
     sources: extractGroundingSources(groundingMetadata),
     webSearchQueries: groundingMetadata?.webSearchQueries ?? [],
+    searchSuggestionsHtml: groundingMetadata?.searchEntryPoint?.renderedContent?.slice(0, MAX_SEARCH_SUGGESTIONS_HTML) || undefined,
     attempts,
   };
 }
@@ -555,7 +566,15 @@ async function fetchGroundedAssessment(
   attempts: ProviderAttemptDraft[] = [],
 ): Promise<GeminiGroundedFetchResult> {
   const startedAt = Date.now();
-  const emitAttempt = (payload: Record<string, unknown>) =>
+  const prompt = buildGroundedPrompt(assertion, source);
+  const requestParams = {
+    tools: [{ google_search: {} }],
+    generationConfig: {
+      maxOutputTokens: GEMINI_MIN_OUTPUT_TOKENS,
+      thinkingConfig: { thinkingLevel: "high" },
+    },
+  };
+  const emitAttempt = (payload: Record<string, unknown>, traceExtras: Partial<TraceInput> = {}) => {
     emitGroundedCallEvent({
       provider: "gemini-grounded",
       model,
@@ -564,26 +583,35 @@ async function fetchGroundedAssessment(
       costUsd: perClaimCost,
       ...payload,
     });
+    traceProviderCall({
+      stage: "gemini.grounded",
+      provider: "gemini-grounded",
+      model,
+      grounded: true,
+      params: requestParams,
+      prompt,
+      httpStatus: typeof payload.httpStatus === "number" ? payload.httpStatus : undefined,
+      latencyMs: typeof payload.latencyMs === "number" ? payload.latencyMs : undefined,
+      usage: {
+        inputTokens: (payload.inputTokens as number | null) ?? undefined,
+        outputTokens: (payload.outputTokens as number | null) ?? undefined,
+        totalTokens: (payload.totalTokens as number | null) ?? undefined,
+      },
+      error: typeof payload.error === "string" ? payload.error : typeof payload.errorMessage === "string" ? payload.errorMessage : undefined,
+      ...traceExtras,
+    });
+  };
 
   let response: Response;
   try {
     response = await fetch(
-      `${GEMINI_BASE_URL}/${model}:generateContent?key=${encodeURIComponent(apiKey)}`,
+      `${GEMINI_BASE_URL}/${model}:generateContent`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
         body: JSON.stringify({
-          contents: [{
-            parts: [{
-              text: buildGroundedPrompt(assertion, source),
-            }],
-          }],
-          tools: [{ google_search: {} }],
-          generationConfig: {
-            maxOutputTokens: 8192,
-            temperature: 0.1,
-            thinkingConfig: { thinkingLevel: "high" },
-          },
+          contents: [{ parts: [{ text: prompt }] }],
+          ...requestParams,
         }),
       },
     );
@@ -637,6 +665,7 @@ async function fetchGroundedAssessment(
       inputTokens: null,
       outputTokens: null,
       totalTokens: null,
+      errorMessage: `Gemini grounded error: HTTP ${response.status} (retrying)`,
     });
     await sleep(Math.max(computeRetryAfterDelayMs(response.headers.get("retry-after")), groundedRetryDelayMs()));
     return fetchGroundedAssessment(assertion, source, apiKey, model, retriesLeft - 1, perClaimCost, attempts);
@@ -658,6 +687,7 @@ async function fetchGroundedAssessment(
       inputTokens: null,
       outputTokens: null,
       totalTokens: null,
+      errorMessage,
     });
     return { attempts, errorMessage };
   }
@@ -672,12 +702,17 @@ async function fetchGroundedAssessment(
     outputTokens: data.usageMetadata?.candidatesTokenCount,
     totalTokens: data.usageMetadata?.totalTokenCount,
   });
+  const tracedMetadata = data.candidates?.[0]?.groundingMetadata;
   emitAttempt({
     httpStatus: response.status,
     latencyMs,
     inputTokens: data.usageMetadata?.promptTokenCount ?? null,
     outputTokens: data.usageMetadata?.candidatesTokenCount ?? null,
     totalTokens: data.usageMetadata?.totalTokenCount ?? null,
+  }, {
+    response: (data.candidates?.[0]?.content?.parts ?? []).filter((part) => part.thought !== true).map((part) => part.text ?? "").join("\n"),
+    searchQueries: tracedMetadata?.webSearchQueries ?? [],
+    sources: tracedMetadata?.groundingChunks ?? [],
   });
   return { response: data, attempts };
 }
@@ -705,10 +740,19 @@ function groundedRetryDelayMs(): number {
   return Number.isFinite(configured) && configured >= 0 ? configured : 3_000;
 }
 
-function buildGroundedPrompt(assertion: string, source: string): string {
+export function buildGroundedPrompt(assertion: string, source: string, today = new Date().toISOString().slice(0, 10)): string {
   return [
-    "Use Google Search grounding to assess whether this claim is supported by current, credible sources.",
+    `Use Google Search grounding to assess whether this claim is supported by current, credible sources. Today is ${today}.`,
     `Claim: "${assertion}"`,
+    "How to judge:",
+    [
+      "- Every specific detail must hold: names, brands, model or set numbers, numbers and units, dates and ratings. If one detail is wrong, the claim is not supported.",
+      '- Superlatives and exclusives ("the only", "the first", "the largest", "the most") need evidence that they hold against all alternatives. If you find a counterexample, set false. If you cannot confirm the superlative, set null, not true.',
+      '- Approximate numbers must fit the rounding they imply: "about 500" fits a published 490, but "about 520" does not fit 490. If the published figure falls outside, set false and give it.',
+      '- Rules of thumb and typical values ("usually", "about an hour", "typically 2000 W") must match authoritative typical values (manufacturer specifications, standards bodies, energy agencies). If the claim is true only for a subset, type or variant (for example one kind of appliance), set false and say where it holds.',
+      "- A stated range or alternatives (\"B/C\", \"A++/A+++\", \"7-8 kg\") is supported when the true value falls inside it.",
+      "- Prefer manufacturer, official and primary sources over retailers and blogs.",
+    ].join("\n"),
     'Return a short explanation and include a JSON object exactly in this shape somewhere in the response: {"supported":true|false|null,"note":"string"}',
     "Set supported=true when the claim is well-supported, false when evidence contradicts it, and null when evidence is insufficient or mixed.",
     `Write the "note" in the SAME LANGUAGE as this source text: «${source}». When supported=false, the note must state the correct fact.`,

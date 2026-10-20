@@ -89,9 +89,11 @@ describe("getLlmClient", () => {
 
   it("calls Gemini generateContent and filters thought parts", async () => {
     let capturedUrl = "";
+    let capturedKeyHeader: string | null = null;
     let capturedBody: Record<string, unknown> | null = null;
     mockFetch(async (req) => {
       capturedUrl = req.url;
+      capturedKeyHeader = req.headers.get("x-goog-api-key");
       capturedBody = JSON.parse((req as Request).body ? await req.text() : "{}") as Record<string, unknown>;
       return jsonResponse({
         candidates: [
@@ -113,20 +115,24 @@ describe("getLlmClient", () => {
 
     const result = await c!.call("prompt text", 16);
     expect(result).toBe("visible output");
+    // Key goes in the x-goog-api-key header (Gemini docs), never the URL where it can leak into logs.
     expect(capturedUrl).toBe(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=gk",
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent",
     );
+    expect(capturedKeyHeader).toBe("gk");
     expect(capturedBody).toMatchObject({
       contents: [{ parts: [{ text: "prompt text" }] }],
       generationConfig: {
-        maxOutputTokens: 16,
-        temperature: 0.1,
+        maxOutputTokens: 32768,
         thinkingConfig: { thinkingLevel: "low" },
       },
     });
+    // Sampling params are deprecated/ignored on Gemini 3.6+ and degrade Gemini 3.x reasoning.
+    expect((capturedBody as any).generationConfig.temperature).toBeUndefined();
   });
 
-  it("Gemini maxOutputTokens defaults to 1024 when caller passes no budget", async () => {
+  // Gemini's maxOutputTokens caps thinking + answer; Google advises >= 32,768 (latest-model migration checklist).
+  it("Gemini maxOutputTokens floors at 32768 when caller passes no budget", async () => {
     let capturedBody: Record<string, unknown> | null = null;
     mockFetch(async (req) => {
       capturedBody = JSON.parse((req as Request).body ? await req.text() : "{}") as Record<string, unknown>;
@@ -134,10 +140,11 @@ describe("getLlmClient", () => {
     });
     const c = getLlmClient({ ...baseConfig, geminiApiKey: "gk" });
     await c!.call("hi");
-    expect((capturedBody as any).generationConfig.maxOutputTokens).toBe(1024);
+    expect((capturedBody as any).generationConfig.maxOutputTokens).toBe(32768);
   });
 
-  it("Gemini maxOutputTokens respects small explicit budgets (no floor bump)", async () => {
+  // Changed 2026-10-20: small caps truncate thinking models; lower thinkingLevel to save tokens instead.
+  it("Gemini maxOutputTokens floors small explicit budgets at 32768", async () => {
     let capturedBody: Record<string, unknown> | null = null;
     mockFetch(async (req) => {
       capturedBody = JSON.parse((req as Request).body ? await req.text() : "{}") as Record<string, unknown>;
@@ -145,18 +152,48 @@ describe("getLlmClient", () => {
     });
     const c = getLlmClient({ ...baseConfig, geminiApiKey: "gk" });
     await c!.call("hi", 512);
-    expect((capturedBody as any).generationConfig.maxOutputTokens).toBe(512);
+    expect((capturedBody as any).generationConfig.maxOutputTokens).toBe(32768);
   });
 
-  it("Gemini maxOutputTokens caps at 8192 for large budgets", async () => {
+  it("Gemini maxOutputTokens caps at the 65536 model output limit", async () => {
     let capturedBody: Record<string, unknown> | null = null;
     mockFetch(async (req) => {
       capturedBody = JSON.parse((req as Request).body ? await req.text() : "{}") as Record<string, unknown>;
       return jsonResponse({ candidates: [{ content: { parts: [{ text: "x" }] } }] });
     });
     const c = getLlmClient({ ...baseConfig, geminiApiKey: "gk" });
-    await c!.call("hi", 20000);
-    expect((capturedBody as any).generationConfig.maxOutputTokens).toBe(8192);
+    await c!.call("hi", 100000);
+    expect((capturedBody as any).generationConfig.maxOutputTokens).toBe(65536);
+  });
+});
+
+describe("Gemini structured output", () => {
+  // Structured output makes the model return valid JSON for the schema (no unescaped quotes,
+  // no prose around it). Other providers ignore the option.
+  const schema = { type: "array", items: { type: "object", properties: { a: { type: "string" } }, required: ["a"] } };
+
+  it("sends responseMimeType and responseJsonSchema when a JSON schema is requested", async () => {
+    let body: any = null;
+    mockFetch(async (req) => {
+      body = JSON.parse(await req.text());
+      return jsonResponse({ candidates: [{ content: { parts: [{ text: '[{"a":"x"}]' }] } }] });
+    });
+    const c = getLlmClient({ ...baseConfig, geminiApiKey: "gk", llmProvider: "gemini" });
+    await c!.call("prompt", 8192, { jsonSchema: schema });
+    expect(body.generationConfig.responseMimeType).toBe("application/json");
+    expect(body.generationConfig.responseJsonSchema).toEqual(schema);
+  });
+
+  it("sends neither field without a schema", async () => {
+    let body: any = null;
+    mockFetch(async (req) => {
+      body = JSON.parse(await req.text());
+      return jsonResponse({ candidates: [{ content: { parts: [{ text: "x" }] } }] });
+    });
+    const c = getLlmClient({ ...baseConfig, geminiApiKey: "gk", llmProvider: "gemini" });
+    await c!.call("prompt");
+    expect(body.generationConfig.responseMimeType).toBeUndefined();
+    expect(body.generationConfig.responseJsonSchema).toBeUndefined();
   });
 });
 
@@ -175,5 +212,18 @@ describe("parseJsonResponse", () => {
 
   it("throws on invalid JSON", () => {
     expect(() => parseJsonResponse("not json")).toThrow();
+  });
+});
+
+describe("parseJsonResponse — Hebrew gershayim", () => {
+  // Gemini sometimes copies Hebrew abbreviations such as ק"ג or פיפ"א into a JSON string without
+  // escaping the quote, which made a whole article fail claim extraction.
+  it("repairs an unescaped ASCII quote between two Hebrew letters", () => {
+    const raw = '[{"assertion":"FIFA set","source":"ערכת פיפ"א (סט 43020) שוקלת 2 ק"ג."}]';
+    expect(parseJsonResponse<Array<{ source: string }>>(raw)[0]!.source).toBe('ערכת פיפ"א (סט 43020) שוקלת 2 ק"ג.');
+  });
+
+  it("still throws on JSON that is broken for other reasons", () => {
+    expect(() => parseJsonResponse("[{\"a\": }]")).toThrow();
   });
 });

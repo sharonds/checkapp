@@ -124,6 +124,10 @@ The structured audit contract is versioned with `audit.version`. Additive fields
 | `LLM_PROVIDER` | No | `minimax` (default), `anthropic`, or `openrouter` |
 | `PARALLEL_API_KEY` | No | Parallel AI for passage evidence |
 | `TONE_GUIDE_FILE` | No | Path to brand voice `.md` file |
+| `CHECKAPP_TRACE` | No | Set to `0` to disable per-run trace files |
+| `CHECKAPP_TRACE_DIR` | No | Trace folder (default `~/.checkapp/traces`). Use a dedicated folder: retention deletes old `<date>/*.jsonl` files, but only in a folder CheckApp created itself (it writes a `.checkapp-traces` marker) |
+| `CHECKAPP_TRACE_RETENTION_DAYS` | No | Days to keep trace date folders (default 30) |
+| `CHECKAPP_TRACE_GROUNDED_CONTENT` | No | Set to `1` to also store Google Search grounded responses and sources in traces (check the Gemini grounding terms first) |
 
 ## Data Storage
 
@@ -132,6 +136,7 @@ All data is local:
 - Config: `~/.checkapp/config.json`
 - Contexts: stored in the SQLite database
 - Optional structured audit data: stored locally with check history when present
+- Per-run traces: `~/.checkapp/traces/<date>/<runId>.jsonl`, one record per provider call (prompt, which includes article text, plus params, response, search queries, tokens and latency). The files are owner-only (0600) and date folders older than 30 days are deleted. Google Search grounded content is omitted unless `CHECKAPP_TRACE_GROUNDED_CONTENT=1`. Traces are never returned through MCP or `--json`.
 
 No remote servers. No authentication needed for local use.
 

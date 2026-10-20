@@ -1,6 +1,7 @@
 import { appendFileSync, mkdirSync } from "fs";
-import { homedir } from "os";
+import { homedir, tmpdir } from "os";
 import { dirname, join } from "path";
+import { isE2E } from "../e2e/mode.ts";
 
 export type AuditEventName =
   | "tier.selected"
@@ -33,7 +34,7 @@ export function emitAuditEvent<TPayload extends Record<string, unknown>>(
   const line = JSON.stringify(entry);
 
   try {
-    const path = process.env.CHECKAPP_AUDIT_EVENTS_PATH || DEFAULT_EVENTS_PATH;
+    const path = resolveAuditEventsPath();
     mkdirSync(dirname(path), { recursive: true });
     appendFileSync(path, `${line}\n`, "utf-8");
   } catch (error) {
@@ -74,4 +75,16 @@ export function emitAuditFailedEvent(payload: Record<string, unknown>) {
 
 export function emitAuditStaleEvent(payload: Record<string, unknown>) {
   return emitAuditEvent("audit.stale", payload);
+}
+
+/**
+ * Test runners (bun test, vitest) set NODE_ENV=test, and E2E runs set CHECKAPP_E2E=1. Without an explicit path,
+ * their mocked provider calls must not land in the user's real telemetry log.
+ */
+const TEST_EVENTS_PATH = join(tmpdir(), "checkapp-test-telemetry", "audit-events.jsonl");
+
+export function resolveAuditEventsPath(): string {
+  if (process.env.CHECKAPP_AUDIT_EVENTS_PATH) return process.env.CHECKAPP_AUDIT_EVENTS_PATH;
+  // E2E fixture runs (e.g. the dashboard dev server in browser tests) are mock traffic too.
+  return process.env.NODE_ENV === "test" || isE2E() ? TEST_EVENTS_PATH : DEFAULT_EVENTS_PATH;
 }

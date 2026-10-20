@@ -1,9 +1,7 @@
 import { readdirSync, existsSync, statSync, readFileSync, writeFileSync } from "fs";
 import { join, extname, basename } from "path";
 import { readConfig } from "./config.ts";
-import { applyThreshold } from "./thresholds.ts";
-import { SkillRegistry } from "./skills/registry.ts";
-import { buildSkills } from "./checker.ts";
+import { runCheckCore } from "./checker-core.ts";
 import { openDb, insertCheck, loadAllContexts } from "./db.ts";
 import { generateReport } from "./report.ts";
 import { formatScore, summarizeResults } from "./output-summary.ts";
@@ -48,9 +46,6 @@ export async function runBatch(dir: string): Promise<BatchResult[]> {
     const contexts = loadAllContexts(db);
     const configWithContexts = { ...config, contexts };
 
-    // Use shared buildSkills() from checker.ts (single source of truth)
-    const registry = new SkillRegistry(buildSkills(configWithContexts));
-
     console.log(`\nChecking ${files.length} articles in ${dir}...\n`);
 
     for (const file of files) {
@@ -59,12 +54,10 @@ export async function runBatch(dir: string): Promise<BatchResult[]> {
 
       console.log(`  Checking ${basename(file)}...`);
 
-      const rawOutput = await registry.runAllWithAudit(text, configWithContexts);
-      const skillResults = rawOutput.results.map((r) => ({
-        ...r,
-        verdict: applyThreshold(r.score, r.verdict, configWithContexts.thresholds?.[r.skillId]),
-      }));
-      const totalCostUsd = skillResults.reduce((sum, r) => sum + r.costUsd, 0);
+      // Same pipeline as single checks: thresholds applied, and one trace run per article.
+      const rawOutput = await runCheckCore(text, configWithContexts);
+      const skillResults = rawOutput.results;
+      const totalCostUsd = rawOutput.totalCostUsd;
       const overall = summarizeBatchResults(skillResults);
 
       // Save to DB

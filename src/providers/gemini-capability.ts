@@ -14,9 +14,20 @@ function sanitizeModelOverride(value: string | undefined, fallback: string): str
 
 const DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 const DEFAULT_MODEL_PRO = "gemini-3.1-pro-preview";
-const DEFAULT_MODEL_FLASH = "gemini-3.5-flash";
+// Fallback when the pro model is unhealthy. gemini-3.5-flash was deprecated 2026-10-08.
+const DEFAULT_MODEL_FLASH = "gemini-3.8-flash";
 const DEFAULT_MODEL_DEEP_RESEARCH = "deep-research-preview-04-2026";
 const DEFAULT_TIMEOUT_MS = 3_000;
+
+/**
+ * Gemini's maxOutputTokens caps thinking + answer combined. Google's migration
+ * checklist says to keep it at >= 32,768 and lower thinkingLevel to save tokens.
+ * 65,536 is the synchronous output limit of current models.
+ */
+export const GEMINI_MIN_OUTPUT_TOKENS = 32_768;
+export const GEMINI_MAX_OUTPUT_TOKENS = 65_536;
+
+const COUNT_TOKENS_PING = { contents: [{ parts: [{ text: "ping" }] }] };
 const DEFAULT_CACHE_TTL_MS = 5 * 60_000;
 
 export type GeminiTask = "chat" | "grounded" | "deep-research";
@@ -114,32 +125,15 @@ export function createGeminiCapability(options: GeminiCapabilityOptions = {}): G
       };
     }
 
-    const [pro, grounding, deepResearch] = await Promise.all([
-      probeModel(`${baseUrl}/models/${models.pro}:generateContent?key=${encodeURIComponent(apiKey)}`, {
-        contents: [{ role: "user", parts: [{ text: "ping" }] }],
-        generationConfig: { maxOutputTokens: 1, temperature: 0 },
-      }),
-      probeModel(`${baseUrl}/models/${models.pro}:generateContent?key=${encodeURIComponent(apiKey)}`, {
-        contents: [{ role: "user", parts: [{ text: "ping" }] }],
-        tools: [{ google_search: {} }],
-        generationConfig: { maxOutputTokens: 1, temperature: 0 },
-      }),
-      probeModel(`${baseUrl}/interactions?key=${encodeURIComponent(apiKey)}`, {
-        input: "ping",
-        agent: models.deepResearch,
-        // Gemini requires background=true AND store=true for agent
-        // interactions — anything else returns HTTP 400. This creates a
-        // real background job every probe, but it's cheap (~1 prompt-level
-        // token) and the 5-min health cache keeps the frequency low.
-        background: true,
-        store: true,
-        agent_config: {
-          type: "deep-research",
-          thinking_summaries: "auto",
-          visualization: "off",
-        },
-      }),
+    // Free availability check: countTokens only runs the tokenizer, so it never starts a
+    // Deep Research job (~$1-3 each) or bills a grounded search. It returns 404 for retired
+    // models, which GET /models/{id} does not. Grounding is a tool on the pro model, so its
+    // health follows the pro probe instead of spending a billed search query.
+    const [pro, deepResearch] = await Promise.all([
+      probeModel(`${baseUrl}/models/${models.pro}:countTokens`, COUNT_TOKENS_PING),
+      probeModel(`${baseUrl}/models/${models.deepResearch}:countTokens`, COUNT_TOKENS_PING),
     ]);
+    const grounding = pro;
 
     return {
       pro,
@@ -174,13 +168,15 @@ export function createGeminiCapability(options: GeminiCapabilityOptions = {}): G
     try {
       const response = await getFetch()(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
         body: JSON.stringify(body),
         signal: controller.signal,
       });
-      return response.ok;
+      // Only a definite answer (404 retired model, 401/403 bad key) marks a model unavailable.
+      // Health is cached for the process, so a rate limit or server blip must not downgrade it.
+      return response.ok || response.status === 429 || response.status >= 500;
     } catch {
-      return false;
+      return true; // timeout or network error: unknown, so keep the default model
     } finally {
       clearTimeout(timer);
     }

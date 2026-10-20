@@ -169,7 +169,8 @@ describe("FactCheckDeepResearchSkill", () => {
 
     mockFetch(async (req) => {
       expect(req.method).toBe("GET");
-      expect(req.url).toContain("/interactions/int-complete?key=gemini-key");
+      expect(req.url).toMatch(/\/interactions\/int-complete$/);
+      expect(req.headers.get("x-goog-api-key")).toBe("gemini-key");
       return jsonResponse({
         id: "int-complete",
         status: "completed",
@@ -192,6 +193,21 @@ describe("FactCheckDeepResearchSkill", () => {
     expect(stored?.resultText).toContain("Everything checks out.");
     expect(stored?.resultJson).toContain("\"status\":\"completed\"");
 
+    db.close();
+  });
+
+  test("fetchResult warns instead of passing when a completed audit has no report text", async () => {
+    // An empty report is not evidence that the article checks out.
+    const db = new Database(":memory:");
+    createSchema(db);
+    const auditId = insertDeepAudit(db, { parentType: "content_hash", parentKey: "hash-empty", requestedBy: "dashboard", startedAt: 100 });
+    db.run("UPDATE deep_audits SET interaction_id = ?, status = 'in_progress' WHERE id = ?", ["int-empty", auditId]);
+    mockFetch(async () => jsonResponse({ id: "int-empty", status: "completed", steps: [{ type: "model_output", content: [] }] }));
+
+    const result = await new FactCheckDeepResearchSkill({ db, now: () => 1_000 }).fetchResult("int-empty", baseConfig);
+
+    expect(result?.verdict).toBe("warn");
+    expect(result?.summary).toMatch(/no report text/i);
     db.close();
   });
 

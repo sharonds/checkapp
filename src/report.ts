@@ -136,6 +136,11 @@ function skillCard(r: SkillResult, locale: AuditLocale, audit?: CheckRecord["aud
   const verifiedLine = verifiedCount > 0
     ? `<p style="margin:8px 0 0 0;font-size:12px;color:#059669">✓ ${verifiedCount} ${locale === "he" ? "טענות אומתו (לא מוצגות)" : (verifiedCount === 1 ? "claim verified (not shown)" : "claims verified (not shown)")}</p>`
     : "";
+  // Grounding ToS: Search Suggestions accompany grounded results, including verified
+  // claims that are collapsed into the count line, so render them per skill, deduplicated.
+  const suggestionsHtml = [...new Set(r.findings.map((f) => f.searchSuggestionsHtml).filter((h): h is string => !!h))]
+    .map(searchSuggestionsFrame)
+    .join("");
   const findingsHtml = visibleFindings.length === 0 ? "" : `
     <ul style="margin:12px 0 0 0;padding:0;list-style:none">
       ${visibleFindings.map((f) => `
@@ -175,7 +180,16 @@ function skillCard(r: SkillResult, locale: AuditLocale, audit?: CheckRecord["aud
     ${r.error ? `<p style="margin:8px 0 0 0;font-size:12px;color:#dc2626">⚠ ${escapeHtml(r.error)}</p>` : ""}
     ${verifiedLine}
     ${findingsHtml}
+    ${suggestionsHtml}
   </div>`;
+}
+
+/**
+ * Google Search Suggestions (grounding ToS) are third-party HTML. Render them in an
+ * iframe with no scripts and an opaque origin; only link-outs (popups) are allowed.
+ */
+function searchSuggestionsFrame(html: string): string {
+  return `<iframe data-search-suggestions title="Google Search suggestions" sandbox="allow-popups allow-popups-to-escape-sandbox" srcdoc="${escapeHtml(html)}" style="display:block;margin-top:6px;width:100%;height:64px;border:0"></iframe>`;
 }
 
 function escapeHtml(s: string): string {

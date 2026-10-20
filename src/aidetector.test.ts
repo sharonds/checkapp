@@ -35,7 +35,8 @@ describe("checkAiDetectorGemini", () => {
     };
     await checkAiDetectorGemini("Some article text.", geminiConfig);
     expect(calls[0]).toContain("/models/gemini-3.1-pro-preview:generateContent");
-    expect(requestBody?.generationConfig?.maxOutputTokens).toBe(2048);
+    // Cap covers thinking + answer; Google advises >= 32,768 (changed 2026-10-20 from 2048).
+    expect(requestBody?.generationConfig?.maxOutputTokens).toBe(32768);
     expect(requestBody?.generationConfig?.responseMimeType).toBe("application/json");
   });
 

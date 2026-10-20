@@ -48,6 +48,8 @@ export interface Finding {
   explanationDir?: AuditDirection;
   confidenceRationale?: string;
   searchQueries?: string[];
+  /** Google Search Suggestions HTML (groundingMetadata.searchEntryPoint.renderedContent). Grounding ToS requires showing it with grounded results; render only inside a sandboxed iframe. */
+  searchSuggestionsHtml?: string;
   provider?: string;
   model?: string;
   auditRef?: AuditRef;
@@ -87,4 +89,15 @@ export interface EnricherSkill extends Skill {
 
 export function isEnricher(skill: Skill): skill is EnricherSkill {
   return (skill as EnricherSkill).kind === "enricher";
+}
+
+/**
+ * Agent-facing JSON (MCP, --json) drops Google Search Suggestions HTML: it is display-only
+ * markup required by the grounding terms for human-facing views, and wastes agent context.
+ */
+export function withoutSearchSuggestions<T extends { findings: Finding[] }>(results: T[]): T[] {
+  return results.map((r) => ({
+    ...r,
+    findings: r.findings.map(({ searchSuggestionsHtml: _html, ...f }) => f),
+  }));
 }

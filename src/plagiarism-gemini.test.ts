@@ -53,7 +53,8 @@ describe("checkPlagiarismGeminiGrounded", () => {
     expect(requestUrl).toContain("/models/gemini-3.1-pro-preview:generateContent");
     expect(requestKey).toBe("gemini-key");
     expect(requestBody.tools).toEqual([{ google_search: {} }, { url_context: {} }]);
-    expect(requestBody.generationConfig.maxOutputTokens).toBe(8192);
+    // Cap covers thinking + answer; Google advises >= 32,768 (changed 2026-10-20 from 8192).
+    expect(requestBody.generationConfig.maxOutputTokens).toBe(32768);
     expect(requestBody.generationConfig.thinkingConfig.thinkingLevel).toBe("high");
     expect(requestBody.generationConfig.responseMimeType).toBe("application/json");
     expect(requestBody.generationConfig.responseSchema.required).toContain("matches");

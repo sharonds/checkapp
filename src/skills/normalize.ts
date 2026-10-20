@@ -64,6 +64,7 @@ export function normalizeFinding(raw: unknown): Finding {
     explanationDir: validDirections.includes(f.explanationDir as never) ? (f.explanationDir as AuditDirection) : undefined,
     confidenceRationale: typeof f.confidenceRationale === "string" ? f.confidenceRationale : undefined,
     searchQueries: Array.isArray(f.searchQueries) ? f.searchQueries.filter((q): q is string => typeof q === "string") : undefined,
+    searchSuggestionsHtml: typeof f.searchSuggestionsHtml === "string" ? f.searchSuggestionsHtml : undefined,
     provider: typeof f.provider === "string" ? f.provider : undefined,
     model: typeof f.model === "string" ? f.model : undefined,
     auditRef: normalizeAuditRef(f.auditRef),

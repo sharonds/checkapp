@@ -16,6 +16,8 @@ import {
   BASE,
   createInteraction,
   extractText,
+  interactionErrorText,
+  traceInteractionPoll,
   type InteractionResponse,
 } from "../../../../../../../src/utils/interactions-api";
 import { createGeminiCapability } from "../../../../../../../src/providers/gemini-capability";
@@ -600,10 +602,10 @@ async function refreshAuditIfNeeded(
       parentKey: staleCandidate.parent_key,
       requestedBy: staleCandidate.requested_by,
     });
+    const pollStartedAt = Date.now();
     const response = await fetch(
-      `${BASE}/interactions/${encodeURIComponent(
-        staleCandidate.interaction_id,
-      )}?key=${encodeURIComponent(config.geminiApiKey)}`,
+      `${BASE}/interactions/${encodeURIComponent(staleCandidate.interaction_id)}`,
+      { headers: { "x-goog-api-key": config.geminiApiKey } },
     );
 
     if (response.status === 404) {
@@ -632,13 +634,14 @@ async function refreshAuditIfNeeded(
     }
 
     const data = (await response.json()) as InteractionResponse;
+    traceInteractionPoll(staleCandidate.interaction_id, response.status, data, Date.now() - pollStartedAt);
     const status = normalizeInteractionStatus(data.status);
     if (status === "in_progress") {
       return staleCandidate;
     }
 
     if (status === "failed") {
-      const sanitizedError = sanitizeProviderError(data.error?.trim() || "") || `Interaction ${staleCandidate.interaction_id} failed`;
+      const sanitizedError = sanitizeProviderError(interactionErrorText(data).trim()) || `Interaction ${staleCandidate.interaction_id} failed`;
       updateAuditStatus(staleCandidate.id, "failed", {
         errorMessage: sanitizedError,
         resultJson: JSON.stringify({ ...data, error: sanitizedError }),

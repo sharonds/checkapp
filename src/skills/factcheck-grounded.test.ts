@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Config } from "../config.ts";
 import { jsonResponse, mockFetch, urlRouter } from "../testing/mock-fetch.ts";
-import { FactCheckGroundedSkill, computeRetryAfterDelayMs } from "./factcheck-grounded.ts";
+import { FactCheckGroundedSkill, buildGroundedPrompt, computeRetryAfterDelayMs } from "./factcheck-grounded.ts";
 import { locateQuote } from "../audit/document.ts";
 
 describe("FactCheckGroundedSkill", () => {
@@ -79,6 +79,7 @@ describe("FactCheckGroundedSkill", () => {
               ],
             },
             groundingMetadata: {
+              searchEntryPoint: { renderedContent: "<style>.chip{}</style><div class=\"chip\"><a href=\"https://www.google.com/search?q=x\">x</a></div>" },
               webSearchQueries: ["netherlands indoor smoking ban 2008"],
               groundingChunks: [
                 { web: { uri: "https://www.government.nl/topics/smoking", title: "Government.nl Smoking Policy" } },
@@ -125,6 +126,8 @@ describe("FactCheckGroundedSkill", () => {
       expect(finding.location?.paragraphIndex).toBe(0);
       expect(finding.auditRef?.claimId).toBe("claim-1");
       expect(finding.searchQueries).toContain("netherlands indoor smoking ban 2008");
+      // Grounding ToS: Search Suggestions must be shown with grounded results.
+      expect(finding.searchSuggestionsHtml).toContain("class=\"chip\"");
       expect((result as any).audit.factAssessments[0].provider).toBe("gemini-grounded");
       // The assessment must attribute the model that actually served the call.
       expect((result as any).audit.factAssessments[0].model).toBe((result as any).audit.providerAttempts[0].model);
@@ -527,7 +530,8 @@ describe("FactCheckGroundedSkill", () => {
     mockFetch(urlRouter({
       "generativelanguage.googleapis.com": async (req) => {
         sawGeminiRequest = true;
-        expect(req.url).toContain("provider-gemini-key");
+        // The key travels in the x-goog-api-key header, not the URL (changed 2026-10-20).
+        expect(req.headers.get("x-goog-api-key")).toBe("provider-gemini-key");
         const body = await req.json() as { tools?: unknown };
         // Extraction (no tools) and grounding (google_search tool) both hit the
         // same provider-scoped key — branch on tools to serve each.
@@ -977,5 +981,98 @@ describe("FactCheckGroundedSkill", () => {
     test("returns 0 for negative values", () => {
       expect(computeRetryAfterDelayMs("-5")).toBe(0);
     });
+  });
+});
+
+describe("grounded claim extraction requests", () => {
+  const config: Config = {
+    copyscapeUser: "", copyscapeKey: "", geminiApiKey: "gemini-key",
+    skills: { plagiarism: false, aiDetection: false, seo: false, factCheck: true, tone: false, legal: false, summary: false, brief: false, purpose: false },
+    providers: { "fact-check": { provider: "gemini-grounded" } },
+  };
+  const grounded = () => jsonResponse({
+    candidates: [{
+      content: { parts: [{ text: JSON.stringify({ supported: true, note: "ok" }) }] },
+      groundingMetadata: { webSearchQueries: ["q"], groundingChunks: [{ web: { uri: "https://example.com/a", title: "a" } }] },
+    }],
+  });
+  const article = "Alpha has 3 parts. Beta has 4 parts. Gamma has 5 parts.";
+
+  test("asks Gemini for structured JSON (array of assertion + source)", async () => {
+    const extractionBodies: any[] = [];
+    mockFetch(urlRouter({
+      "generativelanguage.googleapis.com": async (req: Request) => {
+        const body = await req.json() as any;
+        if (body.tools) return grounded();
+        extractionBodies.push(body);
+        return jsonResponse({ candidates: [{ content: { parts: [{ text: JSON.stringify([{ assertion: "Alpha has 3 parts", source: "Alpha has 3 parts." }]) }] } }] });
+      },
+    }));
+    await new FactCheckGroundedSkill().run(article, config);
+    expect(extractionBodies).toHaveLength(1);
+    expect(extractionBodies[0].generationConfig.responseMimeType).toBe("application/json");
+    expect(extractionBodies[0].generationConfig.responseJsonSchema.type).toBe("array");
+  });
+
+  test("factAudit.extractionSamples runs several extractions and checks the union of their sentences", async () => {
+    const samples = [
+      [{ assertion: "Alpha has 3 parts", source: "Alpha has 3 parts." }],
+      [{ assertion: "Beta has 4 parts", source: "Beta has 4 parts." }],
+      null, // one sample fails; the others are still used
+    ];
+    let extraction = 0;
+    let groundedCalls = 0;
+    mockFetch(urlRouter({
+      "generativelanguage.googleapis.com": async (req: Request) => {
+        const body = await req.json() as any;
+        if (body.tools) { groundedCalls++; return grounded(); }
+        const rows = samples[extraction++];
+        return rows ? jsonResponse({ candidates: [{ content: { parts: [{ text: JSON.stringify(rows) }] } }] }) : new Response("{}", { status: 500 });
+      },
+    }));
+    const result = await new FactCheckGroundedSkill().run(article, { ...config, factAudit: { standardMaxClaims: 20, extractionSamples: 3 } });
+    expect(extraction).toBe(3);
+    expect(groundedCalls).toBe(2);
+    expect((result as any).audit.claims.map((c: any) => c.quote)).toEqual(["Alpha has 3 parts.", "Beta has 4 parts."]);
+  });
+});
+
+describe("grounded verdict prompt v2", () => {
+  // Eval misses on checked claims: "the largest LEGO set ever made" (false), "about 520 pieces"
+  // (490), "7 kg dries in about an hour" (about 2-3 h) were all marked supported.
+  const prompt = buildGroundedPrompt("LEGO set 43013 contains about 520 pieces", "הסט מורכב מכ-520 חלקים.", "2026-10-20");
+
+  test("anchors the check to today's date", () => {
+    expect(prompt).toContain("2026-10-20");
+  });
+
+  test("every specific detail must hold", () => {
+    expect(prompt).toMatch(/every (specific )?detail/i);
+  });
+
+  test("superlatives need evidence against all alternatives, and are not supported by default", () => {
+    expect(prompt).toMatch(/superlative/i);
+    expect(prompt).toMatch(/the only|the first|the largest/i);
+    expect(prompt).toMatch(/counterexample/i);
+  });
+
+  test("approximate numbers must fit the rounding they imply", () => {
+    expect(prompt).toMatch(/about 500.*490/i);
+    expect(prompt).toMatch(/about 520.*not/i);
+  });
+
+  test("rules of thumb are judged against authoritative typical values, including which variants they hold for", () => {
+    expect(prompt).toMatch(/typical|rule of thumb/i);
+    expect(prompt).toMatch(/only (for|to) (a|some) (subset|type|variant)/i);
+  });
+
+  test("a stated range or alternatives is fine when the true value falls inside", () => {
+    expect(prompt).toMatch(/range or alternatives/i);
+  });
+
+  test("keeps the output contract and same-language note", () => {
+    expect(prompt).toContain('{"supported":true|false|null,"note":"string"}');
+    expect(prompt).toContain("SAME LANGUAGE");
+    expect(prompt).toContain("הסט מורכב מכ-520 חלקים.");
   });
 });

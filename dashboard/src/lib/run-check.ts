@@ -26,6 +26,7 @@ import { SelfPlagiarismSkill } from "../../../src/skills/selfplagiarism";
 // Import pure utilities (no Bun dependencies)
 import { SkillRegistry } from "../../../src/skills/registry";
 import { applyThreshold } from "../../../src/thresholds";
+import { traceRunMeta, withTraceRun } from "../../../src/telemetry/trace";
 
 // Import types and dashboard DB
 import type { Config } from "../../../src/config";
@@ -122,15 +123,17 @@ export async function runCheckCore(
   hooks?: RunCheckHooks,
 ): Promise<CoreResult> {
   const effectiveConfig = { ...config, skills: { ...DEFAULT_SKILLS, ...(config.skills ?? {}) } };
-  const skills = buildSkills(effectiveConfig, hooks);
-  const registry = new SkillRegistry(skills);
-  const raw = await registry.runAllWithAudit(text, effectiveConfig);
-  const results = raw.results.map((r) => ({
-    ...r,
-    verdict: applyThreshold(r.score, r.verdict, effectiveConfig.thresholds?.[r.skillId]),
-  }));
-  const totalCostUsd = results.reduce((s, r) => s + r.costUsd, 0);
-  return { results, totalCostUsd, audit: raw.audit };
+  return withTraceRun(traceRunMeta(text, effectiveConfig), async () => {
+    const skills = buildSkills(effectiveConfig, hooks);
+    const registry = new SkillRegistry(skills);
+    const raw = await registry.runAllWithAudit(text, effectiveConfig);
+    const results = raw.results.map((r) => ({
+      ...r,
+      verdict: applyThreshold(r.score, r.verdict, effectiveConfig.thresholds?.[r.skillId]),
+    }));
+    const totalCostUsd = results.reduce((s, r) => s + r.costUsd, 0);
+    return { results, totalCostUsd, audit: raw.audit };
+  });
 }
 
 /**

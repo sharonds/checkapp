@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { analyzeDocument, locateQuote, factRewriteSuggestion, plagiarismRewriteSuggestion } from "./document.ts";
+import { analyzeDocument, createAuditRecordBase, locateQuote, factRewriteSuggestion, plagiarismRewriteSuggestion } from "./document.ts";
 
 describe("audit document analysis", () => {
   test("segments multi-section English documents with stable locations", () => {
@@ -14,6 +14,48 @@ describe("audit document analysis", () => {
     expect(located.location?.paragraphIndex).toBe(0);
     expect(located.location?.startOffset).toBeGreaterThan(0);
     expect(located.location?.matchQuality).toBe("exact");
+  });
+
+  test("a decimal point does not end a sentence", () => {
+    const analysis = analyzeDocument("The kettle holds 1.7 litres. It boils in 3 minutes.");
+    expect(analysis.segments.map((s) => s.text)).toEqual(["The kettle holds 1.7 litres.", "It boils in 3 minutes."]);
+  });
+
+  test("a claim taken from a heading is located at that heading, not snapped to a similar body sentence", () => {
+    // Product pages put the model number, capacity and brand in headings.
+    const text = "## Recommended models\n\n### Acme D-8 dryer 12 kg\n\nPros: the Acme D-8 dryer has an 8 kg drum.\n\n### Zeta Z9 dryer 9 kg\n\nPros: quiet.";
+    const analysis = analyzeDocument(text);
+    for (const quote of ["### Acme D-8 dryer 12 kg", "Acme D-8 dryer 12 kg"]) {
+      const located = locateQuote(text, quote, analysis);
+      expect(located.quote).toBe("Acme D-8 dryer 12 kg");
+      expect(located.location?.matchQuality).toBe("exact");
+      expect(located.location?.sectionTitle).toBe("Acme D-8 dryer 12 kg");
+      expect(text.slice(located.location!.startOffset!, located.location!.endOffset!)).toBe("Acme D-8 dryer 12 kg");
+    }
+    // Headings are not counted as scanned sentences.
+    expect(analysis.sentencesScanned).toBe(2);
+  });
+
+  test("a source spanning two sentences is located at the substantive one, not a short lead-in", () => {
+    // FAQ answers often start with "Yes, definitely." before the claim itself.
+    const text = "## FAQ\n\nIs it limited? Yes, definitely. Acme makes these sets only for the 2030 season.";
+    const located = locateQuote(text, "Yes, definitely. Acme makes these sets only for the 2030 season.");
+    expect(located.quote).toBe("Acme makes these sets only for the 2030 season.");
+  });
+
+  test("an exact heading match wins over a body sentence the heading merely contains", () => {
+    const text = "### Acme D-8 dryer 12 kg\n\n12 kg";
+    const located = locateQuote(text, "### Acme D-8 dryer 12 kg");
+    expect(located.quote).toBe("Acme D-8 dryer 12 kg");
+    expect(located.location?.matchQuality).toBe("exact");
+  });
+
+  test("heading segments are persisted in the audit record so heading segment ids resolve", () => {
+    const text = "### Acme D-8 dryer 12 kg\n\nPros: quiet.";
+    const base = createAuditRecordBase("fact-check", text);
+    const located = locateQuote(text, "Acme D-8 dryer 12 kg");
+    expect(base.segments.some((s) => s.id === located.segmentId)).toBe(true);
+    expect(analyzeDocument(text).sentencesScanned).toBe(1);
   });
 
   test("fuzzy quote matches are labeled approximate and omit exact offsets", () => {

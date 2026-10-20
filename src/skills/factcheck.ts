@@ -1,3 +1,4 @@
+import { traceProviderCall } from "../telemetry/trace.ts";
 import Exa from "exa-js";
 import type { Skill, SkillResult, Finding, ClaimType } from "./types.ts";
 import type { SkillRunOutput } from "../audit/contribution.ts";
@@ -41,9 +42,53 @@ export function parseExtractedClaims(rawJson: string): ExtractedClaim[] | null {
       && typeof (row as { assertion?: unknown }).assertion === "string"
       && typeof (row as { source?: unknown }).source === "string")
     .map((row) => ({ assertion: row.assertion.trim(), source: row.source.trim() }))
-    .filter((c) => c.assertion.length > 0 && c.source.length > 0)
-    .slice(0, 20);
-  return claims; // may be [] (parsed ok, no usable claims) — distinct from null (parse failed)
+    .filter((c) => c.assertion.length > 0 && c.source.length > 0);
+  return orderBreadthFirst(claims); // may be [] (parsed ok, no usable claims) — distinct from null (parse failed)
+}
+
+/** Gemini structured-output schema for {@link extractClaimsPromptGrounded}. */
+export const EXTRACTED_CLAIMS_SCHEMA = {
+  type: "array",
+  items: {
+    type: "object",
+    properties: { assertion: { type: "string" }, source: { type: "string" } },
+    required: ["assertion", "source"],
+  },
+} as const;
+
+/**
+ * Union of several extraction calls (extraction varies a lot between calls). Each sample is in
+ * priority order: take their top claims in turn, then the same breadth-first rule and cap.
+ */
+export function mergeExtractionSamples(samples: ExtractedClaim[][]): ExtractedClaim[] {
+  const interleaved: ExtractedClaim[] = [];
+  const longest = Math.max(0, ...samples.map((s) => s.length));
+  for (let rank = 0; rank < longest; rank++) {
+    for (const sample of samples) if (sample[rank]) interleaved.push(sample[rank]!);
+  }
+  return orderBreadthFirst(interleaved);
+}
+
+// Breadth before depth: models split a sentence into several facts, which spent the claim cap
+// on one sentence while the rest of the article went unchecked. Keep each atomic fact (one false
+// fact must still fail its sentence), but give every sentence its first claim before any second.
+function orderBreadthFirst(claims: ExtractedClaim[]): ExtractedClaim[] {
+  const firsts: ExtractedClaim[] = [];
+  const extras: ExtractedClaim[] = [];
+  const seenSources = new Set<string>();
+  const seenClaims = new Set<string>();
+  for (const claim of claims) {
+    const sourceKey = claim.source.replace(/\s+/g, " ");
+    const claimKey = `${sourceKey}\n${claim.assertion}`;
+    if (seenClaims.has(claimKey)) continue;
+    seenClaims.add(claimKey);
+    if (seenSources.has(sourceKey)) extras.push(claim);
+    else {
+      seenSources.add(sourceKey);
+      firsts.push(claim);
+    }
+  }
+  return [...firsts, ...extras].slice(0, 20);
 }
 
 export function extractClaimsPrompt(articleText: string): string {
@@ -62,18 +107,21 @@ JSON array of claims:`;
 }
 
 export function extractClaimsPromptGrounded(articleText: string): string {
-  return `From the article below, extract up to 20 verifiable factual claims.
+  return `From the article below, extract up to 20 verifiable factual claims, covering the whole article from beginning to end.
 Return ONLY a JSON array of objects, no other text. Each object has exactly two string fields:
-- "assertion": ONE atomic, SELF-CONTAINED factual statement that can be verified on its own. Include the entity/subject so it stands alone (e.g. "LEGO set 43013 contains 490 pieces", NOT "contains ~520 pieces"). One fact per assertion — split a sentence that states several facts into several objects.
+- "assertion": ONE atomic, SELF-CONTAINED factual statement that can be verified on its own. Include the entity/subject so it stands alone (e.g. "LEGO set 43013 contains 490 pieces", NOT "contains ~520 pieces").
 - "source": the EXACT sentence from the article (copied VERBATIM, in the original language, no translation) that this assertion comes from, so it can be located in the article.
-A single source sentence may appear in multiple objects when it states multiple facts.
-Focus on statistics, dates, specs, prices, rules, and named entities — not opinions.
+Breadth first: use one object per source sentence, with that sentence's most checkable fact.
+Keep the risky part: when a sentence contains a superlative or exclusive ("the largest ever", "the only", "the first"), an absolute ("always", "never") or an approximation, that is the fact to check. Put it in the assertion with its subject, and keep qualifiers such as "about", "up to", "only" and "ever". For example, "The largest LEGO set ever made is the World Cup set (43020)" becomes "The LEGO World Cup set 43020 is the largest LEGO set ever made", not "The World Cup set is set 43020". Add a second fact from a sentence you already used only after every checkable sentence in the article has an object.
+Look everywhere a fact can hide: headings (product names often carry the model number, capacity or brand), list items, pros/cons lines, FAQ answers and table rows (a table row is one source sentence).
+Pick facts that can be wrong: numbers and units, model or set numbers, brand and product names, prices, dates, ratings, superlatives ("the only", "the first", "the largest"), and health or safety claims. Skip opinions, marketing language and generic advice that cannot be checked.
+Order the array by priority: the most specific claims, and the ones most likely to be wrong, come first.
 
 Article:
 ${articleText}
 
 Example output:
-[{"assertion":"LEGO set 43020 contains 2842 pieces","source":"ערכת גביע העולם הרשמי (סט 43020) מורכבת מ-2,842 חלקים."}]
+[{"assertion":"LEGO set 43020 contains 2842 pieces","source":"ערכת גביע העולם הרשמי (סט 43020) מורכבת מ-2,842 חלקים ומיועדת לגילאי 12 ומעלה."}]
 
 JSON array:`;
 }
@@ -108,13 +156,13 @@ export class FactCheckSkill implements Skill {
         costUsd: 0,
       };
     }
-    if (resolved.provider !== "exa-search" && resolved.provider !== "parallel-task" && resolved.provider !== "exa-deep-reasoning") {
+    if (resolved.provider !== "exa-search" && resolved.provider !== "exa-deep-reasoning") {
       return skippedResult(this, `${resolved.provider} not implemented for fact-check yet`);
     }
     const apiKey = resolved.apiKey;
     if (!apiKey) return skippedResult(this, `${resolved.provider} API key missing`);
 
-    const deepMode = resolved.provider === "exa-deep-reasoning" || resolved.provider === "parallel-task";
+    const deepMode = resolved.provider === "exa-deep-reasoning";
 
     const llm = getLlmClient(config);
     if (!llm) {
@@ -193,30 +241,36 @@ export class FactCheckSkill implements Skill {
     const findings: Finding[] = [];
     let costUsd = 0.001;
 
+    // Exa 3.0: "deep-reasoning" is legacy; "deep" replaces it (cheaper, faster).
+    const exaOptions = (q: string) => ({
+      type: deepMode ? ("deep" as const) : ("auto" as const),
+      numResults: deepMode ? 5 : 3,
+      contents: {
+        text: { maxCharacters: 4000 },
+        highlights: { maxCharacters: 1000, query: q },
+      },
+    });
     const search = exaMock
       ? async (q: string) => exaMock(q)
-      : deepMode
-      ? async (q: string) => {
-          assertMocksOnly("exa:deep-reasoning");
-          return exa!.search(q, {
-            type: "deep-reasoning",
-            numResults: 5,
-            contents: {
-              text: { maxCharacters: 4000 },
-              highlights: { maxCharacters: 1000, numSentences: 3, query: q },
-            },
-          });
-        }
       : async (q: string) => {
-          assertMocksOnly("exa:search");
-          return exa!.search(q, {
-            type: "auto",
-            numResults: 3,
-            contents: {
-              text: { maxCharacters: 4000 },
-              highlights: { maxCharacters: 1000, numSentences: 3, query: q },
-            },
-          });
+          assertMocksOnly(deepMode ? "exa:deep-reasoning" : "exa:search");
+          const options = exaOptions(q);
+          const startedAt = Date.now();
+          try {
+            const response = await exa!.search(q, options);
+            traceProviderCall({
+              stage: "exa.search", provider: resolved.provider, model: options.type, params: options, prompt: q,
+              latencyMs: Date.now() - startedAt,
+              sources: response.results.map((r) => ({ url: r.url, title: r.title, publishedDate: r.publishedDate, highlights: r.highlights })),
+            });
+            return response;
+          } catch (error) {
+            traceProviderCall({
+              stage: "exa.search", provider: resolved.provider, model: options.type, params: options, prompt: q,
+              latencyMs: Date.now() - startedAt, error: error instanceof Error ? error.message : String(error),
+            });
+            throw error;
+          }
         };
 
     const budget = createAuditBudget(config, deepMode ? "premium" : "standard");
@@ -291,7 +345,7 @@ Reply with JSON:
     const providerAttempts: ProviderAttempt[] = claimResults.map((claimResult, index) => ({
       id: `attempt-${index + 1}`,
       provider: resolved.provider,
-      model: deepMode ? "deep-reasoning" : "auto",
+      model: deepMode ? "deep" : "auto",
       status: "success",
     }));
 
@@ -339,7 +393,7 @@ Reply with JSON:
         confidenceRationale: rationale,
         searchQueries: [claim],
         provider: resolved.provider,
-        model: deepMode ? "deep-reasoning" : "auto",
+        model: deepMode ? "deep" : "auto",
         attemptIds: [providerAttempts[index]?.id ?? `attempt-${index + 1}`],
         language: located.language,
         direction: located.direction,
@@ -358,7 +412,7 @@ Reply with JSON:
         confidenceRationale: rationale,
         searchQueries: [claim],
         provider: resolved.provider,
-        model: deepMode ? "deep-reasoning" : "auto",
+        model: deepMode ? "deep" : "auto",
         auditRef: { auditId, claimId, assessmentId },
         rewrite,
       } satisfies Partial<Finding>;

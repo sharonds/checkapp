@@ -1,6 +1,7 @@
+import { traceProviderCall, type TraceInput } from "./telemetry/trace.ts";
 import type { Config } from "./config.ts";
 import type { CopyscapeMatch, CopyscapeResult } from "./copyscape.ts";
-import { createGeminiCapability } from "./providers/gemini-capability.ts";
+import { createGeminiCapability, GEMINI_MIN_OUTPUT_TOKENS } from "./providers/gemini-capability.ts";
 
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
 const ESTIMATED_COST_USD = 0.04;
@@ -39,6 +40,7 @@ interface GeminiCandidate {
 
 interface GeminiGenerateResponse {
   candidates?: GeminiCandidate[];
+  usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
 }
 
 interface NormalizedMatchResult {
@@ -139,29 +141,38 @@ export async function checkPlagiarismGeminiGrounded(
   }
   const url = `${GEMINI_BASE}/models/${model}:generateContent`;
 
+  const prompt = `${PROMPT}\n\nArticle:\n${text}`;
+  const requestParams = {
+    tools: [{ google_search: {} }, { url_context: {} }],
+    generationConfig: {
+      maxOutputTokens: GEMINI_MIN_OUTPUT_TOKENS,
+      thinkingConfig: { thinkingLevel: "high" },
+      responseMimeType: "application/json",
+      responseSchema: RESPONSE_SCHEMA,
+    },
+  };
+  const startedAt = Date.now();
+  const trace = (fields: Partial<TraceInput>) => traceProviderCall({
+    stage: "gemini.plagiarism", provider: "gemini-grounded-plagiarism", model, grounded: true,
+    params: requestParams, prompt, latencyMs: Date.now() - startedAt, ...fields,
+  });
+
   let response: Response;
   try {
     response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: `${PROMPT}\n\nArticle:\n${text}` }] }],
-        tools: [{ google_search: {} }, { url_context: {} }],
-        generationConfig: {
-          maxOutputTokens: 8192,
-          thinkingConfig: { thinkingLevel: "high" },
-          responseMimeType: "application/json",
-          responseSchema: RESPONSE_SCHEMA,
-        },
-      }),
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], ...requestParams }),
     });
   } catch (err) {
+    trace({ error: (err as Error).message });
     return skipped(`Gemini grounded plagiarism network error: ${(err as Error).message}`);
   }
 
   if (!response.ok) {
     const body = await response.text().catch(() => "");
     const detail = body ? ` — ${body.slice(0, 300)}` : "";
+    trace({ httpStatus: response.status, error: `HTTP ${response.status}${detail}` });
     return skipped(`Gemini grounded plagiarism error: HTTP ${response.status}${detail}`);
   }
 
@@ -169,6 +180,7 @@ export async function checkPlagiarismGeminiGrounded(
   try {
     data = await response.json() as GeminiGenerateResponse;
   } catch {
+    trace({ httpStatus: response.status, error: "could not parse API response body" });
     return skipped("Gemini grounded plagiarism: could not parse API response body");
   }
 
@@ -176,6 +188,10 @@ export async function checkPlagiarismGeminiGrounded(
   const rawText = candidate?.content?.parts?.[0]?.text ?? "";
   const groundedSourceUrls = extractGroundedUrls(candidate);
   const searchQueries = candidate?.groundingMetadata?.webSearchQueries ?? [];
+  trace({
+    httpStatus: response.status, response: rawText, searchQueries, sources: groundedSourceUrls,
+    usage: { inputTokens: data.usageMetadata?.promptTokenCount, outputTokens: data.usageMetadata?.candidatesTokenCount },
+  });
 
   let parsed: GeminiPlagiarismJson;
   try {
