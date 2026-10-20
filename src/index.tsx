@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { withoutSearchSuggestions } from "./skills/types.ts";
 import { configExists, readConfig } from "./config.ts";
 import { runSetup } from "./setup.tsx";
 import { runCheck } from "./check.tsx";
@@ -200,7 +201,7 @@ async function main() {
       const result = await runCheckHeadless(source);
 
       if (args.includes("--json")) {
-        console.log(JSON.stringify(result, null, 2));
+        console.log(JSON.stringify({ ...result, results: withoutSearchSuggestions(result.results) }, null, 2));
       } else {
         // CI summary
         console.log(`\nCheckApp — ${result.source}`);

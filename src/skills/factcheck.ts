@@ -1,3 +1,4 @@
+import { traceProviderCall } from "../telemetry/trace.ts";
 import Exa from "exa-js";
 import type { Skill, SkillResult, Finding, ClaimType } from "./types.ts";
 import type { SkillRunOutput } from "../audit/contribution.ts";
@@ -108,13 +109,13 @@ export class FactCheckSkill implements Skill {
         costUsd: 0,
       };
     }
-    if (resolved.provider !== "exa-search" && resolved.provider !== "parallel-task" && resolved.provider !== "exa-deep-reasoning") {
+    if (resolved.provider !== "exa-search" && resolved.provider !== "exa-deep-reasoning") {
       return skippedResult(this, `${resolved.provider} not implemented for fact-check yet`);
     }
     const apiKey = resolved.apiKey;
     if (!apiKey) return skippedResult(this, `${resolved.provider} API key missing`);
 
-    const deepMode = resolved.provider === "exa-deep-reasoning" || resolved.provider === "parallel-task";
+    const deepMode = resolved.provider === "exa-deep-reasoning";
 
     const llm = getLlmClient(config);
     if (!llm) {
@@ -193,30 +194,36 @@ export class FactCheckSkill implements Skill {
     const findings: Finding[] = [];
     let costUsd = 0.001;
 
+    // Exa 3.0: "deep-reasoning" is legacy; "deep" replaces it (cheaper, faster).
+    const exaOptions = (q: string) => ({
+      type: deepMode ? ("deep" as const) : ("auto" as const),
+      numResults: deepMode ? 5 : 3,
+      contents: {
+        text: { maxCharacters: 4000 },
+        highlights: { maxCharacters: 1000, query: q },
+      },
+    });
     const search = exaMock
       ? async (q: string) => exaMock(q)
-      : deepMode
-      ? async (q: string) => {
-          assertMocksOnly("exa:deep-reasoning");
-          return exa!.search(q, {
-            type: "deep-reasoning",
-            numResults: 5,
-            contents: {
-              text: { maxCharacters: 4000 },
-              highlights: { maxCharacters: 1000, numSentences: 3, query: q },
-            },
-          });
-        }
       : async (q: string) => {
-          assertMocksOnly("exa:search");
-          return exa!.search(q, {
-            type: "auto",
-            numResults: 3,
-            contents: {
-              text: { maxCharacters: 4000 },
-              highlights: { maxCharacters: 1000, numSentences: 3, query: q },
-            },
-          });
+          assertMocksOnly(deepMode ? "exa:deep-reasoning" : "exa:search");
+          const options = exaOptions(q);
+          const startedAt = Date.now();
+          try {
+            const response = await exa!.search(q, options);
+            traceProviderCall({
+              stage: "exa.search", provider: resolved.provider, model: options.type, params: options, prompt: q,
+              latencyMs: Date.now() - startedAt,
+              sources: response.results.map((r) => ({ url: r.url, title: r.title, publishedDate: r.publishedDate, highlights: r.highlights })),
+            });
+            return response;
+          } catch (error) {
+            traceProviderCall({
+              stage: "exa.search", provider: resolved.provider, model: options.type, params: options, prompt: q,
+              latencyMs: Date.now() - startedAt, error: error instanceof Error ? error.message : String(error),
+            });
+            throw error;
+          }
         };
 
     const budget = createAuditBudget(config, deepMode ? "premium" : "standard");
@@ -291,7 +298,7 @@ Reply with JSON:
     const providerAttempts: ProviderAttempt[] = claimResults.map((claimResult, index) => ({
       id: `attempt-${index + 1}`,
       provider: resolved.provider,
-      model: deepMode ? "deep-reasoning" : "auto",
+      model: deepMode ? "deep" : "auto",
       status: "success",
     }));
 
@@ -339,7 +346,7 @@ Reply with JSON:
         confidenceRationale: rationale,
         searchQueries: [claim],
         provider: resolved.provider,
-        model: deepMode ? "deep-reasoning" : "auto",
+        model: deepMode ? "deep" : "auto",
         attemptIds: [providerAttempts[index]?.id ?? `attempt-${index + 1}`],
         language: located.language,
         direction: located.direction,
@@ -358,7 +365,7 @@ Reply with JSON:
         confidenceRationale: rationale,
         searchQueries: [claim],
         provider: resolved.provider,
-        model: deepMode ? "deep-reasoning" : "auto",
+        model: deepMode ? "deep" : "auto",
         auditRef: { auditId, claimId, assessmentId },
         rewrite,
       } satisfies Partial<Finding>;

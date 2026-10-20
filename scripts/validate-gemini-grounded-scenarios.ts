@@ -8,6 +8,11 @@ import { generateReport } from "../src/report.ts";
 import type { Config } from "../src/config.ts";
 import type { SkillResult } from "../src/skills/types.ts";
 
+// This script replays mocked provider responses outside the test runner; keep its
+// telemetry and traces out of the user's real ~/.checkapp.
+process.env.CHECKAPP_AUDIT_EVENTS_PATH ??= join(tmpdir(), "checkapp-gemini-validation", "audit-events.jsonl");
+process.env.CHECKAPP_TRACE_DIR ??= join(tmpdir(), "checkapp-gemini-validation", "traces");
+
 type ScenarioKind = "fact-check" | "plagiarism";
 type ScenarioLanguage = "en" | "he" | "mixed";
 

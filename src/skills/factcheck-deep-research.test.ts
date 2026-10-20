@@ -169,7 +169,8 @@ describe("FactCheckDeepResearchSkill", () => {
 
     mockFetch(async (req) => {
       expect(req.method).toBe("GET");
-      expect(req.url).toContain("/interactions/int-complete?key=gemini-key");
+      expect(req.url).toMatch(/\/interactions\/int-complete$/);
+      expect(req.headers.get("x-goog-api-key")).toBe("gemini-key");
       return jsonResponse({
         id: "int-complete",
         status: "completed",

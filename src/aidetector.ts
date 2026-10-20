@@ -1,5 +1,6 @@
+import { traceProviderCall, type TraceInput } from "./telemetry/trace.ts";
 import type { Config } from "./config.ts";
-import { createGeminiCapability } from "./providers/gemini-capability.ts";
+import { createGeminiCapability, GEMINI_MIN_OUTPUT_TOKENS } from "./providers/gemini-capability.ts";
 
 export interface AiSegment {
   text: string;
@@ -88,17 +89,24 @@ export async function checkAiDetectorGemini(
   const model = createGeminiCapability({ apiKey }).getModel("chat");
   const url = `${GEMINI_AI_DETECT_BASE}/models/${model}:generateContent`;
 
+  const prompt = `${AI_DETECTION_PROMPT}\n\nText to analyze:\n${text}`;
+  // No thinkingConfig: the model's default level applies, and it counts against this cap.
+  const requestParams = { generationConfig: { maxOutputTokens: GEMINI_MIN_OUTPUT_TOKENS, responseMimeType: "application/json" } };
+  const startedAt = Date.now();
+  const trace = (fields: Partial<TraceInput>) => traceProviderCall({
+    stage: "gemini.ai-detection", provider: "gemini-ai-detection", model,
+    params: requestParams, prompt, latencyMs: Date.now() - startedAt, ...fields,
+  });
+
   let response: Response;
   try {
     response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: `${AI_DETECTION_PROMPT}\n\nText to analyze:\n${text}` }] }],
-        generationConfig: { temperature: 0, maxOutputTokens: 2048, responseMimeType: "application/json" },
-      }),
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], ...requestParams }),
     });
   } catch (err) {
+    trace({ error: (err as Error).message });
     return {
       aiScore: 0, aiPct: 0, verdict: "human", topSegments: [],
       error: `Gemini AI detection network error: ${(err as Error).message}`,
@@ -106,6 +114,7 @@ export async function checkAiDetectorGemini(
   }
 
   if (!response.ok) {
+    trace({ httpStatus: response.status, error: `HTTP ${response.status}` });
     return {
       aiScore: 0, aiPct: 0, verdict: "human", topSegments: [],
       error: `Gemini AI detection error: HTTP ${response.status}`,
@@ -123,6 +132,7 @@ export async function checkAiDetectorGemini(
   }
 
   const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+  trace({ httpStatus: response.status, response: rawText });
 
   let parsed: GeminiAiDetectionResponse;
   try {

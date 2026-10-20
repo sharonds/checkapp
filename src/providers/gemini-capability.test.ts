@@ -88,7 +88,8 @@ describe("resolveModels — env override validation", () => {
       resetGeminiCapabilityHealthCache();
       process.env.GEMINI_MODEL_FLASH = "flash/../../../etc/passwd";
       const capability = createGeminiCapability({ apiKey: "test-key" });
-      expect(capability.models.flash).toBe("gemini-3.5-flash");
+      // gemini-3.5-flash was deprecated 2026-10-08 (routes to 3.6); 3.8 Flash is the current stable Flash.
+      expect(capability.models.flash).toBe("gemini-3.8-flash");
     } finally {
       restoreEnv(env);
       resetGeminiCapabilityHealthCache();

@@ -1,3 +1,4 @@
+import { withoutSearchSuggestions } from "./skills/types.ts";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
@@ -180,7 +181,7 @@ async function dispatchToolCall(name: string, args: Record<string, unknown>) {
       const text = args.text as string;
       const source = (args.source as string) ?? "mcp-check";
       const result = await mcpServerDeps.runCheckHeadless(source, { text, telemetrySource: "mcp" });
-      return { content: [{ type: "text", text: JSON.stringify({ ...result, audit: redactAuditRecordText(result.audit) }, null, 2) }] };
+      return { content: [{ type: "text", text: JSON.stringify({ ...result, results: withoutSearchSuggestions(result.results), audit: redactAuditRecordText(result.audit) }, null, 2) }] };
     }
     case "list_reports": {
       const db = mcpServerDeps.openDb();
@@ -200,7 +201,7 @@ async function dispatchToolCall(name: string, args: Record<string, unknown>) {
         const check = getCheckById(db, id);
         if (!check) return { content: [{ type: "text", text: `Report ${id} not found` }], isError: true };
         const { articleText: _articleText, ...publicReport } = check;
-        return { content: [{ type: "text", text: JSON.stringify({ ...publicReport, audit: redactAuditRecordText(publicReport.audit) }, null, 2) }] };
+        return { content: [{ type: "text", text: JSON.stringify({ ...publicReport, results: withoutSearchSuggestions(publicReport.results), audit: redactAuditRecordText(publicReport.audit) }, null, 2) }] };
       } finally {
         db.close();
       }

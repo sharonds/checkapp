@@ -79,6 +79,7 @@ describe("FactCheckGroundedSkill", () => {
               ],
             },
             groundingMetadata: {
+              searchEntryPoint: { renderedContent: "<style>.chip{}</style><div class=\"chip\"><a href=\"https://www.google.com/search?q=x\">x</a></div>" },
               webSearchQueries: ["netherlands indoor smoking ban 2008"],
               groundingChunks: [
                 { web: { uri: "https://www.government.nl/topics/smoking", title: "Government.nl Smoking Policy" } },
@@ -125,6 +126,8 @@ describe("FactCheckGroundedSkill", () => {
       expect(finding.location?.paragraphIndex).toBe(0);
       expect(finding.auditRef?.claimId).toBe("claim-1");
       expect(finding.searchQueries).toContain("netherlands indoor smoking ban 2008");
+      // Grounding ToS: Search Suggestions must be shown with grounded results.
+      expect(finding.searchSuggestionsHtml).toContain("class=\"chip\"");
       expect((result as any).audit.factAssessments[0].provider).toBe("gemini-grounded");
       // The assessment must attribute the model that actually served the call.
       expect((result as any).audit.factAssessments[0].model).toBe((result as any).audit.providerAttempts[0].model);
@@ -527,7 +530,8 @@ describe("FactCheckGroundedSkill", () => {
     mockFetch(urlRouter({
       "generativelanguage.googleapis.com": async (req) => {
         sawGeminiRequest = true;
-        expect(req.url).toContain("provider-gemini-key");
+        // The key travels in the x-goog-api-key header, not the URL (changed 2026-10-20).
+        expect(req.headers.get("x-goog-api-key")).toBe("provider-gemini-key");
         const body = await req.json() as { tools?: unknown };
         // Extraction (no tools) and grounding (google_search tool) both hit the
         // same provider-scoped key — branch on tools to serve each.

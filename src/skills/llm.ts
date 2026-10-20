@@ -10,7 +10,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import type { Config } from "../config.ts";
-import { createGeminiCapability } from "../providers/gemini-capability.ts";
+import { createGeminiCapability, GEMINI_MAX_OUTPUT_TOKENS, GEMINI_MIN_OUTPUT_TOKENS } from "../providers/gemini-capability.ts";
+import { traceProviderCall } from "../telemetry/trace.ts";
 import { isE2E, assertMocksOnly } from "../e2e/mode.ts";
 import { loadScenario } from "../e2e/fixtures.ts";
 
@@ -78,17 +79,16 @@ function createGeminiCaller(apiKey: string, model: string): LlmClient["call"] {
   return async (prompt: string, maxTokens = 1024) => {
     assertMocksOnly("llm:gemini");
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
-            // Respect caller's token budget; cap at 8192 so a large request
-            // doesn't produce runaway cost. Callers needing more should split.
-            maxOutputTokens: Math.min(maxTokens, 8192),
-            temperature: 0.1,
+            // The cap covers thinking + answer, so small caller budgets would
+            // truncate the answer; spend is controlled by thinkingLevel instead.
+            maxOutputTokens: Math.min(Math.max(maxTokens, GEMINI_MIN_OUTPUT_TOKENS), GEMINI_MAX_OUTPUT_TOKENS),
             thinkingConfig: { thinkingLevel: "low" },
           },
         }),
@@ -125,6 +125,35 @@ function detectPromptPhase(prompt: string): "extract" | "assess" | "other" {
 }
 
 export function getLlmClient(config: Config): LlmClient | null {
+  const client = resolveLlmClient(config);
+  return client ? withCallTrace(client) : null;
+}
+
+/** Every LLM call is recorded in the per-run trace (prompt, response, latency). */
+function withCallTrace(client: LlmClient): LlmClient {
+  return {
+    ...client,
+    call: async (prompt: string, maxTokens?: number) => {
+      const startedAt = Date.now();
+      try {
+        const response = await client.call(prompt, maxTokens);
+        traceProviderCall({
+          stage: "llm", provider: client.provider, model: client.model,
+          params: { maxTokens }, prompt, response, latencyMs: Date.now() - startedAt,
+        });
+        return response;
+      } catch (error) {
+        traceProviderCall({
+          stage: "llm", provider: client.provider, model: client.model, params: { maxTokens }, prompt,
+          latencyMs: Date.now() - startedAt, error: error instanceof Error ? error.message : String(error),
+        });
+        throw error;
+      }
+    },
+  };
+}
+
+function resolveLlmClient(config: Config): LlmClient | null {
   // E2E mode: return a scenario-driven mock instead of making real HTTP calls.
   // We still honor the configured provider so skills that branch on it see the
   // expected value, but the call() handler reads from the fixture.

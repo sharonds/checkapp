@@ -1,9 +1,10 @@
 import type { Config } from "../config.ts";
 import type { SkillRunOutput } from "../audit/contribution.ts";
-import { createGeminiCapability } from "../providers/gemini-capability.ts";
+import { createGeminiCapability, GEMINI_MIN_OUTPUT_TOKENS } from "../providers/gemini-capability.ts";
 import { getProvider } from "../providers/registry.ts";
 import { resolveProvider } from "../providers/resolve.ts";
 import { emitGroundedCallEvent } from "../telemetry/audit-events.ts";
+import { traceProviderCall, type TraceInput } from "../telemetry/trace.ts";
 import { getLlmClient, parseJsonResponse } from "./llm.ts";
 import { claimConfidence, formatCitation, extractClaimsPromptGrounded, parseExtractedClaims, type ExtractedClaim } from "./factcheck.ts";
 import type { ClaimType, Finding, Skill, SkillResult, Source } from "./types.ts";
@@ -36,6 +37,7 @@ interface GeminiGroundingSupport {
 }
 
 interface GeminiGroundingMetadata {
+  searchEntryPoint?: { renderedContent?: string };
   groundingChunks?: GeminiGroundedChunk[];
   groundingSupports?: GeminiGroundingSupport[];
   webSearchQueries?: string[];
@@ -69,9 +71,13 @@ interface GroundedClaimResult {
   assessment: GroundedAssessment;
   sources: Source[];
   webSearchQueries: string[];
+  searchSuggestionsHtml?: string;
   attempts: ProviderAttemptDraft[];
   providerError?: boolean;
 }
+
+/** Search Suggestions are Google-provided HTML; cap the size we persist and render. */
+const MAX_SEARCH_SUGGESTIONS_HTML = 32_000;
 
 type ProviderAttemptDraft = Omit<ProviderAttempt, "id">;
 
@@ -270,7 +276,7 @@ export class FactCheckGroundedSkill implements Skill {
       attemptIdsByResult.set(resultIndex, ids);
     }
 
-    for (const [index, { assertion, source, assessment, sources, webSearchQueries, providerError }] of groundedResults.entries()) {
+    for (const [index, { assertion, source, assessment, sources, webSearchQueries, searchSuggestionsHtml, providerError }] of groundedResults.entries()) {
       const supported = providerError ? null : sources.length === 0 && assessment.supported === true ? null : assessment.supported;
       const located = locateQuote(text, source, documentAnalysis);
       const locationApproximate = !located.location || located.location.matchQuality === "fuzzy";
@@ -334,6 +340,7 @@ export class FactCheckGroundedSkill implements Skill {
         model: groundedModel,
         auditRef: { auditId, claimId, assessmentId },
         rewrite,
+        searchSuggestionsHtml,
       } satisfies Partial<Finding>;
       if (providerError) {
         findings.push({
@@ -535,6 +542,7 @@ async function assessClaimGrounded(
     assessment,
     sources: extractGroundingSources(groundingMetadata),
     webSearchQueries: groundingMetadata?.webSearchQueries ?? [],
+    searchSuggestionsHtml: groundingMetadata?.searchEntryPoint?.renderedContent?.slice(0, MAX_SEARCH_SUGGESTIONS_HTML) || undefined,
     attempts,
   };
 }
@@ -555,7 +563,15 @@ async function fetchGroundedAssessment(
   attempts: ProviderAttemptDraft[] = [],
 ): Promise<GeminiGroundedFetchResult> {
   const startedAt = Date.now();
-  const emitAttempt = (payload: Record<string, unknown>) =>
+  const prompt = buildGroundedPrompt(assertion, source);
+  const requestParams = {
+    tools: [{ google_search: {} }],
+    generationConfig: {
+      maxOutputTokens: GEMINI_MIN_OUTPUT_TOKENS,
+      thinkingConfig: { thinkingLevel: "high" },
+    },
+  };
+  const emitAttempt = (payload: Record<string, unknown>, traceExtras: Partial<TraceInput> = {}) => {
     emitGroundedCallEvent({
       provider: "gemini-grounded",
       model,
@@ -564,26 +580,35 @@ async function fetchGroundedAssessment(
       costUsd: perClaimCost,
       ...payload,
     });
+    traceProviderCall({
+      stage: "gemini.grounded",
+      provider: "gemini-grounded",
+      model,
+      grounded: true,
+      params: requestParams,
+      prompt,
+      httpStatus: typeof payload.httpStatus === "number" ? payload.httpStatus : undefined,
+      latencyMs: typeof payload.latencyMs === "number" ? payload.latencyMs : undefined,
+      usage: {
+        inputTokens: (payload.inputTokens as number | null) ?? undefined,
+        outputTokens: (payload.outputTokens as number | null) ?? undefined,
+        totalTokens: (payload.totalTokens as number | null) ?? undefined,
+      },
+      error: typeof payload.error === "string" ? payload.error : typeof payload.errorMessage === "string" ? payload.errorMessage : undefined,
+      ...traceExtras,
+    });
+  };
 
   let response: Response;
   try {
     response = await fetch(
-      `${GEMINI_BASE_URL}/${model}:generateContent?key=${encodeURIComponent(apiKey)}`,
+      `${GEMINI_BASE_URL}/${model}:generateContent`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
         body: JSON.stringify({
-          contents: [{
-            parts: [{
-              text: buildGroundedPrompt(assertion, source),
-            }],
-          }],
-          tools: [{ google_search: {} }],
-          generationConfig: {
-            maxOutputTokens: 8192,
-            temperature: 0.1,
-            thinkingConfig: { thinkingLevel: "high" },
-          },
+          contents: [{ parts: [{ text: prompt }] }],
+          ...requestParams,
         }),
       },
     );
@@ -637,6 +662,7 @@ async function fetchGroundedAssessment(
       inputTokens: null,
       outputTokens: null,
       totalTokens: null,
+      errorMessage: `Gemini grounded error: HTTP ${response.status} (retrying)`,
     });
     await sleep(Math.max(computeRetryAfterDelayMs(response.headers.get("retry-after")), groundedRetryDelayMs()));
     return fetchGroundedAssessment(assertion, source, apiKey, model, retriesLeft - 1, perClaimCost, attempts);
@@ -658,6 +684,7 @@ async function fetchGroundedAssessment(
       inputTokens: null,
       outputTokens: null,
       totalTokens: null,
+      errorMessage,
     });
     return { attempts, errorMessage };
   }
@@ -672,12 +699,17 @@ async function fetchGroundedAssessment(
     outputTokens: data.usageMetadata?.candidatesTokenCount,
     totalTokens: data.usageMetadata?.totalTokenCount,
   });
+  const tracedMetadata = data.candidates?.[0]?.groundingMetadata;
   emitAttempt({
     httpStatus: response.status,
     latencyMs,
     inputTokens: data.usageMetadata?.promptTokenCount ?? null,
     outputTokens: data.usageMetadata?.candidatesTokenCount ?? null,
     totalTokens: data.usageMetadata?.totalTokenCount ?? null,
+  }, {
+    response: (data.candidates?.[0]?.content?.parts ?? []).filter((part) => part.thought !== true).map((part) => part.text ?? "").join("\n"),
+    searchQueries: tracedMetadata?.webSearchQueries ?? [],
+    sources: tracedMetadata?.groundingChunks ?? [],
   });
   return { response: data, attempts };
 }

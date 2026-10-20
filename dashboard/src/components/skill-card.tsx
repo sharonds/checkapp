@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScoreRing } from "./score-ring";
 import { VerdictBadge } from "./verdict-badge";
 import { ClaimDrillDown } from "./ClaimDrillDown";
+import { SearchSuggestions } from "@/components/search-suggestions";
 import type { Finding } from "@/lib/normalize";
 import { getProvider, type SkillId } from "@/lib/providers";
 import {
@@ -114,6 +115,7 @@ export function SkillCard({
                       {formatAuditLocation(f.location, locale)}
                     </p>
                   )}
+                  <SearchSuggestions html={f.searchSuggestionsHtml} />
                   {f.rewrite && (
                     <div className="mt-2 rounded border border-emerald-300 bg-emerald-50 p-2 text-xs text-emerald-950">
                       <p className="font-semibold">{labels.suggestedRewrite}</p>

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import { loadScenario, type Scenario } from "../../src/e2e/fixtures.ts";
+import { extractText } from "../../src/utils/interactions-api.ts";
 
 const SCENARIO_NAMES = [
   "basic-happy",
@@ -48,7 +49,9 @@ describe("scenario fixtures", () => {
     const states = s.providers.deepResearch!.pollStates;
     expect(states[0]?.status).toBe("in_progress");
     expect(states[states.length - 1]?.status).toBe("completed");
-    expect(states[states.length - 1]?.outputs?.[0]?.text).toContain("Deep Audit Report");
+    const finalState = states[states.length - 1]!;
+    expect(finalState.outputs).toBeUndefined();
+    expect(extractText({ id: "int", status: finalState.status, steps: finalState.steps })).toContain("Deep Audit Report");
   });
 
   it("premium-failed first poll returns failed with error message", () => {

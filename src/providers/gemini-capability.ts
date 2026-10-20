@@ -14,9 +14,18 @@ function sanitizeModelOverride(value: string | undefined, fallback: string): str
 
 const DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 const DEFAULT_MODEL_PRO = "gemini-3.1-pro-preview";
-const DEFAULT_MODEL_FLASH = "gemini-3.5-flash";
+// Fallback when the pro model is unhealthy. gemini-3.5-flash was deprecated 2026-10-08.
+const DEFAULT_MODEL_FLASH = "gemini-3.8-flash";
 const DEFAULT_MODEL_DEEP_RESEARCH = "deep-research-preview-04-2026";
 const DEFAULT_TIMEOUT_MS = 3_000;
+
+/**
+ * Gemini's maxOutputTokens caps thinking + answer combined. Google's migration
+ * checklist says to keep it at >= 32,768 and lower thinkingLevel to save tokens.
+ * 65,536 is the synchronous output limit of current models.
+ */
+export const GEMINI_MIN_OUTPUT_TOKENS = 32_768;
+export const GEMINI_MAX_OUTPUT_TOKENS = 65_536;
 const DEFAULT_CACHE_TTL_MS = 5 * 60_000;
 
 export type GeminiTask = "chat" | "grounded" | "deep-research";
@@ -115,16 +124,16 @@ export function createGeminiCapability(options: GeminiCapabilityOptions = {}): G
     }
 
     const [pro, grounding, deepResearch] = await Promise.all([
-      probeModel(`${baseUrl}/models/${models.pro}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+      probeModel(`${baseUrl}/models/${models.pro}:generateContent`, {
         contents: [{ role: "user", parts: [{ text: "ping" }] }],
-        generationConfig: { maxOutputTokens: 1, temperature: 0 },
+        generationConfig: { maxOutputTokens: 1 },
       }),
-      probeModel(`${baseUrl}/models/${models.pro}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+      probeModel(`${baseUrl}/models/${models.pro}:generateContent`, {
         contents: [{ role: "user", parts: [{ text: "ping" }] }],
         tools: [{ google_search: {} }],
-        generationConfig: { maxOutputTokens: 1, temperature: 0 },
+        generationConfig: { maxOutputTokens: 1 },
       }),
-      probeModel(`${baseUrl}/interactions?key=${encodeURIComponent(apiKey)}`, {
+      probeModel(`${baseUrl}/interactions`, {
         input: "ping",
         agent: models.deepResearch,
         // Gemini requires background=true AND store=true for agent
@@ -174,7 +183,7 @@ export function createGeminiCapability(options: GeminiCapabilityOptions = {}): G
     try {
       const response = await getFetch()(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
         body: JSON.stringify(body),
         signal: controller.signal,
       });

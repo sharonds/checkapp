@@ -5,6 +5,22 @@ All notable changes to CheckApp are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- Per-run trace log: each check writes `~/.checkapp/traces/<date>/<runId>.jsonl`, with one record per provider call (prompt, params, response, search queries, tokens, latency, status). Set `CHECKAPP_TRACE=0` to turn it off. Google Search grounded content is left out unless `CHECKAPP_TRACE_GROUNDED_CONTENT=1`. Trace files are owner-only (0600), and date folders older than 30 days (`CHECKAPP_TRACE_RETENTION_DAYS`) are deleted. Batch runs now go through the same pipeline, with one trace per article.
+- Grounded fact-check findings now show Google Search Suggestions (`searchEntryPoint`) in the HTML report and dashboard, as the Gemini grounding terms require. They render in a sandboxed iframe with no scripts. The suggestions are not included in MCP or `--json` output.
+
+### Fixed
+- Deep Audit reads the Interactions API `steps[]` response schema. Google removed the legacy `outputs` field on 2026-06-08, so completed audits came back empty.
+- Gemini requests no longer send `temperature`. It is deprecated and ignored on Gemini 3.6+ and Gemini 4, and Google warns it degrades Gemini 3.x reasoning.
+- Gemini `maxOutputTokens` is now at least 32,768 on all calls (thinking tokens count against the cap); previously 2,048–8,192 could truncate answers.
+- The Gemini API key is sent in the `x-goog-api-key` header instead of the URL query string.
+- Exa deep mode uses `type: "deep"` (Exa 3.0 made `deep-reasoning` legacy), and the deprecated `highlights.numSentences` is no longer sent.
+- Selecting the `parallel-task` fact-check provider no longer sends the Parallel key to Exa; it is skipped as not implemented.
+- The flash fallback model is `gemini-3.8-flash`; `gemini-3.5-flash` was deprecated on 2026-10-08.
+- Test runs no longer write mock telemetry into the real `~/.checkapp/audit-events.jsonl`.
+
 ## [1.4.0] - 2026-06-11
 
 This is the first npm publish for `checkapp`. GitHub Releases previously stopped at `v1.2.0`, so this release also includes the `1.3.0` and `1.3.1` changes listed below.

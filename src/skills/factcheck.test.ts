@@ -139,9 +139,11 @@ describe("FactCheckSkill — Phase 7 evidence", () => {
       numResults: 3,
       contents: {
         text: { maxCharacters: 4000 },
-        highlights: { maxCharacters: 1000, numSentences: 3, query: "73% of remote workers experience back pain" },
+        highlights: { maxCharacters: 1000, query: "73% of remote workers experience back pain" },
       },
     });
+    // numSentences is deprecated by Exa (use maxCharacters); Exa 3.0 returns a warning for it.
+    expect(capturedOpts.contents.highlights.numSentences).toBeUndefined();
     expect(result.provider).toBe("exa-search");
   });
 
@@ -287,6 +289,55 @@ describe("FactCheckSkill — Phase 7 evidence", () => {
     expect(result.summary.toLowerCase()).toContain("provider");
   });
 
+  test("each Exa search is recorded in the per-run trace with query, params and results", async () => {
+    const { mkdtempSync, readdirSync, readFileSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { withTraceRun } = await import("../telemetry/trace.ts");
+    const dir = mkdtempSync(join(tmpdir(), "checkapp-exa-trace-"));
+    process.env.CHECKAPP_TRACE_DIR = dir;
+    let llmCallCount = 0;
+    exaSearchHandler = async () => ({
+      results: [{ url: "https://s.com/a", title: "A", highlights: ["73% figure"], text: "full" }],
+    });
+    mockFetch(urlRouter({
+      "api.minimax.io": async () => {
+        llmCallCount++;
+        if (llmCallCount === 1) return anthropicContent("[\"a claim\"]");
+        return anthropicContent("{\"supported\":true,\"note\":\"n\",\"claimType\":\"general\"}");
+      },
+    }));
+    try {
+      await withTraceRun({ source: "t" }, () => new FactCheckSkill().run("a claim", cfgBase));
+      const day = readdirSync(dir)[0]!;
+      const file = readdirSync(join(dir, day))[0]!;
+      const records = readFileSync(join(dir, day, file), "utf-8").trim().split("\n").map((l) => JSON.parse(l));
+      const exa = records.find((r) => r.stage === "exa.search");
+      expect(exa).toMatchObject({ provider: "exa-search", prompt: "a claim", params: { type: "auto", numResults: 3 } });
+      expect(exa.sources[0]).toMatchObject({ url: "https://s.com/a", highlights: ["73% figure"] });
+      expect(typeof exa.latencyMs).toBe("number");
+      expect(records.filter((r) => r.stage === "llm")).toHaveLength(2);
+    } finally {
+      delete process.env.CHECKAPP_TRACE_DIR;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("skips parallel-task instead of sending the Parallel key to Exa", async () => {
+    let exaCalled = false;
+    exaSearchHandler = async () => {
+      exaCalled = true;
+      return { results: [] };
+    };
+    const res = await new FactCheckSkill().run("Some article to check.", {
+      ...cfgBase,
+      providers: { "fact-check": { provider: "parallel-task", apiKey: "parallel-key" } },
+    });
+    expect(exaCalled).toBe(false);
+    expect(res.verdict).toBe("skipped");
+    expect(res.summary).toMatch(/parallel-task.*not implemented/i);
+  });
+
   test("skips with 'skipped' verdict when provider is tavily (not implemented)", async () => {
     const skill = new FactCheckSkill();
     const config: Config = {
@@ -399,7 +450,8 @@ describe("FactCheckSkill — Phase 7 evidence", () => {
     });
   });
 
-  test("deep-reasoning mode passes type: 'deep-reasoning' + numResults: 5 to Exa", async () => {
+  // Exa 3.0 (2026-10-19): "deep-reasoning" is legacy; "deep" is its replacement. The config id stays exa-deep-reasoning.
+  test("exa-deep-reasoning provider passes type: 'deep' + numResults: 5 to Exa", async () => {
     let capturedOpts: any = null;
     let llmCallCount = 0;
     exaSearchHandler = async (_q, opts) => {
@@ -426,12 +478,13 @@ describe("FactCheckSkill — Phase 7 evidence", () => {
       providers: { "fact-check": { provider: "exa-deep-reasoning", apiKey: "k" } },
     };
     const result = await new FactCheckSkill().run("some claim", cfg);
-    expect(capturedOpts?.type).toBe("deep-reasoning");
+    expect(capturedOpts?.type).toBe("deep");
     expect(capturedOpts?.numResults).toBe(5);
     expect(capturedOpts?.contents).toMatchObject({
       text: { maxCharacters: 4000 },
-      highlights: { maxCharacters: 1000, numSentences: 3, query: "a claim" },
+      highlights: { maxCharacters: 1000, query: "a claim" },
     });
+    expect(capturedOpts?.contents?.highlights?.numSentences).toBeUndefined();
     // cost per claim should accumulate 0.025 (deep) + 0.001 (base) + 0.001 (assess) per claim
     expect(result.costUsd).toBeGreaterThanOrEqual(0.025);
   });

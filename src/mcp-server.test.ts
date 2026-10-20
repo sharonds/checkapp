@@ -423,7 +423,8 @@ describe("deep_audit_article", () => {
   it("initiates a new deep audit for raw article text", async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
-      expect(String(input)).toContain("/interactions?key=gemini-key");
+      expect(String(input)).toMatch(/\/interactions$/);
+      expect(new Headers(init?.headers).get("x-goog-api-key")).toBe("gemini-key");
       expect(init?.method).toBe("POST");
       return new Response(JSON.stringify({ id: "int-new" }), {
         status: 200,
@@ -465,6 +466,23 @@ describe("deep_audit_article", () => {
 });
 
 describe("dispatch-level error sanitization", () => {
+  it("check_article does not send Google Search Suggestions HTML to agents", async () => {
+    __setMcpServerTestOverrides({
+      runCheckHeadless: async () => ({
+        results: [{
+          skillId: "fact-check-grounded", name: "Fact Check", score: 100, verdict: "pass", summary: "ok", costUsd: 0,
+          findings: [{ severity: "info", text: "Verified", searchSuggestionsHtml: "<div class=\"chip\">x</div>" }],
+        }],
+        totalCostUsd: 0,
+      }) as any,
+    });
+    const res = await handleToolCall("check_article", { text: "hello", source: "t" });
+    const text = res.content[0].type === "text" ? res.content[0].text : "";
+    expect(text).toContain("Verified");
+    expect(text).not.toContain("searchSuggestionsHtml");
+    expect(text).not.toContain("chip");
+  });
+
   it("check_article tool errors are sanitized before reaching the MCP client", async () => {
     __setMcpServerTestOverrides({
       runCheckHeadless: async () => {

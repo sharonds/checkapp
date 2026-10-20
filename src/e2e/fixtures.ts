@@ -21,6 +21,9 @@ export interface ScenarioGroundedClaim {
 
 export interface ScenarioDeepResearchPollState {
   status: "in_progress" | "completed" | "failed";
+  /** Current Interactions schema. */
+  steps?: Array<{ type: string; content?: Array<{ type: string; text?: string }> }>;
+  /** Legacy schema (removed by Google 2026-06-08); kept so old fixtures still load. */
   outputs?: Array<{ text: string }>;
   error?: string;
 }
