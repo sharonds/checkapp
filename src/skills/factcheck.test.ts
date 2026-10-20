@@ -527,6 +527,47 @@ describe("parseExtractedClaims", () => {
   });
 });
 
+describe("parseExtractedClaims — breadth before depth", () => {
+  // Iteration-1 eval: 5 assertions were spent on one generic sentence while product headings
+  // and later sections were never checked. Atomic facts stay separate (one false fact in a
+  // sentence must still fail), but every sentence gets its first claim before any gets a second.
+  test("puts the first claim of every sentence before extra facts from a sentence already used", () => {
+    const raw = JSON.stringify([
+      { assertion: "Set 43020 has 2842 pieces", source: "Set 43020 has 2,842 pieces and is rated 12+." },
+      { assertion: "Set 43020 is rated 12+", source: "Set  43020 has 2,842 pieces and is rated 12+. " },
+      { assertion: "The kettle holds 1.7 litres", source: "The kettle holds 1.7 litres." },
+      { assertion: "The kettle holds 1.7 litres", source: "The kettle holds 1.7 litres." },
+    ]);
+    expect(parseExtractedClaims(raw)).toEqual([
+      { assertion: "Set 43020 has 2842 pieces", source: "Set 43020 has 2,842 pieces and is rated 12+." },
+      { assertion: "The kettle holds 1.7 litres", source: "The kettle holds 1.7 litres." },
+      { assertion: "Set 43020 is rated 12+", source: "Set  43020 has 2,842 pieces and is rated 12+." },
+    ]);
+  });
+
+  test("extra facts from one sentence do not crowd distinct sentences out of the 20-claim cap", () => {
+    const rows = [
+      ...Array.from({ length: 5 }, (_, i) => ({ assertion: `fact ${i}`, source: "The same sentence." })),
+      ...Array.from({ length: 20 }, (_, i) => ({ assertion: `claim ${i}`, source: `Distinct sentence ${i}.` })),
+    ];
+    const claims = parseExtractedClaims(JSON.stringify(rows))!;
+    expect(claims).toHaveLength(20);
+    expect(new Set(claims.map((c) => c.source)).size).toBe(20);
+    expect(claims[0]!.source).toBe("The same sentence.");
+  });
+});
+
+test("extractClaimsPromptGrounded covers the whole article, breadth first, riskiest first", () => {
+  const p = extractClaimsPromptGrounded("מאמר לדוגמה");
+  expect(p).toMatch(/one object per (source )?sentence/i);
+  expect(p).toMatch(/headings?/i);
+  expect(p).toMatch(/table rows?/i);
+  expect(p).toMatch(/whole article|entire article|beginning to end/i);
+  expect(p).toMatch(/superlative/i);
+  expect(p).toMatch(/order[^.]*priority/i);
+  expect(p).toMatch(/only after every/i);
+});
+
 test("extractClaimsPromptGrounded asks for atomic assertion + verbatim source per claim", () => {
   const p = extractClaimsPromptGrounded("מאמר לדוגמה");
   expect(p).toContain("assertion");

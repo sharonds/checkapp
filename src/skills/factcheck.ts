@@ -42,9 +42,26 @@ export function parseExtractedClaims(rawJson: string): ExtractedClaim[] | null {
       && typeof (row as { assertion?: unknown }).assertion === "string"
       && typeof (row as { source?: unknown }).source === "string")
     .map((row) => ({ assertion: row.assertion.trim(), source: row.source.trim() }))
-    .filter((c) => c.assertion.length > 0 && c.source.length > 0)
-    .slice(0, 20);
-  return claims; // may be [] (parsed ok, no usable claims) — distinct from null (parse failed)
+    .filter((c) => c.assertion.length > 0 && c.source.length > 0);
+  // Breadth before depth: models split a sentence into several facts, which spent the claim cap
+  // on one sentence while the rest of the article went unchecked. Keep each atomic fact (one false
+  // fact must still fail its sentence), but give every sentence its first claim before any second.
+  const firsts: ExtractedClaim[] = [];
+  const extras: ExtractedClaim[] = [];
+  const seenSources = new Set<string>();
+  const seenClaims = new Set<string>();
+  for (const claim of claims) {
+    const sourceKey = claim.source.replace(/\s+/g, " ");
+    const claimKey = `${sourceKey}\n${claim.assertion}`;
+    if (seenClaims.has(claimKey)) continue;
+    seenClaims.add(claimKey);
+    if (seenSources.has(sourceKey)) extras.push(claim);
+    else {
+      seenSources.add(sourceKey);
+      firsts.push(claim);
+    }
+  }
+  return [...firsts, ...extras].slice(0, 20); // may be [] (parsed ok, no usable claims) — distinct from null (parse failed)
 }
 
 export function extractClaimsPrompt(articleText: string): string {
@@ -63,18 +80,20 @@ JSON array of claims:`;
 }
 
 export function extractClaimsPromptGrounded(articleText: string): string {
-  return `From the article below, extract up to 20 verifiable factual claims.
+  return `From the article below, extract up to 20 verifiable factual claims, covering the whole article from beginning to end.
 Return ONLY a JSON array of objects, no other text. Each object has exactly two string fields:
-- "assertion": ONE atomic, SELF-CONTAINED factual statement that can be verified on its own. Include the entity/subject so it stands alone (e.g. "LEGO set 43013 contains 490 pieces", NOT "contains ~520 pieces"). One fact per assertion — split a sentence that states several facts into several objects.
+- "assertion": ONE atomic, SELF-CONTAINED factual statement that can be verified on its own. Include the entity/subject so it stands alone (e.g. "LEGO set 43013 contains 490 pieces", NOT "contains ~520 pieces").
 - "source": the EXACT sentence from the article (copied VERBATIM, in the original language, no translation) that this assertion comes from, so it can be located in the article.
-A single source sentence may appear in multiple objects when it states multiple facts.
-Focus on statistics, dates, specs, prices, rules, and named entities — not opinions.
+Breadth first: use one object per source sentence, with that sentence's most checkable fact. Add a second fact from a sentence you already used only after every checkable sentence in the article has an object.
+Look everywhere a fact can hide: headings (product names often carry the model number, capacity or brand), list items, pros/cons lines, FAQ answers and table rows (a table row is one source sentence).
+Pick facts that can be wrong: numbers and units, model or set numbers, brand and product names, prices, dates, ratings, superlatives ("the only", "the first", "the largest"), and health or safety claims. Skip opinions, marketing language and generic advice that cannot be checked.
+Order the array by priority: the most specific claims, and the ones most likely to be wrong, come first.
 
 Article:
 ${articleText}
 
 Example output:
-[{"assertion":"LEGO set 43020 contains 2842 pieces","source":"ערכת גביע העולם הרשמי (סט 43020) מורכבת מ-2,842 חלקים."}]
+[{"assertion":"LEGO set 43020 contains 2842 pieces","source":"ערכת גביע העולם הרשמי (סט 43020) מורכבת מ-2,842 חלקים ומיועדת לגילאי 12 ומעלה."}]
 
 JSON array:`;
 }
