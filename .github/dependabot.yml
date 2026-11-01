@@ -5,13 +5,15 @@ version: 2
 updates:
   # CLI / root package
   - package-ecosystem: "npm"
+    # Version-update PRs off: each PR runs paid CI and review. Vulnerabilities
+    # still raise Dependabot alerts (email); fix those by hand in a normal PR.
+    open-pull-requests-limit: 0
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
       time: "06:00"
       timezone: "Europe/Amsterdam"
-    open-pull-requests-limit: 5
     labels:
       - "dependencies"
       - "cli"
@@ -26,13 +28,15 @@ updates:
 
   # Dashboard (Next.js)
   - package-ecosystem: "npm"
+    # Version-update PRs off: each PR runs paid CI and review. Vulnerabilities
+    # still raise Dependabot alerts (email); fix those by hand in a normal PR.
+    open-pull-requests-limit: 0
     directory: "/dashboard"
     schedule:
       interval: "weekly"
       day: "monday"
       time: "06:00"
       timezone: "Europe/Amsterdam"
-    open-pull-requests-limit: 5
     labels:
       - "dependencies"
       - "dashboard"
@@ -47,13 +51,15 @@ updates:
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
+    # Version-update PRs off: each PR runs paid CI and review. Vulnerabilities
+    # still raise Dependabot alerts (email); fix those by hand in a normal PR.
+    open-pull-requests-limit: 0
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
       time: "06:00"
       timezone: "Europe/Amsterdam"
-    open-pull-requests-limit: 5
     labels:
       - "dependencies"
       - "ci"
